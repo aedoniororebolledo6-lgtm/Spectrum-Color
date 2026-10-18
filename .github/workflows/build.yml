@@ -1,0 +1,71 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-34 build-tools;34.0.0"
+
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compilar APK firmado
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Preparar APK y código QR
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/GlassSwitch.apk
+          sudo apt-get update -y
+          sudo apt-get install -y qrencode
+          URL="https://github.com/${{ github.repository }}/releases/latest/download/GlassSwitch.apk"
+          qrencode -o dist/qr.png -s 14 -m 3 "$URL"
+          echo "Enlace de descarga: $URL"
+
+      - name: Publicar versión (enlace fijo)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest dist/GlassSwitch.apk dist/qr.png \
+            --target "${{ github.sha }}" \
+            --title "Glass Switch (última versión)" \
+            --notes "Escanea el QR o abre GlassSwitch.apk desde el celular para instalar. Compilación #${{ github.run_number }}."
+
+      - name: Resumen
+        run: |
+          {
+            echo "## Glass Switch listo"
+            echo ""
+            echo "Descarga: https://github.com/${{ github.repository }}/releases/latest/download/GlassSwitch.apk"
+            echo ""
+            echo "QR: https://github.com/${{ github.repository }}/releases/latest/download/qr.png"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlassSwitch-apk
+          path: dist/
