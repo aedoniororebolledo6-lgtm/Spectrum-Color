@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GlassSwitch"
+rootProject.name = "SpectrumColor"
 include(":app")
