@@ -1404,10 +1404,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawBars(c: Canvas, o: Ob, t: Float, pal: IntArray) {
         val half = Cfg.BAR_H
-        for (lane in 0..1) {
+        for (lane in 0 until Cfg.BAR_LANES) {
             val y = o.y + if (lane == 0) -Cfg.BAR_DY else Cfg.BAR_DY
-            val dir = if (lane == 0) 1f else -1f
-            val off = o.phase * 3f + o.speed * dir * t
+            val off = o.phase * 3f + o.speed * t
             val j0 = floor((0f - off) / Cfg.BAR_SEG).toInt() - 1
             val j1 = floor((Cfg.W - off) / Cfg.BAR_SEG).toInt() + 1
             for (j in j0..j1) {
@@ -1786,10 +1785,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     y += 52f
                     if (i >= 4) break
                 }
-                button(
-                    c, "rematch", if (m.myRematch) "Esperando al rival…" else "Revancha",
-                    540f, cy + 330f, 700f, 130f, pal[0], 52f, !m.myRematch
-                )
+                val rLabel = if (m.oppLeft) "El rival salió" else if (m.myRematch) "Esperando al rival…" else "Revancha"
+                button(c, "rematch", rLabel, 540f, cy + 330f, 700f, 130f, pal[0], 52f, !m.myRematch && !m.oppLeft)
                 button(c, "exit", "Salir", 540f, cy + 480f, 700f, 120f, 0, 48f)
             }
             else -> {}

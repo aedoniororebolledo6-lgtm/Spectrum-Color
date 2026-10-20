@@ -64,9 +64,15 @@ class Match(
         if (!isHost) send("HELLO|$myName")
     }
 
+    /** true si el rival se fue (aunque la partida ya hubiera terminado). */
+    var oppLeft = false
+        private set
+
     fun onClosed() {
-        phase = Phase.CLOSED
         connected = false
+        oppLeft = true
+        // Si la partida ya terminó se queda el resultado en pantalla; solo se pierde la revancha.
+        if (phase != Phase.MATCH_END) phase = Phase.CLOSED
     }
 
     fun leave() {

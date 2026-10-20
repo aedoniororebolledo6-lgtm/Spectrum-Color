@@ -27,11 +27,19 @@ object Cfg {
     const val GRAZE = 0.4f      // cuánto "roce" se perdona (fracción del radio de la pelota)
     const val STAR_R = 28f
     const val SW_R = 34f
-    const val BAR_DY = 240f
+    const val BAR_DY = 0f        // separación entre carriles; con un solo carril las barras quedan en el centro
+    const val BAR_LANES = 1      // un solo carril de barras: se cruza con un solo salto, como en Color Switch
     const val BAR_H = 26f
     const val BAR_SEG = 540f
     const val START_GAP = 620f
     const val ROUND_TIME = 75f
+
+    /**
+     * Anillo doble concéntrico: el hueco entre los dos anillos (~80) es más chico que lo que sube la pelota
+     * en un toque (~216), así que no se puede esperar ahí y casi nunca hay un cruce posible
+     * (la búsqueda de tools/ no encontró solución). Se deja el código pero sin usarlo.
+     */
+    const val ENABLE_DOUBLE = false
 }
 
 object T {
@@ -79,7 +87,11 @@ class Sw(val y: Float, val toColor: Int)
 object Geo {
     private const val PI_F = 3.14159265f
 
-    fun ringSegs(n: Int): Int = if (n == 2) 4 else n
+    /**
+     * Segmentos de un anillo: el patrón de colores se repite dos veces por vuelta, así el color de abajo
+     * y el de arriba son el mismo y se cruza el anillo de una sola vez (sin tener que esperar dentro).
+     */
+    fun ringSegs(n: Int): Int = 2 * n
 
     fun rot(o: Ob, t: Float): Float = o.phase + o.speed * t
     fun rotInner(o: Ob, t: Float): Float = o.phase - o.speed * t
@@ -113,9 +125,9 @@ object Geo {
         return sqrt(dx * dx + dy * dy)
     }
 
+    /** Los dos carriles de barras se mueven juntos (mismo color a la misma altura): se cruzan de una sola vez. */
     fun barColor(o: Ob, lane: Int, x: Float, t: Float): Int {
-        val dir = if (lane == 0) 1f else -1f
-        val off = o.phase * 3f + o.speed * dir * t
+        val off = o.phase * 3f + o.speed * t
         val j = floor((x - off) / Cfg.BAR_SEG).toInt()
         return (((j % o.n) + o.n) % o.n + o.shift) % o.n
     }
@@ -146,7 +158,7 @@ object Geo {
                     ringHit(o, bx, by, color, o.inner, rotInner(o, t), (o.shift + 1) % o.n, band)
             }
             T.BARS -> {
-                for (lane in 0..1) {
+                for (lane in 0 until Cfg.BAR_LANES) {
                     val ly = o.y + if (lane == 0) -Cfg.BAR_DY else Cfg.BAR_DY
                     if (abs(by - ly) > Cfg.BAR_H + graze) continue
                     if (barColor(o, lane, bx, t) != color) return true
@@ -190,9 +202,10 @@ object Levels {
         return if (level % 5 == 0) base + 2 else base
     }
 
+    /** 2 colores al empezar, 3 en el grueso del juego y 4 solo en los últimos niveles. */
     fun colors(level: Int): Int {
         val f = frac(level)
-        return if (f < 0.2f) 2 else if (f < 0.5f) 3 else 4
+        return if (f < 0.3f) 2 else if (f < 0.85f) 3 else 4
     }
 
     fun difficulty(level: Int): Float = frac(level)
@@ -272,6 +285,10 @@ class Course private constructor(
         val w = floatArrayOf(3.0f, 1.4f, 2.4f, 2.2f, 2.2f)
         var sum = 0f
         for (t in 0 until T.COUNT) {
+            if (t == T.DOUBLE && !Cfg.ENABLE_DOUBLE) {
+                w[t] = 0f
+                continue
+            }
             val unlocked = if (isLevel) level >= Levels.unlockLevel(t) else g >= Levels.unlockGate[t]
             if (!unlocked) {
                 w[t] = 0f
@@ -315,10 +332,12 @@ class Course private constructor(
         when (type) {
             T.RING -> { speed = dirS * spin; size = 320f }
             T.DOUBLE -> { speed = dirS * spin * 0.9f; size = 345f; inner = 195f }
-            T.BARS -> { speed = dirS * lerp(140f, 300f, d) * vari; size = 0f }
+            T.BARS -> { speed = dirS * lerp(120f, 250f, d) * vari; size = 0f }
             T.SQUARE -> { speed = dirS * spin * 0.95f; size = 250f }
             else -> { speed = dirS * spin * 0.9f; size = 370f }
         }
+
+        if (i == 0) speed *= 0.65f // el primer obstáculo gira más lento: da tiempo de orientarse
 
         val gapFree = lerp(500f, 400f, d)
         val probe = Ob(type, 0f, n, shift, speed, phase, size, inner)

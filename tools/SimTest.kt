@@ -378,7 +378,7 @@ fun main(args: Array<String>) {
         val jit = args.getOrNull(2)?.toInt() ?: 10
         val skip = args.getOrNull(3)?.toFloat() ?: 0.05f
         println("bot con cabeza: retraso hasta $jit pasos, descuidos ${(skip * 100).toInt()}%, $trials intentos por nivel")
-        pexp(trials, jit, skip, (1..Levels.PLAYABLE).toList())
+        pexp(trials, jit, skip, if (args.size > 4) args.drop(4).map { it.toInt() } else (1..Levels.PLAYABLE).toList())
         return
     }
     if (args.size >= 2 && args[0] == "diag") { for (l in args.drop(1)) diag(l.toInt()); return }
