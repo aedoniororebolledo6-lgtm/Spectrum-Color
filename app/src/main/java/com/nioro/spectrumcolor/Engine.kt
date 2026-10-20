@@ -27,7 +27,7 @@ object Cfg {
     const val GRAZE = 0.4f      // cuánto "roce" se perdona (fracción del radio de la pelota)
     const val STAR_R = 28f
     const val SW_R = 34f
-    const val BAR_DY = 115f
+    const val BAR_DY = 240f
     const val BAR_H = 26f
     const val BAR_SEG = 540f
     const val START_GAP = 620f
@@ -307,12 +307,17 @@ class Course private constructor(
         var speed: Float
         var size: Float
         var inner = 0f
+        // Con 3 o 4 colores hay que esperar dentro del obstáculo a que llegue "tu" color arriba:
+        // si gira muy lento esa espera se hace eterna, así que más colores = gira un poco más rápido.
+        val spinLo = if (n <= 2) 32f else if (n == 3) 50f else 58f
+        val spinHi = if (n <= 2) 46f else if (n == 3) 64f else 76f
+        val spin = lerp(spinLo, spinHi, d) * vari
         when (type) {
-            T.RING -> { speed = dirS * lerp(28f, 66f, d) * vari; size = 320f }
-            T.DOUBLE -> { speed = dirS * lerp(24f, 56f, d) * vari; size = 345f; inner = 195f }
-            T.BARS -> { speed = dirS * lerp(130f, 290f, d) * vari; size = 0f }
-            T.SQUARE -> { speed = dirS * lerp(24f, 56f, d) * vari; size = 250f }
-            else -> { speed = dirS * lerp(22f, 52f, d) * vari; size = 370f }
+            T.RING -> { speed = dirS * spin; size = 320f }
+            T.DOUBLE -> { speed = dirS * spin * 0.9f; size = 345f; inner = 195f }
+            T.BARS -> { speed = dirS * lerp(140f, 300f, d) * vari; size = 0f }
+            T.SQUARE -> { speed = dirS * spin * 0.95f; size = 250f }
+            else -> { speed = dirS * spin * 0.9f; size = 370f }
         }
 
         val gapFree = lerp(500f, 400f, d)
@@ -370,13 +375,16 @@ class Sim(val course: Course, val visH: Float) {
     var finished = false
     var taps = 0
 
+    /** Causa de la muerte (solo diagnóstico): -2 = sigue vivo, -1 = cayó fuera de la pantalla, >=0 = índice del obstáculo. */
+    var deathObs = -2
+
     /** Velocidad de giro de los obstáculos (1 = normal; menos = modo fácil). La física de la pelota no cambia. */
     var timeScale = 1f
 
     fun copyFrom(o: Sim) {
         t = o.t; by = o.by; bvy = o.bvy; camY = o.camY; color = o.color
         swCount = o.swCount; starCount = o.starCount; started = o.started
-        dead = o.dead; finished = o.finished; taps = o.taps; timeScale = o.timeScale
+        dead = o.dead; finished = o.finished; taps = o.taps; timeScale = o.timeScale; deathObs = o.deathObs
     }
 
     fun copy(): Sim {
@@ -408,6 +416,7 @@ class Sim(val course: Course, val visH: Float) {
 
         if (by - camY > visH + Cfg.BALL_R) {
             dead = true
+            deathObs = -1
             return
         }
 
@@ -436,6 +445,7 @@ class Sim(val course: Course, val visH: Float) {
             if (abs(by - o.y) > o.reach + Cfg.BALL_R) continue
             if (Geo.hits(o, Cfg.W / 2f, by, color, t)) {
                 dead = true
+                deathObs = i
                 return
             }
         }

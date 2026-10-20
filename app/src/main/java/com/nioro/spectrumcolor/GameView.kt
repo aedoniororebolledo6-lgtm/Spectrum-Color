@@ -108,7 +108,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var bgShaderWorld = -1
 
     // ---- multijugador ----
-    private val events = ConcurrentLinkedQueue<String>()
+    // Cada sala/partida usa una cola nueva: los mensajes tardíos de una conexión vieja nunca afectan a la nueva.
+    private var events = ConcurrentLinkedQueue<String>()
     private var host: NetHost? = null
     private var guest: NetGuest? = null
     private var scanner: NetScanner? = null
@@ -221,7 +222,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             Scr.PLAY -> {
                 if (mode == Mode.MP) {
-                    ov = if (ov == Ov.PAUSE) Ov.NONE else Ov.PAUSE
+                    val ph = match?.phase
+                    if (ph == null || ph == Match.Phase.MATCH_END || ph == Match.Phase.CLOSED) {
+                        exitToMenu()
+                    } else {
+                        ov = if (ov == Ov.PAUSE) Ov.NONE else Ov.PAUSE
+                    }
                 } else {
                     when (ov) {
                         Ov.NONE -> ov = Ov.PAUSE
@@ -424,11 +430,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (dragSlider != null) {
                     dragSlider = null
                     audio.play(Sfx.CLICK)
-                } else if (id != null && hitAt(x, y) == id) {
-                    activate(id)
-                } else if (id == null && scr == Scr.LEVELS && abs(x - downX) > 160f) {
+                } else if (scr == Scr.LEVELS && abs(x - downX) > 160f) {
                     levelPage = if (x < downX) min(Levels.WORLDS - 1, levelPage + 1) else max(0, levelPage - 1)
                     audio.play(Sfx.CLICK)
+                } else if (id != null && hitAt(x, y) == id) {
+                    activate(id)
                 }
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -474,6 +480,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (m != null) {
             m.tick()
             if (m.phase != lastPhase) onPhaseChange(m)
+            if (m.phase == Match.Phase.CLOSED) {
+                if (scr == Scr.MP_HOST) {
+                    openHost() // el invitado se fue antes de empezar: la sala vuelve a quedar abierta
+                    netStatus = "El jugador se fue. La sala sigue abierta."
+                } else if (scr == Scr.MP_JOIN) {
+                    openJoin()
+                    netStatus = "El anfitrión se fue."
+                }
+            }
         }
         updateParts(dt)
         if (shake > 0f) shake = max(0f, shake - dt * 70f)
@@ -821,7 +836,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             h?.stop()
             g?.stop()
         }, 250L)
-        events.clear()
+        events = ConcurrentLinkedQueue()
         lastPhase = Match.Phase.LOBBY
     }
 
@@ -836,7 +851,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         connecting = false
         rooms.clear()
         lockMulticast(false)
-        events.clear()
+        events = ConcurrentLinkedQueue()
         lastPhase = Match.Phase.LOBBY
     }
 
