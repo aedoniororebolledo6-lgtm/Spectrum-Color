@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
@@ -17,6 +18,8 @@ class MainActivity : Activity(), HostApi {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Abrir el puerto de la sala (operación local y rapidísima) en el hilo principal no debe cerrar la app.
+        StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = Color.TRANSPARENT

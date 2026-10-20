@@ -193,6 +193,14 @@ object Levels {
 
     fun isPlayable(level: Int): Boolean = level in 1..PLAYABLE
 
+    /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
+    private val salts = IntArray(COUNT + 1).also {
+        it[5] = 2   // variantes elegidas con `tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
+        it[15] = 2
+    }
+
+    fun salt(level: Int): Int = if (level in 1..COUNT) salts[level] else 0
+
     /** Posición del nivel en la curva de dificultad: 0 = primer nivel, 1 = último jugable. */
     fun frac(level: Int): Float = ((level - 1).coerceAtLeast(0) / (PLAYABLE - 1).coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
 
@@ -235,8 +243,9 @@ class Course private constructor(
     private val gateOffset: Int
 ) {
     companion object {
-        fun level(level: Int): Course {
-            val c = Course(level * 7919L + 13L, true, level, Levels.gates(level), 0)
+        /** [salt] cambia el recorrido de un nivel sin tocar los demás (ver Levels.salt). */
+        fun level(level: Int, salt: Int = Levels.salt(level)): Course {
+            val c = Course(level * 7919L + 13L + salt * 104729L, true, level, Levels.gates(level), 0)
             c.build()
             return c
         }

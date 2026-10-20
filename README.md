@@ -6,7 +6,9 @@ Una pelota de cristal sube atravesando obstáculos de colores: solo puedes pasar
 ## Cómo se juega
 
 - Toca la pantalla para impulsar la pelota hacia arriba (cae sola por la gravedad).
-- Atraviesa solo el color de tu pelota. Con 3 o 4 colores toca **esperar dentro del obstáculo** a que llegue "tu" color.
+- Atraviesa solo el color de tu pelota. Los anillos repiten sus colores dos veces por vuelta (abajo y arriba igual) y las barras son
+  de un solo carril: basta esperar a que llegue "tu" color y cruzar de un salto. En cuadrados y triángulos a veces toca esperar dentro.
+- Los niveles empiezan con 2 colores, pasan a 3 y solo los últimos tres (18 a 20) usan 4.
 - El orbe de colores cambia el color de tu pelota (el centro del orbe muestra el color que te tocará).
 - Cada obstáculo superado suma 1 punto.
 
@@ -56,5 +58,5 @@ Las ramas que no son `main` (por ejemplo `dev`) solo compilan para comprobar que
 - `Net.kt` y `Match.kt`: red local (TCP + aviso por UDP) y reglas del duelo por puntos.
 - `Audio.kt`, `Prefs.kt`, `Theme.kt`, `MainActivity.kt`: sonido, ajustes/progreso, colores de los mundos, actividad.
 - `res/raw`: música y efectos (sintetizados con `tools/gen_audio.py`, sin samples de terceros).
-- `tools/`: pruebas en JVM (`tools/run_tests.sh`): jugadores simulados, búsqueda de si cada nivel es posible, y red real en 127.0.0.1.
+- `tools/`: pruebas en JVM (`tools/run_tests.sh`): jugadores simulados, búsqueda de si cada nivel es posible (`feas`, `salt`), y red real en 127.0.0.1.
 - `signing/glassswitch.jks`: llave de firma (para que las actualizaciones se instalen sin desinstalar).
