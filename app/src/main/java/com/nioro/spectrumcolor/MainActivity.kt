@@ -1,14 +1,17 @@
-package com.nioro.glassswitch
+package com.nioro.spectrumcolor
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
+import android.widget.EditText
+import android.widget.FrameLayout
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), HostApi {
 
     private lateinit var game: GameView
 
@@ -26,7 +29,7 @@ class MainActivity : Activity() {
             window.attributes = lp
         }
 
-        game = GameView(this)
+        game = GameView(this, this)
         setContentView(game)
         hideSystemBars()
     }
@@ -42,9 +45,47 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        game.destroy()
+        super.onDestroy()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (!game.onBack()) super.onBackPressed()
+    }
+
+    override fun quit() {
+        finish()
+    }
+
+    override fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit) {
+        runOnUiThread {
+            try {
+                val input = EditText(this)
+                input.setText(initial)
+                input.hint = hint
+                input.setSingleLine(true)
+                input.setSelection(input.text.length)
+                val pad = (20 * resources.displayMetrics.density).toInt()
+                val box = FrameLayout(this)
+                box.setPadding(pad, pad / 2, pad, 0)
+                box.addView(input)
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle(title)
+                    .setView(box)
+                    .setPositiveButton("Aceptar") { _, _ -> onOk(input.text.toString()) }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            } catch (e: Exception) {
+                // si la ventana ya se cerró, no pasa nada
+            }
+        }
     }
 
     @Suppress("DEPRECATION")

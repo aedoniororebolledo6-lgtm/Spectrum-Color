@@ -2,7 +2,7 @@ name: Compilar APK
 
 on:
   push:
-    branches: [main, master]
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
@@ -37,29 +37,31 @@ jobs:
       - name: Preparar APK y código QR
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/GlassSwitch.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/SpectrumColor.apk
           sudo apt-get update -y
           sudo apt-get install -y qrencode
-          URL="https://github.com/${{ github.repository }}/releases/latest/download/GlassSwitch.apk"
+          URL="https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColor.apk"
           qrencode -o dist/qr.png -s 14 -m 3 "$URL"
           echo "Enlace de descarga: $URL"
 
-      - name: Publicar versión (enlace fijo)
+      - name: Publicar versión (enlace fijo, solo rama main)
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest dist/GlassSwitch.apk dist/qr.png \
+          gh release create latest dist/SpectrumColor.apk dist/qr.png \
             --target "${{ github.sha }}" \
-            --title "Glass Switch (última versión)" \
-            --notes "Escanea el QR o abre GlassSwitch.apk desde el celular para instalar. Compilación #${{ github.run_number }}."
+            --title "Spectrum Color (última versión)" \
+            --notes "Escanea el QR o abre SpectrumColor.apk desde el celular para instalar. Compilación #${{ github.run_number }}."
 
       - name: Resumen
+        if: github.ref == 'refs/heads/main'
         run: |
           {
-            echo "## Glass Switch listo"
+            echo "## Spectrum Color listo"
             echo ""
-            echo "Descarga: https://github.com/${{ github.repository }}/releases/latest/download/GlassSwitch.apk"
+            echo "Descarga: https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColor.apk"
             echo ""
             echo "QR: https://github.com/${{ github.repository }}/releases/latest/download/qr.png"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -67,5 +69,5 @@ jobs:
       - name: Guardar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: GlassSwitch-apk
+          name: SpectrumColor-apk
           path: dist/

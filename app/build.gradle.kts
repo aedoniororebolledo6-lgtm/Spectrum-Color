@@ -4,18 +4,20 @@ plugins {
 }
 
 val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+// Minutos desde 1970: siempre crece, así cada compilación se instala encima de la anterior
+// aunque cambie el repositorio o se reinicie el contador de GitHub Actions.
+val buildMinutes = (System.currentTimeMillis() / 60000L).toInt()
 
 android {
-    namespace = "com.nioro.glassswitch"
+    namespace = "com.nioro.spectrumcolor"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.nioro.glassswitch"
+        applicationId = "com.nioro.spectrumcolor"
         minSdk = 26
         targetSdk = 34
-        // Cada compilación en GitHub sube el número, así se instala encima de la anterior.
-        versionCode = runNumber
-        versionName = "1.0.$runNumber"
+        versionCode = buildMinutes
+        versionName = "2.0.$runNumber"
     }
 
     signingConfigs {
