@@ -62,12 +62,6 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val audio = Audio(context, prefs)
     private val rnd = Random(System.nanoTime())
     private val handler = Handler(Looper.getMainLooper())
-    private val logo: Bitmap? = try {
-        BitmapFactory.decodeResource(resources, R.drawable.spectrum_logo)
-    } catch (e: Exception) {
-        null
-    }
-
     // ---- pantalla y tiempo ----
     private var sc = 1f
     private var vh = 2400f
@@ -1076,29 +1070,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawHome(c: Canvas) {
         val pal = cur()
-        val ly = topI + 330f + sin(time * 1.2f) * 8f
-        val lr = 230f
-        Gl.glow(c, 540f, ly, 470f, pal[1], 70)
-        Gl.glow(c, 540f, ly, 390f, pal[0], 60)
-        val bm = logo
-        if (bm != null) {
-            Gl.rect.set(540f - lr, ly - lr, 540f + lr, ly + lr)
-            c.save()
-            Gl.path.reset()
-            Gl.path.addRoundRect(Gl.rect, 90f, 90f, Path.Direction.CW)
-            c.clipPath(Gl.path)
-            val pp = Gl.p()
-            pp.isFilterBitmap = true
-            c.drawBitmap(bm, null, Gl.rect, pp)
-            c.restore()
-            val pb = Gl.p()
-            pb.style = Paint.Style.STROKE
-            pb.strokeWidth = 3f
-            pb.color = Gl.white(110)
-            Gl.rect.set(540f - lr, ly - lr, 540f + lr, ly + lr)
-            c.drawRoundRect(Gl.rect, 90f, 90f, pb)
-        }
-        val ty = ly + lr + 130f
+        val ty = topI + 520f
+        Gl.glow(c, 540f, ty + 20f, 470f, pal[1], 60)
+        Gl.glow(c, 540f, ty + 60f, 390f, pal[0], 50)
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
