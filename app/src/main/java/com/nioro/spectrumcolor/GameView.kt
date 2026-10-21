@@ -1112,14 +1112,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawHome(c: Canvas) {
         val pal = cur()
-        val ty = topI + 640f
+        val ty = topI + 260f
         Gl.glow(c, 540f, ty + 20f, 470f, pal[1], 60)
         Gl.glow(c, 540f, ty + 60f, 390f, pal[0], 50)
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
 
-        val b0 = ty + 330f
+        val b0 = topI + 970f
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
         button(c, "endless", "Modo infinito", 540f, b0 + 175f, 760f, 130f, 0, 50f)
         button(c, "mp", "Multijugador local", 540f, b0 + 350f, 760f, 130f, pal[1], 50f)
