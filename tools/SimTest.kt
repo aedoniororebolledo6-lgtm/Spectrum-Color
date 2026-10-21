@@ -318,7 +318,7 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
 /** Diagnóstico: ¿dónde y por qué muere el bot? Uso: diag <nivel> */
 fun diag(level: Int) {
     val cfg = BotCfg(slots = 7, slotSteps = 14, jitter = 10, skip = 0.05f)
-    val names = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo")
+    val names = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas")
     val c0 = Course.level(level)
     println("nivel $level: colores=${Levels.colors(level)} obstáculos=" + c0.obs.joinToString(",") { names[it.type] })
     val deathsAt = IntArray(c0.obs.size + 2)
@@ -367,16 +367,16 @@ fun main(args: Array<String>) {
             val t0 = System.currentTimeMillis()
             val (ok, secs) = feasible(Course.level(l), 2400f, dl)
             out[idx] = "nivel %3d  colores %d  obstáculos %2d  %s  (%.1f s de juego, %.1f s de cálculo)".format(l, Levels.colors(l), Levels.gates(l), if (ok) "POSIBLE" else "NO ENCONTRADO", secs, (System.currentTimeMillis() - t0) / 1000f)
+            synchronized(out) { println(out[idx]) }
         }
         pool.shutdown()
-        pool.awaitTermination(60, TimeUnit.MINUTES)
-        out.forEach { println(it) }
+        pool.awaitTermination(600, TimeUnit.MINUTES)
         return
     }
     if (args.size >= 3 && args[0] == "salt") {
         // salt <maxSalt> <nivel>...: ¿qué variantes de cada nivel son posibles con retrasos 0/4/8?
         val maxSalt = args[1].toInt()
-        val dl = intArrayOf(0, 4, 8)
+        val dl = (System.getenv("DELAYS") ?: "0,4").split(",").map { it.toInt() }.toIntArray()
         val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
         val jobs = ArrayList<Pair<Int, Int>>()
         for (l in args.drop(2).map { it.toInt() }) for (sa in 0..maxSalt) jobs.add(Pair(l, sa))
@@ -384,10 +384,10 @@ fun main(args: Array<String>) {
         for ((idx, j) in jobs.withIndex()) pool.submit {
             val (ok, secs) = feasible(Course.level(j.first, j.second), 2400f, dl)
             out[idx] = "nivel %3d  variante %d  %s  (%.1f s de juego)".format(j.first, j.second, if (ok) "POSIBLE" else "no encontrado", secs)
+            synchronized(out) { println(out[idx]) }
         }
         pool.shutdown()
-        pool.awaitTermination(60, TimeUnit.MINUTES)
-        out.forEach { println(it) }
+        pool.awaitTermination(600, TimeUnit.MINUTES)
         return
     }
     if (args.isNotEmpty() && args[0] == "pbot") {

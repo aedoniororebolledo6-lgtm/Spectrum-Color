@@ -8,7 +8,7 @@ Una pelota de cristal sube atravesando obstáculos de colores: solo puedes pasar
 - Toca la pantalla para impulsar la pelota hacia arriba (cae sola por la gravedad).
 - Atraviesa solo el color de tu pelota. Los anillos repiten sus colores dos veces por vuelta (abajo y arriba igual) y las barras son
   de un solo carril: basta esperar a que llegue "tu" color y cruzar de un salto. En cuadrados y triángulos a veces toca esperar dentro.
-- Los niveles empiezan con 2 colores, pasan a 3 y solo los últimos tres (18 a 20) usan 4.
+- Los niveles empiezan con 2 colores, pasan a 3 y desde el mundo 5 se mezclan con 4.
 - El orbe de colores cambia el color de tu pelota (el centro del orbe muestra el color que te tocará).
 - Cada obstáculo superado suma 1 punto.
 
@@ -16,12 +16,15 @@ Una pelota de cristal sube atravesando obstáculos de colores: solo puedes pasar
 
 | Modo | Qué es |
 |------|--------|
-| **Jugar** | 20 niveles jugables, de 3 estrellas cada uno (3 = sin morir, 2 = hasta 2 intentos fallidos). Se abren de uno en uno. |
+| **Jugar** | 120 niveles en 12 mundos, de 3 estrellas cada uno (3 = sin morir, 2 = hasta 2 intentos fallidos). Se abren de uno en uno. |
 | **Modo infinito** | Recorrido sin fin que se pone más difícil. Se guarda el récord. |
 | **Multijugador local** | Dos celulares en el mismo Wi-Fi (o uno haciendo punto de acceso). Mismo recorrido para los dos; gana quien sume más puntos en total tras 1, 3 o 5 rondas (75 s por ronda). Hay revancha. |
 
-El diseño completo tiene **120 niveles en 12 mundos**; por ahora solo están disponibles los dos primeros mundos (20 niveles).
-Los demás mundos aparecen como *Coming soon*. Para abrir más basta con subir `Levels.PLAYABLE` en `Engine.kt`.
+Los niveles 1 a 20 (mundos 1 y 2) son la parte tranquila; del 21 al 120 la dificultad es alta. Cada mundo estrena un obstáculo:
+pinchos (3), péndulo (4), cruz giratoria (5), puertas móviles (6), órbitas (7), barras opuestas (8), viento (9),
+obstáculos que se desvanecen (10), giros con vaivén (11) y un final que mezcla todo (12).
+Cada nivel se comprueba con una búsqueda exhaustiva (`tools/run_tests.sh feas`) para asegurar que es posible aunque el toque llegue ~33 ms tarde.
+Los mundos que no se quieran mostrar se pueden volver a bloquear bajando `Levels.PLAYABLE` en `Engine.kt` (aparecen como *Coming soon*).
 
 ## Menús
 

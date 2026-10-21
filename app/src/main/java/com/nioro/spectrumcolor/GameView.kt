@@ -1410,7 +1410,18 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, "META", 540f, y - 60f, 60f, Gl.medium, Gl.white(235), 0.4f, null, Gl.alpha(pal[0], 160))
     }
 
+    private val danger = 0xFFFF2D55.toInt()
+
+    private fun polar(rad: Float, deg: Float, o: Ob, horiz: Boolean): Float {
+        val a = deg * 3.14159265f / 180f
+        return if (horiz) Cfg.W / 2f + cos(a) * rad else o.y + sin(a) * rad
+    }
+
     private fun drawObstacle(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        if (o.drift != 0f) drawWind(c, o, t)
+        val fa = Geo.fadeAlpha(o, t)
+        val layer = fa < 0.99f
+        if (layer) c.saveLayerAlpha(0f, o.y - o.reach - 20f, Cfg.W, o.y + o.reach + 20f, (fa * 255f).toInt())
         when (o.type) {
             T.RING -> drawRing(c, o, o.size, Geo.rot(o, t), o.shift, pal)
             T.DOUBLE -> {
@@ -1418,8 +1429,163 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 drawRing(c, o, o.inner, Geo.rotInner(o, t), (o.shift + 1) % o.n, pal)
             }
             T.BARS -> drawBars(c, o, t, pal)
+            T.SPIKES -> drawSpikes(c, o, t, pal)
+            T.PEND -> drawPend(c, o, t, pal)
+            T.CROSS -> drawCross(c, o, t, pal)
+            T.GATE -> drawGate(c, o, t)
+            T.ORBIT -> drawOrbit(c, o, t, pal)
+            T.COUNTER -> {
+                drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
+                drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * t, pal)
+            }
             else -> drawPoly(c, o, t, pal)
         }
+        if (layer) c.restore()
+    }
+
+    private fun drawWind(c: Canvas, o: Ob, t: Float) {
+        val top = o.y - o.reach - 60f
+        val bot = o.y + o.reach + 60f
+        val up = o.drift < 0f
+        var pp = Gl.p()
+        pp.color = Gl.white(9)
+        c.drawRect(0f, top, Cfg.W, bot, pp)
+        val h = bot - top
+        for (col in 0 until 6) {
+            val x = 110f + col * 172f
+            for (k in 0 until 3) {
+                val u = (((t * 0.55f + k / 3f + col * 0.13f) % 1f) + 1f) % 1f
+                val yy = if (up) bot - u * h else top + u * h
+                val a = (sin(u * 3.14159265f) * 70f).toInt()
+                val d = if (up) 1f else -1f
+                Gl.line(c, x - 22f, yy + 12f * d, x, yy - 12f * d, 5f, Gl.white(a))
+                Gl.line(c, x + 22f, yy + 12f * d, x, yy - 12f * d, 5f, Gl.white(a))
+            }
+        }
+    }
+
+    private fun drawSpikes(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val rot = Geo.rot(o, t)
+        drawRing(c, o, o.size, rot, o.shift, pal)
+        val segs = Geo.ringSegs(o.n)
+        val span = 360f / segs
+        val th = Cfg.THICK
+        val hw = max(2f, o.aux)
+        val ro = o.size + th / 2f
+        val ri = o.size - th / 2f
+        val hgt = Cfg.SPIKE_H + 4f
+        for (i in 0 until segs) {
+            val ang = rot + i * span
+            for (side in 0..1) {
+                val base = if (side == 0) ro else ri
+                val tip = if (side == 0) ro + hgt else ri - hgt
+                Gl.path.reset()
+                Gl.path.moveTo(polar(base, ang - hw, o, true), polar(base, ang - hw, o, false))
+                Gl.path.lineTo(polar(tip, ang, o, true), polar(tip, ang, o, false))
+                Gl.path.lineTo(polar(base, ang + hw, o, true), polar(base, ang + hw, o, false))
+                Gl.path.close()
+                var pp = Gl.p()
+                pp.color = Gl.alpha(danger, 235)
+                c.drawPath(Gl.path, pp)
+                pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeWidth = 2.4f
+                pp.strokeJoin = Paint.Join.ROUND
+                pp.color = Gl.white(210)
+                c.drawPath(Gl.path, pp)
+            }
+        }
+    }
+
+    private fun capsule(c: Canvas, x0: Float, x1: Float, y: Float, half: Float, col: Int) {
+        var pp = Gl.p()
+        pp.color = Gl.alpha(col, 34)
+        Gl.rect2.set(x0 - 10f, y - half - 10f, x1 + 10f, y + half + 10f)
+        c.drawRoundRect(Gl.rect2, half + 10f, half + 10f, pp)
+        Gl.rect.set(x0, y - half, x1, y + half)
+        pp = Gl.p()
+        pp.color = Gl.alpha(col, 170)
+        c.drawRoundRect(Gl.rect, half, half, pp)
+        pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2.2f
+        pp.color = Gl.white(110)
+        c.drawRoundRect(Gl.rect, half, half, pp)
+        pp = Gl.p()
+        pp.color = Gl.white(130)
+        Gl.rect2.set(x0 + half * 0.7f, y - half * 0.72f, max(x0 + half * 0.7f + 2f, x1 - half * 0.7f), y - half * 0.42f)
+        c.drawRoundRect(Gl.rect2, half * 0.15f, half * 0.15f, pp)
+    }
+
+    private fun drawPend(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val cx = Geo.swingX(o, t)
+        val half = Cfg.BAR_H
+        val left = pal[o.shift % o.n]
+        val right = pal[(o.shift + 1) % o.n]
+        // hilo y guía de la oscilación
+        Gl.line(c, Cfg.W / 2f - o.size, o.y, Cfg.W / 2f + o.size, o.y, 3f, Gl.white(22))
+        capsule(c, cx - o.aux, cx - 3f, o.y, half, left)
+        capsule(c, cx + 3f, cx + o.aux, o.y, half, right)
+    }
+
+    private fun drawCross(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val th = Cfg.THICK
+        for (k in 0 until 4) {
+            val a = Geo.crossAng(o, t, k)
+            val ca = cos(a)
+            val sa = sin(a)
+            val x0 = Cfg.W / 2f + ca * o.aux
+            val y0 = o.y + sa * o.aux
+            val x1 = Cfg.W / 2f + ca * o.size
+            val y1 = o.y + sa * o.size
+            val col = pal[(k + o.shift) % o.n]
+            Gl.line(c, x0, y0, x1, y1, th * 1.9f, Gl.alpha(col, 34))
+            Gl.line(c, x0, y0, x1, y1, th, Gl.alpha(col, 170))
+            Gl.line(c, x0 - sa * th * 0.2f, y0 + ca * th * 0.2f, x1 - sa * th * 0.2f, y1 + ca * th * 0.2f, th * 0.14f, Gl.white(150))
+        }
+        val pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2f
+        pp.color = Gl.white(35)
+        c.drawCircle(Cfg.W / 2f, o.y, o.aux - th * 0.6f, pp)
+    }
+
+    private fun drawGate(c: Canvas, o: Ob, t: Float) {
+        val cx = Geo.swingX(o, t)
+        val half = Cfg.BAR_H
+        val l1 = cx - o.aux
+        val r0 = cx + o.aux
+        Gl.line(c, Cfg.W / 2f - o.size, o.y, Cfg.W / 2f + o.size, o.y, 3f, Gl.white(18))
+        if (l1 > -120f) capsule(c, -120f, l1, o.y, half, danger)
+        if (r0 < Cfg.W + 120f) capsule(c, r0, Cfg.W + 120f, o.y, half, danger)
+    }
+
+    private fun drawOrbit(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        var pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2f
+        pp.color = Gl.white(28)
+        c.drawCircle(Cfg.W / 2f, o.y, o.size, pp)
+        c.drawCircle(Cfg.W / 2f, o.y, o.inner, pp)
+        for (k in 0 until 3) orb(c, Geo.orbX(o, t, k, false), Geo.orbY(o, t, k, false), pal[(k + o.shift) % o.n])
+        for (k in 0 until 2) orb(c, Geo.orbX(o, t, k, true), Geo.orbY(o, t, k, true), pal[(k + o.shift + 1) % o.n])
+    }
+
+    private fun orb(c: Canvas, x: Float, y: Float, col: Int) {
+        val r = Cfg.ORB_R
+        Gl.glow(c, x, y, r * 1.9f, col, 80)
+        var pp = Gl.p()
+        pp.shader = android.graphics.RadialGradient(
+            x - r * 0.3f, y - r * 0.35f, r * 1.4f,
+            intArrayOf(Gl.white(220), Gl.alpha(col, 225), Gl.alpha(Gl.darken(col, 0.55f), 235)),
+            floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP
+        )
+        c.drawCircle(x, y, r, pp)
+        pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2.2f
+        pp.color = Gl.white(150)
+        c.drawCircle(x, y, r, pp)
     }
 
     private fun drawRing(c: Canvas, o: Ob, rad: Float, rot: Float, shift: Int, pal: IntArray) {
@@ -1441,34 +1607,19 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun drawBars(c: Canvas, o: Ob, t: Float, pal: IntArray) {
-        val half = Cfg.BAR_H
         for (lane in 0 until Cfg.BAR_LANES) {
-            val y = o.y + if (lane == 0) -Cfg.BAR_DY else Cfg.BAR_DY
-            val off = o.phase * 3f + o.speed * t
-            val j0 = floor((0f - off) / Cfg.BAR_SEG).toInt() - 1
-            val j1 = floor((Cfg.W - off) / Cfg.BAR_SEG).toInt() + 1
-            for (j in j0..j1) {
-                val x0 = off + j * Cfg.BAR_SEG + 4f
-                val x1 = off + (j + 1) * Cfg.BAR_SEG - 4f
-                val col = pal[(((j % o.n) + o.n) % o.n + o.shift) % o.n]
-                var pp = Gl.p()
-                pp.color = Gl.alpha(col, 34)
-                Gl.rect2.set(x0 - 10f, y - half - 10f, x1 + 10f, y + half + 10f)
-                c.drawRoundRect(Gl.rect2, half + 10f, half + 10f, pp)
-                Gl.rect.set(x0, y - half, x1, y + half)
-                pp = Gl.p()
-                pp.color = Gl.alpha(col, 170)
-                c.drawRoundRect(Gl.rect, half, half, pp)
-                pp = Gl.p()
-                pp.style = Paint.Style.STROKE
-                pp.strokeWidth = 2.2f
-                pp.color = Gl.white(110)
-                c.drawRoundRect(Gl.rect, half, half, pp)
-                pp = Gl.p()
-                pp.color = Gl.white(130)
-                Gl.rect2.set(x0 + half * 0.7f, y - half * 0.72f, x1 - half * 0.7f, y - half * 0.42f)
-                c.drawRoundRect(Gl.rect2, half * 0.15f, half * 0.15f, pp)
-            }
+            drawBarLane(c, o, o.y + if (lane == 0) -Cfg.BAR_DY else Cfg.BAR_DY, o.phase * 3f + o.speed * t, pal)
+        }
+    }
+
+    private fun drawBarLane(c: Canvas, o: Ob, y: Float, off: Float, pal: IntArray) {
+        val half = Cfg.BAR_H
+        val j0 = floor((0f - off) / Cfg.BAR_SEG).toInt() - 1
+        val j1 = floor((Cfg.W - off) / Cfg.BAR_SEG).toInt() + 1
+        for (j in j0..j1) {
+            val x0 = off + j * Cfg.BAR_SEG + 4f
+            val x1 = off + (j + 1) * Cfg.BAR_SEG - 4f
+            capsule(c, x0, x1, y, half, pal[(((j % o.n) + o.n) % o.n + o.shift) % o.n])
         }
     }
 
@@ -2045,8 +2196,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             starShape(c, sx, sy, 80f, 34f, 0f, if (on) gold else Gl.white(28), if (on) Gl.white(220) else Gl.white(80))
         }
         if (last) {
-            Gl.text(c, "¡Terminaste los niveles disponibles!", 540f, cy + 20f, 38f, Gl.medium, Gl.white(220))
-            Gl.text(c, "Próximamente más mundos", 540f, cy + 70f, 34f, Gl.regular, Gl.white(160))
+            Gl.text(c, "¡Completaste todos los niveles!", 540f, cy + 20f, 38f, Gl.medium, Gl.white(220))
+            Gl.text(c, "Gracias por jugar Spectrum Color", 540f, cy + 70f, 34f, Gl.regular, Gl.white(160))
         }
         var y = cy + 170f
         if (!last) {

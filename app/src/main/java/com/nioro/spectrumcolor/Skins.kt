@@ -7,5 +7,5 @@ object Skins {
         "Diamante", "Núcleo", "Oro", "Neón", "Arcoíris", "Galaxia",
         "Relámpago", "Corazón", "Ojo", "Cuadros", "Burbujas", "Ondas", "Sol", "Pixel"
     )
-    val need = intArrayOf(0, 0, 2, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 40, 44, 48, 52, 56)
+    val need = intArrayOf(0, 0, 5, 15, 30, 45, 65, 85, 110, 135, 160, 185, 210, 235, 260, 280, 300, 320, 340, 355)
 }
