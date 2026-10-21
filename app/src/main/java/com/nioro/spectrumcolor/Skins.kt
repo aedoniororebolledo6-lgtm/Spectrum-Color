@@ -4,7 +4,8 @@ package com.nioro.spectrumcolor
 object Skins {
     val names = arrayOf(
         "Cristal", "Aurora", "Rayas", "Lunares", "Estrella", "Planeta",
-        "Diamante", "Núcleo", "Oro", "Neón", "Arcoíris", "Galaxia"
+        "Diamante", "Núcleo", "Oro", "Neón", "Arcoíris", "Galaxia",
+        "Relámpago", "Corazón", "Ojo", "Cuadros", "Burbujas", "Ondas", "Sol", "Pixel"
     )
-    val need = intArrayOf(0, 0, 3, 6, 10, 15, 20, 26, 32, 40, 48, 56)
+    val need = intArrayOf(0, 0, 2, 4, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 40, 44, 48, 52, 56)
 }

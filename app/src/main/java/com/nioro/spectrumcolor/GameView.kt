@@ -1663,6 +1663,107 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 pp.color = Gl.white(200)
                 c.drawCircle(x, y, r * 0.2f, pp)
             }
+            12 -> {
+                Gl.path.reset()
+                Gl.path.moveTo(x + r * 0.12f, y - r * 0.62f)
+                Gl.path.lineTo(x - r * 0.34f, y + r * 0.08f)
+                Gl.path.lineTo(x - r * 0.02f, y + r * 0.08f)
+                Gl.path.lineTo(x - r * 0.14f, y + r * 0.62f)
+                Gl.path.lineTo(x + r * 0.36f, y - r * 0.12f)
+                Gl.path.lineTo(x + r * 0.04f, y - r * 0.12f)
+                Gl.path.close()
+                pp = Gl.p()
+                pp.color = Gl.white(215)
+                c.drawPath(Gl.path, pp)
+            }
+            13 -> {
+                val hy = y + r * 0.02f
+                Gl.path.reset()
+                Gl.path.moveTo(x, hy + r * 0.46f)
+                Gl.path.cubicTo(x - r * 0.75f, hy - r * 0.02f, x - r * 0.42f, hy - r * 0.62f, x, hy - r * 0.2f)
+                Gl.path.cubicTo(x + r * 0.42f, hy - r * 0.62f, x + r * 0.75f, hy - r * 0.02f, x, hy + r * 0.46f)
+                Gl.path.close()
+                pp = Gl.p()
+                pp.color = Gl.white(210)
+                c.drawPath(Gl.path, pp)
+            }
+            14 -> {
+                Gl.rect.set(x - r * 0.62f, y - r * 0.34f, x + r * 0.62f, y + r * 0.34f)
+                pp = Gl.p()
+                pp.color = Gl.white(225)
+                c.drawOval(Gl.rect, pp)
+                pp = Gl.p()
+                pp.color = Gl.darken(col, 0.3f)
+                c.drawCircle(x, y, r * 0.25f, pp)
+                pp = Gl.p()
+                pp.color = Gl.white(240)
+                c.drawCircle(x - r * 0.07f, y - r * 0.08f, r * 0.07f, pp)
+            }
+            15 -> {
+                val q = r * 0.5f
+                for (i in -2..1) for (j in -2..1) {
+                    if ((i + j) and 1 == 0) continue
+                    pp = Gl.p()
+                    pp.color = Gl.white(80)
+                    c.drawRect(x + i * q, y + j * q, x + (i + 1) * q, y + (j + 1) * q, pp)
+                }
+            }
+            16 -> {
+                val bx = floatArrayOf(-0.4f, 0.35f, 0.0f, 0.5f, -0.1f)
+                val by = floatArrayOf(0.35f, 0.4f, -0.15f, -0.2f, -0.55f)
+                val br = floatArrayOf(0.2f, 0.14f, 0.12f, 0.09f, 0.08f)
+                for (i in 0 until 5) {
+                    val rr = br[i] * r
+                    val ox = x + bx[i] * r
+                    val oy = y + by[i] * r - ((tm * 0.25f + i * 0.2f) % 1f) * r * 0.15f
+                    pp = Gl.p()
+                    pp.style = Paint.Style.STROKE
+                    pp.strokeWidth = r * 0.04f
+                    pp.color = Gl.white(190)
+                    c.drawCircle(ox, oy, rr, pp)
+                    pp = Gl.p()
+                    pp.color = Gl.white(110)
+                    c.drawCircle(ox - rr * 0.3f, oy - rr * 0.3f, rr * 0.28f, pp)
+                }
+            }
+            17 -> {
+                for (k in -1..1) {
+                    Gl.path.reset()
+                    val base = y + k * r * 0.5f
+                    Gl.path.moveTo(x - r, base)
+                    var t = -1f
+                    while (t <= 1.001f) {
+                        Gl.path.lineTo(x + t * r, base + sin((t * 3.2f + tm * 1.2f)) * r * 0.14f)
+                        t += 0.1f
+                    }
+                    pp = Gl.p()
+                    pp.style = Paint.Style.STROKE
+                    pp.strokeWidth = r * 0.12f
+                    pp.color = Gl.white(120)
+                    c.drawPath(Gl.path, pp)
+                }
+            }
+            18 -> {
+                for (i in 0 until 12) {
+                    val a = (i * 30.0 + tm * 20.0) * Math.PI / 180.0
+                    val ca = cos(a).toFloat()
+                    val sa = sin(a).toFloat()
+                    Gl.line(c, x + ca * r * 0.34f, y + sa * r * 0.34f, x + ca * r * 0.78f, y + sa * r * 0.78f, r * 0.08f, Gl.white(150))
+                }
+                pp = Gl.p()
+                pp.color = Gl.white(215)
+                c.drawCircle(x, y, r * 0.24f, pp)
+            }
+            19 -> {
+                val q = r * 0.3f
+                val px = intArrayOf(-1, 0, 1, -1, 1, -1, 0, 1)
+                val py = intArrayOf(-1, -1, -1, 0, 0, 1, 1, 1)
+                for (i in 0 until 8) {
+                    pp = Gl.p()
+                    pp.color = Gl.white(if ((i + (tm * 2f).toInt()) % 3 == 0) 230 else 110)
+                    c.drawRect(x + px[i] * q * 1.2f - q / 2f, y + py[i] * q * 1.2f - q / 2f, x + px[i] * q * 1.2f + q / 2f, y + py[i] * q * 1.2f + q / 2f, pp)
+                }
+            }
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -1748,24 +1849,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         title(c, "APARIENCIAS", top + 130f, 56f)
         val k0 = effSkin()
         val colNow = pal[(time * 0.8f).toInt() % 4]
-        Gl.glow(c, 540f, top + 420f, 330f, colNow, 80)
-        drawBallAt(c, 540f, top + 420f + sin(time * 2f) * 8f, 120f, colNow, k0, time, true)
-        Gl.text(c, Skins.names[k0], 540f, top + 640f, 56f, Gl.light, Gl.white(245), 0.08f)
-        Gl.text(c, "La bola conserva su color de juego", 540f, top + 700f, 32f, Gl.regular, Gl.white(140))
+        Gl.glow(c, 540f, top + 340f, 300f, colNow, 80)
+        drawBallAt(c, 540f, top + 340f + sin(time * 2f) * 8f, 100f, colNow, k0, time, true)
+        Gl.text(c, Skins.names[k0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
+        Gl.text(c, "La bola conserva su color de juego", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
 
-        val w = 300f
-        val h = 300f
-        val gy = top + 790f
+        val w = 240f
+        val h = 262f
+        val gy = top + 650f
         for (i in Skins.names.indices) {
-            val cx = 210f + (i % 3) * 330f
-            val cy = gy + h / 2f + (i / 3) * (h + 24f)
+            val cx = 135f + (i % 4) * 270f
+            val cy = gy + h / 2f + (i / 4) * (h + 18f)
             val open = skinOpen(i)
             val id = "skin:$i"
             val pressed = open && pressedId == id
             val sel = i == k0
             val s = if (pressed) 0.96f else 1f
             Gl.panel(
-                c, cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s, 56f,
+                c, cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s, 48f,
                 if (!open) 0.38f else if (sel) 1.35f else 0.9f, if (sel) pal[0] else pal[1]
             )
             if (sel) {
@@ -1774,17 +1875,17 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 pb.strokeWidth = 5f
                 pb.color = Gl.white(230)
                 Gl.rect.set(cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s)
-                c.drawRoundRect(Gl.rect, 56f, 56f, pb)
+                c.drawRoundRect(Gl.rect, 48f, 48f, pb)
             }
             val bc = pal[(i + (time * 0.8f).toInt()) % 4]
             if (open) {
-                drawBallAt(c, cx, cy - 34f, 64f, bc, i, time, false)
-                Gl.textFit(c, Skins.names[i], cx, cy + 100f, 38f, w - 30f, Gl.medium, Gl.white(240))
+                drawBallAt(c, cx, cy - 32f, 56f, bc, i, time, false)
+                Gl.textFit(c, Skins.names[i], cx, cy + 82f, 34f, w - 24f, Gl.medium, Gl.white(240))
                 hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
             } else {
-                drawLock(c, cx, cy - 40f, 2.2f, 130)
-                Gl.textFit(c, Skins.names[i], cx, cy + 74f, 34f, w - 30f, Gl.medium, Gl.white(110))
-                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 30f, Gl.regular, Gl.white(150))
+                drawLock(c, cx, cy - 40f, 2f, 130)
+                Gl.textFit(c, Skins.names[i], cx, cy + 62f, 32f, w - 24f, Gl.medium, Gl.white(110))
+                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 100f, 28f, Gl.regular, Gl.white(150))
             }
         }
         Gl.text(
