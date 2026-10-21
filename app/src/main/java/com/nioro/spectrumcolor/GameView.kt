@@ -1126,8 +1126,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
 
         val bob = sin(time * 1.6f) * 6f
-        Gl.glow(c, 950f, topI + 120f + bob, 120f, pal[1], 70)
-        iconButton(c, "skins", 950f, topI + 120f + bob, 66f) { cc, x, y, r ->
+        Gl.glow(c, 950f, vh - 260f + bob, 120f, pal[1], 70)
+        iconButton(c, "skins", 950f, vh - 260f + bob, 66f) { cc, x, y, r ->
             drawBallAt(cc, x, y, r * 0.58f, pal[(time * 0.8f).toInt() % 4], effSkin(), time, false)
         }
 
