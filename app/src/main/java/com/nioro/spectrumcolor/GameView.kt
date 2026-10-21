@@ -1112,27 +1112,19 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawHome(c: Canvas) {
         val pal = cur()
-        val ty = topI + 460f
+        val ty = topI + 640f
         Gl.glow(c, 540f, ty + 20f, 470f, pal[1], 60)
         Gl.glow(c, 540f, ty + 60f, 390f, pal[0], 50)
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
 
-        val b0 = ty + 290f
+        val b0 = ty + 330f
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
-        button(c, "endless", "Modo infinito", 540f, b0 + 150f, 760f, 130f, 0, 50f)
-        button(c, "mp", "Multijugador local", 540f, b0 + 300f, 760f, 130f, pal[1], 50f)
-        button(c, "settings", "Ajustes", 340f, b0 + 450f, 370f, 120f, 0, 46f)
-        button(c, "quit", "Salir", 740f, b0 + 450f, 370f, 120f, 0, 46f)
-        val ul = when (updState) {
-            1 -> "Buscando…"
-            2 -> "Estás al día · revisar de nuevo"
-            3 -> "Descargar versión nueva"
-            4 -> "Sin conexión · reintentar"
-            else -> "Buscar actualización"
-        }
-        button(c, "update", ul, 540f, b0 + 590f, 760f, 110f, if (updState == 3) pal[2] else 0, 42f)
+        button(c, "endless", "Modo infinito", 540f, b0 + 175f, 760f, 130f, 0, 50f)
+        button(c, "mp", "Multijugador local", 540f, b0 + 350f, 760f, 130f, pal[1], 50f)
+        button(c, "settings", "Ajustes", 340f, b0 + 525f, 370f, 120f, 0, 46f)
+        button(c, "quit", "Salir", 740f, b0 + 525f, 370f, 120f, 0, 46f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -1224,7 +1216,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AJUSTES", top + 130f)
         val y0 = top + 330f
-        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + 1010f, 70f, 0.8f, pal[1])
+        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + 1140f, 70f, 0.8f, pal[1])
 
         settingRow(c, "Música", y0)
         toggle(c, "tmusic", 870f, y0, prefs.musicOn)
@@ -1249,6 +1241,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         settingRow(c, "Progreso", y0 + 940f)
         val armed = time - resetArmedAt < 3f
         button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 940f, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
+
+        val ul = when (updState) {
+            1 -> "Buscando…"
+            2 -> "Estás al día"
+            3 -> "Descargar nueva"
+            4 -> "Sin conexión"
+            else -> "Buscar"
+        }
+        settingRow(c, "Actualización", y0 + 1070f)
+        button(c, "update", ul, 760f, y0 + 1070f, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
 
         Gl.text(c, "Spectrum Color  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
     }
