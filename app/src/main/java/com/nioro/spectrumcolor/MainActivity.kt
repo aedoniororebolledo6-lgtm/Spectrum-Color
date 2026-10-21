@@ -67,6 +67,14 @@ class MainActivity : Activity(), HostApi {
         finish()
     }
 
+    override fun openUrl(url: String) {
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (e: Exception) {
+            // sin navegador disponible
+        }
+    }
+
     override fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit) {
         runOnUiThread {
             try {

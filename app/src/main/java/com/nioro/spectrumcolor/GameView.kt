@@ -34,6 +34,7 @@ import kotlin.random.Random
 interface HostApi {
     fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit)
     fun quit()
+    fun openUrl(url: String)
 }
 
 /**
@@ -62,6 +63,43 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val audio = Audio(context, prefs)
     private val rnd = Random(System.nanoTime())
     private val handler = Handler(Looper.getMainLooper())
+    // ---- actualización (0 = sin comprobar, 1 = buscando, 2 = al día, 3 = hay versión nueva, 4 = sin conexión) ----
+    @Volatile private var updState = 0
+    @Volatile private var updNew = 0
+
+    private fun installedBuild(): Int = try {
+        val vn = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+        vn.substringAfterLast('.').toIntOrNull() ?: 0
+    } catch (e: Exception) {
+        0
+    }
+
+    private fun checkUpdate() {
+        if (updState == 1) return
+        updState = 1
+        Thread {
+            try {
+                val u = java.net.URL("https://api.github.com/repos/aedoniororebolledo6-lgtm/Spectrum-Color/releases/tags/latest")
+                val cn = u.openConnection() as java.net.HttpURLConnection
+                cn.connectTimeout = 8000
+                cn.readTimeout = 8000
+                cn.setRequestProperty("Accept", "application/vnd.github+json")
+                val txt = cn.inputStream.bufferedReader().use { it.readText() }
+                cn.disconnect()
+                val m = Regex("Compilaci.{1,8}#(\\d+)").find(txt)
+                val n = m?.groupValues?.get(1)?.toIntOrNull()
+                if (n == null) {
+                    updState = 4
+                } else {
+                    updNew = n
+                    updState = if (n > installedBuild()) 3 else 2
+                }
+            } catch (e: Exception) {
+                updState = 4
+            }
+        }.start()
+    }
+
     // ---- pantalla y tiempo ----
     private var sc = 1f
     private var vh = 2400f
@@ -321,6 +359,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             id == "settings" -> scr = Scr.SETTINGS
             id == "quit" -> api.quit()
+            id == "update" -> {
+                if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/SpectrumColor.apk")
+                else checkUpdate()
+            }
             id == "back" -> onBack()
             id == "wprev" -> levelPage = max(0, levelPage - 1)
             id == "wnext" -> levelPage = min(Levels.WORLDS - 1, levelPage + 1)
@@ -1070,7 +1112,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawHome(c: Canvas) {
         val pal = cur()
-        val ty = topI + 520f
+        val ty = topI + 460f
         Gl.glow(c, 540f, ty + 20f, 470f, pal[1], 60)
         Gl.glow(c, 540f, ty + 60f, 390f, pal[0], 50)
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
@@ -1083,6 +1125,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         button(c, "mp", "Multijugador local", 540f, b0 + 300f, 760f, 130f, pal[1], 50f)
         button(c, "settings", "Ajustes", 340f, b0 + 450f, 370f, 120f, 0, 46f)
         button(c, "quit", "Salir", 740f, b0 + 450f, 370f, 120f, 0, 46f)
+        val ul = when (updState) {
+            1 -> "Buscando…"
+            2 -> "Estás al día · revisar de nuevo"
+            3 -> "Descargar versión nueva"
+            4 -> "Sin conexión · reintentar"
+            else -> "Buscar actualización"
+        }
+        button(c, "update", ul, 540f, b0 + 590f, 760f, 110f, if (updState == 3) pal[2] else 0, 42f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
