@@ -41,6 +41,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("easy", false)
         set(v) { sp.edit().putBoolean("easy", v).apply() }
 
+    /** Apariencia elegida de la bola (índice en Skins). */
+    var skin: Int
+        get() = sp.getInt("skin", 0)
+        set(v) { sp.edit().putInt("skin", v).apply() }
+
     var allOpen: Boolean
         get() = sp.getBoolean("allOpen", false)
         set(v) { sp.edit().putBoolean("allOpen", v).apply() }

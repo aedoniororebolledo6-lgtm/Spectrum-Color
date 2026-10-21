@@ -43,7 +43,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -247,7 +247,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     fun onBack(): Boolean {
         when (scr) {
             Scr.HOME -> return false
-            Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU -> goHome()
+            Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> goHome()
             Scr.MP_HOST, Scr.MP_JOIN -> {
                 leaveMp()
                 scr = Scr.MP_MENU
@@ -358,6 +358,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 scr = Scr.MP_MENU
             }
             id == "settings" -> scr = Scr.SETTINGS
+            id == "skins" -> scr = Scr.SKINS
+            id.startsWith("skin:") -> {
+                val k = id.substring(5).toIntOrNull() ?: return
+                if (k in Skins.names.indices && skinOpen(k)) prefs.skin = k
+            }
             id == "quit" -> api.quit()
             id == "update" -> {
                 if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/SpectrumColor.apk")
@@ -928,6 +933,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     Scr.HOME -> drawHome(c)
                     Scr.LEVELS -> drawLevels(c)
                     Scr.SETTINGS -> drawSettings(c)
+                    Scr.SKINS -> drawSkins(c)
                     Scr.MP_MENU -> drawMpMenu(c)
                     Scr.MP_HOST -> drawMpHost(c)
                     Scr.MP_JOIN -> drawMpJoin(c)
@@ -1118,6 +1124,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
+
+        val bob = sin(time * 1.6f) * 6f
+        Gl.glow(c, 950f, topI + 120f + bob, 120f, pal[1], 70)
+        iconButton(c, "skins", 950f, topI + 120f + bob, 66f) { cc, x, y, r ->
+            drawBallAt(cc, x, y, r * 0.58f, pal[(time * 0.8f).toInt() % 4], effSkin(), time, false)
+        }
 
         val b0 = topI + 970f
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
@@ -1564,11 +1576,37 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     }
 
+    private val ballClip = Path()
+
+    private fun skinOpen(k: Int): Boolean = prefs.allOpen || prefs.totalStars() >= Skins.need[k]
+
+    private fun effSkin(): Int {
+        val k = prefs.skin
+        return if (k in Skins.names.indices && skinOpen(k)) k else 0
+    }
+
     private fun drawBall(c: Canvas, sm: Sim, col: Int) {
         val r = Cfg.BALL_R
         val x = Cfg.W / 2f
         val y = if (sm.started) sm.by else sm.by + sin(time * 3f) * 9f
-        Gl.glow(c, x, y, r * 2.8f, col, 110)
+        drawBallAt(c, x, y, r, col, effSkin(), time, true)
+    }
+
+    private fun starPath(x: Float, y: Float, ro: Float, ri: Float) {
+        Gl.path.reset()
+        for (i in 0 until 10) {
+            val rr = if (i % 2 == 0) ro else ri
+            val a = (-90.0 + i * 36.0) * Math.PI / 180.0
+            val px = x + (rr * cos(a)).toFloat()
+            val py = y + (rr * sin(a)).toFloat()
+            if (i == 0) Gl.path.moveTo(px, py) else Gl.path.lineTo(px, py)
+        }
+        Gl.path.close()
+    }
+
+    /** La bola siempre conserva el color de juego; la apariencia solo cambia el diseño. */
+    private fun drawBallAt(c: Canvas, x: Float, y: Float, r: Float, col: Int, skin: Int, tm: Float, glow: Boolean) {
+        if (glow) Gl.glow(c, x, y, r * 2.8f, col, 110)
         var pp = Gl.p()
         pp.shader = android.graphics.RadialGradient(
             x - r * 0.35f, y - r * 0.4f, r * 1.5f,
@@ -1576,16 +1614,183 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP
         )
         c.drawCircle(x, y, r, pp)
+
+        // diseño interior (recortado a la bola)
+        c.save()
+        ballClip.reset()
+        ballClip.addCircle(x, y, r, Path.Direction.CW)
+        c.clipPath(ballClip)
+        when (skin) {
+            2 -> {
+                c.rotate(35f, x, y)
+                for (k in -1..1) {
+                    pp = Gl.p()
+                    pp.color = Gl.white(95)
+                    Gl.rect.set(x - r * 1.3f, y + k * r * 0.62f - r * 0.14f, x + r * 1.3f, y + k * r * 0.62f + r * 0.14f)
+                    c.drawRect(Gl.rect, pp)
+                }
+            }
+            3 -> {
+                val dx = floatArrayOf(-0.45f, 0.4f, 0.05f, -0.1f, 0.55f, -0.6f)
+                val dy = floatArrayOf(-0.35f, -0.4f, 0.05f, 0.6f, 0.35f, 0.3f)
+                val dr = floatArrayOf(0.17f, 0.12f, 0.2f, 0.14f, 0.1f, 0.1f)
+                for (i in 0 until 6) {
+                    pp = Gl.p()
+                    pp.color = Gl.white(100)
+                    c.drawCircle(x + dx[i] * r, y + dy[i] * r, dr[i] * r, pp)
+                }
+            }
+            4 -> {
+                starPath(x, y + r * 0.04f, r * 0.55f, r * 0.24f)
+                pp = Gl.p()
+                pp.color = Gl.white(205)
+                c.drawPath(Gl.path, pp)
+            }
+            6 -> {
+                c.save()
+                c.rotate(45f, x, y)
+                pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeWidth = r * 0.11f
+                pp.color = Gl.white(190)
+                Gl.rect.set(x - r * 0.36f, y - r * 0.36f, x + r * 0.36f, y + r * 0.36f)
+                c.drawRoundRect(Gl.rect, r * 0.06f, r * 0.06f, pp)
+                c.restore()
+            }
+            7 -> {
+                Gl.arc(c, x, y, r * 0.55f, 0f, 360f, r * 0.1f, Gl.white(150))
+                pp = Gl.p()
+                pp.color = Gl.white(200)
+                c.drawCircle(x, y, r * 0.2f, pp)
+            }
+            9 -> {
+                pp = Gl.p()
+                pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
+                c.drawCircle(x, y, r, pp)
+            }
+            11 -> {
+                pp = Gl.p()
+                pp.color = Gl.alpha(Gl.darken(col, 0.3f), 120)
+                c.drawCircle(x, y, r, pp)
+                val sx = floatArrayOf(-0.5f, 0.3f, 0.55f, -0.15f, 0.1f, -0.6f, 0.45f)
+                val sy = floatArrayOf(-0.3f, -0.55f, 0.1f, 0.45f, -0.05f, 0.35f, 0.55f)
+                for (i in 0 until 7) {
+                    val a = (0.5f + 0.5f * sin(tm * 3f + i * 1.7f))
+                    pp = Gl.p()
+                    pp.color = Gl.white((70 + 170 * a).toInt())
+                    c.drawCircle(x + sx[i] * r, y + sy[i] * r, r * (0.05f + 0.04f * a), pp)
+                }
+            }
+        }
+        c.restore()
+
+        // borde
         pp = Gl.p()
         pp.style = Paint.Style.STROKE
-        pp.strokeWidth = 2.4f
-        pp.color = Gl.white(160)
+        when (skin) {
+            1, 10 -> {
+                val cols = if (skin == 1)
+                    intArrayOf(0xFF5CF2FF.toInt(), 0xFFB46CFF.toInt(), 0xFFFF6FD8.toInt(), 0xFF5CF2FF.toInt())
+                else
+                    intArrayOf(0xFFFF4F6B.toInt(), 0xFFFFB84F.toInt(), 0xFFFFF04F.toInt(), 0xFF4FFF8A.toInt(),
+                        0xFF4FB8FF.toInt(), 0xFFB04FFF.toInt(), 0xFFFF4F6B.toInt())
+                val sh = android.graphics.SweepGradient(x, y, cols, null)
+                val m = android.graphics.Matrix()
+                m.postRotate(tm * 90f, x, y)
+                sh.setLocalMatrix(m)
+                pp.shader = sh
+                pp.strokeWidth = r * 0.15f
+            }
+            8 -> {
+                pp.strokeWidth = r * 0.16f
+                pp.color = 0xFFFFD25E.toInt()
+            }
+            9 -> {
+                val acc = 0xFFFF4FD8.toInt()
+                val g = Gl.p()
+                g.style = Paint.Style.STROKE
+                g.strokeWidth = r * 0.42f
+                g.color = Gl.alpha(acc, 60)
+                c.drawCircle(x, y, r, g)
+                pp.strokeWidth = r * 0.14f
+                pp.color = acc
+            }
+            else -> {
+                pp.strokeWidth = 2.4f
+                pp.color = Gl.white(160)
+            }
+        }
         c.drawCircle(x, y, r, pp)
-        Gl.arc(c, x, y, r * 0.72f, 40f, 100f, r * 0.16f, Gl.white(70))
+        if (skin == 5) {
+            c.save()
+            c.rotate(-22f, x, y)
+            pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = r * 0.13f
+            pp.color = Gl.white(190)
+            Gl.rect.set(x - r * 1.5f, y - r * 0.38f, x + r * 1.5f, y + r * 0.38f)
+            c.drawOval(Gl.rect, pp)
+            c.restore()
+        }
+        if (skin != 9) Gl.arc(c, x, y, r * 0.72f, 40f, 100f, r * 0.16f, Gl.white(70))
         pp = Gl.p()
         pp.color = Gl.white(215)
         Gl.rect.set(x - r * 0.64f, y - r * 0.74f, x - r * 0.06f, y - r * 0.3f)
         c.drawOval(Gl.rect, pp)
+    }
+
+    // ---- menú de apariencias ----
+
+    private fun drawSkins(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        title(c, "APARIENCIAS", top + 130f, 56f)
+        val k0 = effSkin()
+        val colNow = pal[(time * 0.8f).toInt() % 4]
+        Gl.glow(c, 540f, top + 420f, 330f, colNow, 80)
+        drawBallAt(c, 540f, top + 420f + sin(time * 2f) * 8f, 120f, colNow, k0, time, true)
+        Gl.text(c, Skins.names[k0], 540f, top + 640f, 56f, Gl.light, Gl.white(245), 0.08f)
+        Gl.text(c, "La bola conserva su color de juego", 540f, top + 700f, 32f, Gl.regular, Gl.white(140))
+
+        val w = 300f
+        val h = 300f
+        val gy = top + 790f
+        for (i in Skins.names.indices) {
+            val cx = 210f + (i % 3) * 330f
+            val cy = gy + h / 2f + (i / 3) * (h + 24f)
+            val open = skinOpen(i)
+            val id = "skin:$i"
+            val pressed = open && pressedId == id
+            val sel = i == k0
+            val s = if (pressed) 0.96f else 1f
+            Gl.panel(
+                c, cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s, 56f,
+                if (!open) 0.38f else if (sel) 1.35f else 0.9f, if (sel) pal[0] else pal[1]
+            )
+            if (sel) {
+                val pb = Gl.p()
+                pb.style = Paint.Style.STROKE
+                pb.strokeWidth = 5f
+                pb.color = Gl.white(230)
+                Gl.rect.set(cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s)
+                c.drawRoundRect(Gl.rect, 56f, 56f, pb)
+            }
+            val bc = pal[(i + (time * 0.8f).toInt()) % 4]
+            if (open) {
+                drawBallAt(c, cx, cy - 34f, 64f, bc, i, time, false)
+                Gl.textFit(c, Skins.names[i], cx, cy + 100f, 38f, w - 30f, Gl.medium, Gl.white(240))
+                hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
+            } else {
+                drawLock(c, cx, cy - 40f, 2.2f, 130)
+                Gl.textFit(c, Skins.names[i], cx, cy + 74f, 34f, w - 30f, Gl.medium, Gl.white(110))
+                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 30f, Gl.regular, Gl.white(150))
+            }
+        }
+        Gl.text(
+            c, "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}", 540f, vh - 90f,
+            34f, Gl.regular, Gl.white(150)
+        )
     }
 
     private fun drawParts(c: Canvas) {
