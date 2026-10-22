@@ -1055,11 +1055,22 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val y = (((0.2f + 0.27f * i) * vh - camY * depth) % span + span) % span - rad
             Gl.glow(c, x, y, rad, pal[i], 70)
         }
-        for (b in bubbles) {
+        val hw = th == Themes.HALLOWEEN
+        for ((bi, b) in bubbles.withIndex()) {
             val s = b.size
             val span = vh + 2f * s
             val x = b.nx * Cfg.W + sin(time * 0.6f + b.sway) * 14f
             val y = ((b.ny * vh - camY * b.depth - time * 8f * (b.depth * 4f)) % span + span) % span - s
+            if (hw) {
+                if (bi % 2 == 0) Spooky.pumpkin(c, x, y, s * 0.95f + 8f, s > 26f, time)
+                else {
+                    val q0 = Gl.p()
+                    q0.color = Gl.white(14)
+                    c.drawCircle(x, y, s * 1.05f + 6f, q0)
+                    Spooky.web(c, x, y, s * 1.05f + 6f, 120, 0f, 360f, 3)
+                }
+                continue
+            }
             var q = Gl.p()
             q.shader = android.graphics.RadialGradient(
                 x - s * 0.25f, y - s * 0.3f, s * 1.1f,
@@ -1100,6 +1111,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (accent != 0) accent else cur()[0]
         )
         Gl.textFit(c, label, cx, cy + size * 0.35f, size, w - 60f, Gl.medium, Gl.white(if (enabled) 245 else 110))
+        if (prefs.theme == Themes.HALLOWEEN && w >= 330f && h >= 100f) {
+            Spooky.web(c, cx - hw + hh * 0.45f, cy - hh + 2f, hh * 0.75f, 150, 0f, 90f, 2)
+            Spooky.pumpkin(c, cx + hw - hh * 0.8f, cy - hh + 4f, hh * 0.36f, false, time)
+        }
         if (popping) c.restore()
         if (enabled) hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
     }
@@ -1236,6 +1251,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
+
+        if (prefs.theme == Themes.HALLOWEEN) {
+            Spooky.web(c, 0f, 0f, 470f, 130, 0f, 90f, 4)
+            Spooky.web(c, Cfg.W, 0f, 470f, 130, 90f, 90f, 4)
+            Spooky.spider(c, 215f, 0f, topI + 330f + sin(time * 1.3f) * 40f, 30f, time)
+            Spooky.spider(c, 900f, 0f, topI + 200f + sin(time * 1.1f + 1f) * 36f, 24f, time)
+            val py = topI + 760f
+            Gl.glow(c, 540f, py, 330f, pal[0], 60)
+            Spooky.pumpkin(c, 330f, py + 70f, 80f, true, time)
+            Spooky.pumpkin(c, 750f, py + 70f, 80f, true, time)
+            Spooky.pumpkin(c, 540f, py, 125f, true, time)
+            val bx = ((time * 90f) % (Cfg.W + 400f)) - 200f
+            Spooky.bat(c, bx, topI + 560f + sin(time * 2f) * 30f, 46f, time)
+            Spooky.bat(c, Cfg.W - ((time * 70f + 400f) % (Cfg.W + 400f)) + 200f, topI + 640f + sin(time * 1.7f) * 26f, 36f, time + 1f)
+        }
 
         val bob = sin(time * 1.6f) * 6f
         Gl.glow(c, 950f, vh - 260f + bob, 120f, pal[1], 70)
@@ -1393,17 +1423,25 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "TEMAS", top + 130f)
         Gl.text(c, "Elige el color de fondo", 540f, top + 235f, 36f, Gl.regular, Gl.white(160))
-        val gy = top + 300f
+        val gy = top + 290f
+        val rows = (Themes.COUNT + 1) / 2
+        // las tarjetas se achican para que quepan todas en pantalla
+        val k = min(1f, (vh - gy - 50f) / (rows * 690f - 40f))
         for (t in 0 until Themes.COUNT) {
-            val cx = if (t % 2 == 0) 290f else 790f
-            val cy = gy + 320f + (t / 2) * 690f
+            val rcx = 540f + (if (t % 2 == 0) -250f else 250f) * k
+            val rcy = gy + 320f * k + (t / 2) * 690f * k
             val id = "theme:$t"
             val sel = prefs.theme == t
             val pressed = pressedId == id
             val sc2 = if (pressed) 0.97f else 1f
+            val acc = Themes.glow[t][0]
+            c.save()
+            c.translate(rcx, rcy)
+            c.scale(k, k)
+            val cx = 0f
+            val cy = 0f
             val hw = 230f * sc2
             val hh = 320f * sc2
-            val acc = Themes.glow[t][0]
             if (sel) Gl.glow(c, cx, cy, 340f, acc, 70)
             Gl.panel(c, cx - hw, cy - hh, cx + hw, cy + hh, 60f, if (sel) 1.3f else 0.9f, acc)
             if (sel) {
@@ -1434,14 +1472,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Gl.glow(c, pr - 40f, pb2 - 70f, 170f, g[0], 70)
             Gl.text(c, "SPECTRUM", cx, pt + 70f, 34f, Gl.thin, Gl.white(235), 0.12f)
             Gl.text(c, "COLOR", cx, pt + 112f, 38f, Gl.light, g[0], 0.25f)
-            drawBallAt(c, cx, pt + 205f + sin(time * 2f + t) * 5f, 34f, g[(time * 0.8f).toInt() % 4], effSkin(), time, true)
+            if (t == Themes.HALLOWEEN) {
+                Spooky.web(c, pl, pt, 130f, 140, 0f, 90f, 3)
+                Spooky.web(c, pr, pt, 130f, 140, 90f, 90f, 3)
+                Spooky.pumpkin(c, cx, pt + 205f + sin(time * 2f) * 4f, 40f, true, time)
+            } else {
+                drawBallAt(c, cx, pt + 205f + sin(time * 2f + t) * 5f, 34f, g[(time * 0.8f).toInt() % 4], effSkin(), time, true)
+            }
             for (j in 0 until 3) {
                 val by = pt + 290f + j * 46f
                 Gl.panel(c, cx - 100f, by - 17f, cx + 100f, by + 17f, 17f, 0.9f, if (j == 0) g[0] else g[1])
             }
             c.restore()
             Gl.text(c, Themes.names[t], cx, cy + 232f, 44f, Gl.medium, Gl.white(if (sel) 255 else 225), 0.05f)
-            hits.add(Hit(id, cx - 230f, cy - 320f, cx + 230f, cy + 320f))
+            c.restore()
+            hits.add(Hit(id, rcx - 230f * k, rcy - 320f * k, rcx + 230f * k, rcy + 320f * k))
         }
     }
 
