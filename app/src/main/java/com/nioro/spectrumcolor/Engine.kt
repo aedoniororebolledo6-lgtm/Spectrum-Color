@@ -26,7 +26,7 @@ object Cfg {
     const val STEP = 1f / 120f
     const val THICK = 40f
     const val GRAZE = 0.4f      // cuánto "roce" se perdona (fracción del radio de la pelota)
-    const val STAR_R = 28f
+    const val STAR_R = 42f      // radio de recogida de la estrella (un poco más grande que el dibujo: roza y cuenta)
     const val SW_R = 34f
     const val BAR_DY = 0f        // separación entre carriles; con un solo carril las barras quedan en el centro
     const val BAR_LANES = 1      // un solo carril de barras: se cruza con un solo salto, como en Color Switch
@@ -493,7 +493,7 @@ class Course private constructor(
         val hard = isLevel && Levels.isHard(level)
         var n = colorsFor(i, g)
         // en los niveles difíciles solo los obstáculos con "espera natural" usan 4 colores
-        if (hard && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT) n = 3
+        if ((hard || !isLevel) && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT) n = 3
 
         val dirS = if (rnd.nextBoolean()) 1f else -1f
         val vari = 0.92f + rnd.nextFloat() * 0.16f

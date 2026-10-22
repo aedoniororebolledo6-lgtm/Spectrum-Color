@@ -2195,9 +2195,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (on) Gl.glow(c, sx, sy, 130f, gold, 70)
             starShape(c, sx, sy, 80f, 34f, 0f, if (on) gold else Gl.white(28), if (on) Gl.white(220) else Gl.white(80))
         }
+        val cr = course
+        val total = cr?.totalGates ?: 0
+        Gl.text(c, "Obstáculos $total / $total   ·   Caídas: $deaths", 540f, cy - 20f, 40f, Gl.medium, Gl.white(225))
+        Gl.text(c, "Estrellas: 3 sin caerte · 2 hasta 2 caídas · 1 más", 540f, cy + 28f, 29f, Gl.regular, Gl.white(150))
         if (last) {
-            Gl.text(c, "¡Completaste todos los niveles!", 540f, cy + 20f, 38f, Gl.medium, Gl.white(220))
-            Gl.text(c, "Gracias por jugar Spectrum Color", 540f, cy + 70f, 34f, Gl.regular, Gl.white(160))
+            Gl.text(c, "¡Completaste todos los niveles!", 540f, cy + 84f, 36f, Gl.medium, Gl.white(220))
         }
         var y = cy + 170f
         if (!last) {
