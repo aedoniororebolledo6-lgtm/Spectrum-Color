@@ -1434,6 +1434,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.CROSS -> drawCross(c, o, t, pal)
             T.GATE -> drawGate(c, o, t)
             T.ORBIT -> drawOrbit(c, o, t, pal)
+            T.ARC -> drawArcOb(c, o, t, pal)
+            T.PULSE -> drawPulse(c, o, t, pal)
+            T.LASER -> drawLaser(c, o, t)
             T.COUNTER -> {
                 drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
                 drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * Cfg.COUNTER_RATIO * t, pal)
@@ -1441,6 +1444,88 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             else -> drawPoly(c, o, t, pal)
         }
         if (layer) c.restore()
+    }
+
+    private fun drawArcOb(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val rot = Geo.rot(o, t)
+        val th = Cfg.THICK
+        val cx = Cfg.W / 2f
+        val sweep = 360f - o.aux
+        val span = sweep / o.n
+        for (i in 0 until o.n) {
+            val col = pal[(i + o.shift) % o.n]
+            val st = rot + o.aux + i * span + 1.5f
+            val sw = span - 3f
+            Gl.arc(c, cx, o.y, o.size, st, sw, th * 1.9f, Gl.alpha(col, 34))
+            Gl.arc(c, cx, o.y, o.size, st, sw, th, Gl.alpha(col, 170))
+            Gl.arc(c, cx, o.y, o.size - th * 0.22f, st, sw, th * 0.4f, Gl.alpha(Gl.darken(col, 0.6f), 110))
+            Gl.arc(c, cx, o.y, o.size + th * 0.5f, st, sw, 2.2f, Gl.white(125))
+            Gl.arc(c, cx, o.y, o.size - th * 0.5f, st, sw, 2.2f, Gl.white(70))
+            Gl.arc(c, cx, o.y, o.size + th * 0.2f, st + 5f, max(6f, sw - 22f), th * 0.16f, Gl.white(150))
+        }
+        // puntas redondeadas del hueco
+        for (k in 0..1) {
+            val a = if (k == 0) rot + 1.5f else rot + 360f - 1.5f
+            val col = if (k == 0) pal[o.shift % o.n] else pal[(o.shift + o.n - 1) % o.n]
+            val ax = polar(o.size, a, o, true)
+            val ay = polar(o.size, a, o, false)
+            val pp = Gl.p()
+            pp.color = Gl.alpha(col, 120)
+            c.drawCircle(ax, ay, th * 0.5f, pp)
+        }
+    }
+
+    private fun drawPulse(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val idx = Geo.pulseIndex(o, t)
+        val fr = Geo.pulseFrac(o, t)
+        val next = Geo.pulseIndex(o, t + (1f - fr) / max(0.01f, o.speed) + 0.01f)
+        capsule(c, -120f, Cfg.W + 120f, o.y, Cfg.BAR_H, pal[idx])
+        val k = ((fr - 0.7f) / 0.3f).coerceIn(0f, 1f)
+        for (side in 0..1) {
+            val x = if (side == 0) 62f else Cfg.W - 62f
+            var pp = Gl.p()
+            pp.color = Gl.alpha(pal[next], (70 + 185 * k).toInt())
+            c.drawCircle(x, o.y, 15f + 6f * k, pp)
+            pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 2.4f
+            pp.color = Gl.white(170)
+            c.drawCircle(x, o.y, 15f + 6f * k, pp)
+        }
+    }
+
+    private fun drawLaser(c: Canvas, o: Ob, t: Float) {
+        val on = Geo.laserOn(o, t)
+        val warn = Geo.laserWarn(o, t)
+        val half = Cfg.BAR_H * 0.75f
+        if (on) {
+            var pp = Gl.p()
+            pp.color = Gl.alpha(danger, 60)
+            Gl.rect2.set(0f, o.y - half * 2.4f, Cfg.W, o.y + half * 2.4f)
+            c.drawRect(Gl.rect2, pp)
+            pp = Gl.p()
+            pp.color = Gl.alpha(danger, 235)
+            Gl.rect.set(0f, o.y - half, Cfg.W, o.y + half)
+            c.drawRect(Gl.rect, pp)
+            pp = Gl.p()
+            pp.color = Gl.white(230)
+            Gl.rect.set(0f, o.y - half * 0.28f, Cfg.W, o.y + half * 0.28f)
+            c.drawRect(Gl.rect, pp)
+        } else {
+            val blink = if (warn) (if (((t * 14f).toInt() and 1) == 0) 150 else 40) else 28
+            Gl.line(c, 0f, o.y, Cfg.W, o.y, if (warn) 6f else 3f, Gl.alpha(danger, blink))
+        }
+        for (side in 0..1) {
+            val x = if (side == 0) 34f else Cfg.W - 34f
+            var pp = Gl.p()
+            pp.color = Gl.alpha(danger, if (on) 255 else 150)
+            c.drawCircle(x, o.y, 26f, pp)
+            pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 3f
+            pp.color = Gl.white(200)
+            c.drawCircle(x, o.y, 26f, pp)
+        }
     }
 
     private fun drawWind(c: Canvas, o: Ob, t: Float) {

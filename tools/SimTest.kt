@@ -269,7 +269,7 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
-fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas").getOrElse(t) { "?" }
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo").getOrElse(t) { "?" }
 
 val bestStarsTL = ThreadLocal.withInitial { 0 }
 
@@ -332,7 +332,7 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
 /** Diagnóstico: ¿dónde y por qué muere el bot? Uso: diag <nivel> */
 fun diag(level: Int) {
     val cfg = BotCfg(slots = 7, slotSteps = 14, jitter = 10, skip = 0.05f)
-    val names = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas")
+    val names = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo")
     val c0 = Course.level(level)
     println("nivel $level: colores=${Levels.colors(level)} obstáculos=" + c0.obs.joinToString(",") { names[it.type] })
     val deathsAt = IntArray(c0.obs.size + 2)

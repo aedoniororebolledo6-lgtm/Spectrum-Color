@@ -61,7 +61,11 @@ object T {
     const val GATE = 8       // muro mortal con un hueco que se desliza
     const val ORBIT = 9      // bolitas de color que giran en dos órbitas
     const val COUNTER = 10   // dos barras que se mueven en sentidos opuestos
-    const val COUNT = 11
+    const val ARC = 11       // anillo abierto: un tramo del círculo está vacío y se puede cruzar por ahí
+    const val PULSE = 12     // barra de ancho completo que cambia de color con el tiempo
+    const val HEX = 13       // hexágono giratorio
+    const val LASER = 14     // rayo que se enciende y se apaga (mata sin importar el color)
+    const val COUNT = 15
 }
 
 fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
@@ -82,7 +86,8 @@ class Ob(
 ) {
     /** Distancia máxima desde el centro hasta cualquier parte del obstáculo. */
     val reach: Float = when (type) {
-        T.BARS, T.PEND, T.GATE -> Cfg.BAR_DY + Cfg.BAR_H + 6f
+        T.BARS, T.PEND, T.GATE, T.PULSE, T.LASER -> Cfg.BAR_DY + Cfg.BAR_H + 6f
+        T.HEX -> size + Cfg.THICK / 2f
         T.COUNTER -> aux + Cfg.BAR_H + 6f
         T.SQUARE -> size * 1.4143f + Cfg.THICK / 2f
         T.SPIKES -> size + Cfg.THICK / 2f + Cfg.SPIKE_H
@@ -98,6 +103,7 @@ class Ob(
             T.TRI -> for (k in 0 until 3) m = m or (1 shl ((k + shift) % n))
             T.PEND -> m = (1 shl (shift % n)) or (1 shl ((shift + 1) % n))
             T.CROSS -> for (k in 0 until 4) m = m or (1 shl ((k + shift) % n))
+            T.HEX -> for (k in 0 until 6) m = m or (1 shl ((k + shift) % n))
             T.ORBIT -> {
                 for (k in 0 until 3) m = m or (1 shl ((k + shift) % n))
                 for (k in 0 until 2) m = m or (1 shl ((k + shift + 1) % n))
@@ -173,7 +179,33 @@ object Geo {
         return (seg + o.shift) % o.n != color
     }
 
-    fun polySides(o: Ob): Int = if (o.type == T.SQUARE) 4 else 3
+    /** Índice del color que muestra una barra PULSE en el instante t. */
+    fun pulseIndex(o: Ob, t: Float): Int {
+        val j = floor(o.phase / 360f * o.n + o.speed * t).toInt()
+        return (((j % o.n) + o.n) % o.n + o.shift) % o.n
+    }
+
+    /** Fracción (0..1) del color actual de PULSE que ya pasó. */
+    fun pulseFrac(o: Ob, t: Float): Float {
+        val x = o.phase / 360f * o.n + o.speed * t
+        return x - floor(x)
+    }
+
+    /** Fracción del ciclo del rayo (0..1) y si está encendido. */
+    fun laserU(o: Ob, t: Float): Float {
+        val x = o.phase / 360f + o.speed * t
+        return x - floor(x)
+    }
+
+    fun laserOn(o: Ob, t: Float): Boolean = laserU(o, t) >= 1f - o.aux
+
+    /** true si el rayo está a punto de encenderse (aviso). */
+    fun laserWarn(o: Ob, t: Float): Boolean {
+        val u = laserU(o, t)
+        return u >= 1f - o.aux - 0.14f && u < 1f - o.aux
+    }
+
+    fun polySides(o: Ob): Int = if (o.type == T.SQUARE) 4 else if (o.type == T.HEX) 6 else 3
 
     fun vx(o: Ob, t: Float, i: Int): Float {
         val k = polySides(o)
@@ -287,6 +319,28 @@ object Geo {
                 }
                 return false
             }
+            T.ARC -> {
+                val dx = bx - Cfg.W / 2f
+                val dy = by - o.y
+                val dist = sqrt(dx * dx + dy * dy)
+                if (abs(dist - o.size) > Cfg.THICK / 2f + graze) return false
+                var a = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat() - rot(o, t)
+                a = ((a % 360f) + 360f) % 360f
+                // un margen pequeño en los bordes del hueco, para que rozarlo no mate
+                val gap = o.aux
+                if (a < gap) return false
+                val span = (360f - gap) / o.n
+                val seg = min(o.n - 1, ((a - gap) / span).toInt())
+                return (seg + o.shift) % o.n != color
+            }
+            T.PULSE -> {
+                if (abs(by - o.y) > Cfg.BAR_H + graze) return false
+                return pulseIndex(o, t) != color
+            }
+            T.LASER -> {
+                if (abs(by - o.y) > Cfg.BAR_H * 0.75f + graze) return false
+                return laserOn(o, t)
+            }
             T.COUNTER -> {
                 for (lane in 0 until 2) {
                     val ly = o.y + if (lane == 0) -o.aux else o.aux
@@ -328,8 +382,10 @@ object Levels {
 
     /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
     private val salts = IntArray(COUNT + 1).also {
-        it[5] = 2   // variantes elegidas con `tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
-        it[15] = 2
+        it[12] = 1   // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
+        it[15] = 1
+        it[17] = 3
+        it[20] = 1
     }
 
     fun salt(level: Int): Int = if (level in 1..COUNT) salts[level] else 0
@@ -374,17 +430,17 @@ object Levels {
     fun fadeProb(level: Int): Float = if (level < 91) 0f else if (level < 111) 0.4f else 0.5f
     fun wobProb(level: Int): Float = if (level < 101) 0f else if (level < 111) 0.45f else 0.6f
 
-    /** Desde qué punto de la curva suave aparece cada tipo básico (índice = T.*). */
-    private val unlockFrac = floatArrayOf(0f, 0.65f, 0.05f, 0.2f, 0.4f)
+    /** Nivel en que se estrena cada tipo de obstáculo (índice = T.*). El anillo doble no se usa. */
+    private val unlockAt = intArrayOf(
+        1, 999, 1, 5, 9,        // anillo, doble, barras, cuadrado, triángulo
+        21, 31, 41, 51, 61, 71, // pinchos, péndulo, cruz, puertas, órbitas, opuestas
+        4, 7, 13, 46            // arco abierto, barra que cambia de color, hexágono, rayo
+    )
 
-    /** Nivel en que se estrena cada obstáculo nuevo (T.SPIKES .. T.COUNTER): uno por mundo, del 3 al 8. */
-    private val newUnlock = intArrayOf(21, 31, 41, 51, 61, 71)
-
-    fun unlockLevel(type: Int): Int =
-        if (type < 5) 1 + Math.ceil((unlockFrac[type] * (EASY - 1)).toDouble() - 1e-6).toInt() else newUnlock[type - 5]
+    fun unlockLevel(type: Int): Int = unlockAt[type]
 
     /** Obstáculo desde el que aparece cada tipo en el modo infinito. */
-    val unlockGate = intArrayOf(0, 22, 2, 6, 12, 28, 34, 40, 46, 52, 58)
+    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64)
 }
 
 class Course private constructor(
@@ -450,32 +506,42 @@ class Course private constructor(
             min(0.85f, g / 65f)
         }
 
+    /** Tipos que pueden ser el primer obstáculo de un recorrido (los más "amables"). */
+    private fun firstOk(t: Int): Boolean =
+        t == T.RING || t == T.BARS || t == T.SQUARE || t == T.TRI || t == T.SPIKES || t == T.PEND ||
+            t == T.CROSS || t == T.ARC || t == T.PULSE || t == T.HEX
+
+    private var lastType2 = -1
+
     private fun pickType(i: Int, g: Int): Int {
         val hard = isLevel && Levels.isHard(level)
-        val w = if (hard) floatArrayOf(2.0f, 0f, 1.4f, 1.5f, 1.5f, 2.0f, 1.6f, 1.8f, 1.4f, 1.6f, 1.4f)
-        else floatArrayOf(3.0f, 1.4f, 2.4f, 2.2f, 2.2f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f)
-        val newT = if (hard) 5 + Levels.world(level) - 2 else -1
+        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f)
+        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f)
+        val wf = if (isLevel) Levels.worldFirst(Levels.world(level)) else 0
         var sum = 0f
         for (t in 0 until T.COUNT) {
             if (t == T.DOUBLE && !Cfg.ENABLE_DOUBLE) {
                 w[t] = 0f
                 continue
             }
-            val unlocked = if (isLevel) level >= Levels.unlockLevel(t) else g >= Levels.unlockGate[t]
-            if (!unlocked) {
+            val ul = if (isLevel) Levels.unlockLevel(t) else 0
+            val unlocked = if (isLevel) level >= ul else g >= Levels.unlockGate[t]
+            if (!unlocked || (i == 0 && !firstOk(t))) {
                 w[t] = 0f
                 continue
             }
-            if (hard) {
-                // el obstáculo nuevo del mundo aparece más seguido, sobre todo en sus dos primeros niveles
-                if (t == newT) w[t] *= if (level <= Levels.worldFirst(Levels.world(level)) + 1) 4f else 1.8f
-            } else if (isLevel && t != T.RING && (level == Levels.unlockLevel(t) || level == Levels.unlockLevel(t) + 1)) {
-                w[t] *= 4f // el obstáculo nuevo aparece más seguido para aprenderlo
+            if (isLevel && ul > 1) {
+                // el obstáculo nuevo aparece más seguido para aprenderlo
+                if (hard) {
+                    if (ul >= wf && ul < wf + Levels.PER_WORLD) w[t] *= if (level <= wf + 1) 3f else 1.5f
+                } else if (level == ul || level == ul + 1) {
+                    w[t] *= 4f
+                }
             }
-            if (t == lastType) w[t] *= 0.3f
+            if (t == lastType) w[t] *= 0.3f else if (t == lastType2) w[t] *= 0.65f
             sum += w[t]
         }
-        if (i == 0 || sum <= 0f) return T.RING
+        if (sum <= 0f) return T.RING
         var r = rnd.nextFloat() * sum
         for (t in 0 until T.COUNT) {
             r -= w[t]
@@ -489,14 +555,16 @@ class Course private constructor(
         val g = i + gateOffset
         val d = diffFor(i, g)
         val type = pickType(i, g)
+        lastType2 = lastType
         lastType = type
         val hard = isLevel && Levels.isHard(level)
         var n = colorsFor(i, g)
         // en los niveles difíciles solo los obstáculos con "espera natural" usan 4 colores
-        if ((hard || !isLevel) && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT) n = 3
+        if ((hard || !isLevel) && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT && type != T.ARC) n = 3
 
         val dirS = if (rnd.nextBoolean()) 1f else -1f
         val vari = 0.92f + rnd.nextFloat() * 0.16f
+        val sizeVar = rnd.nextFloat()
         val shift = rnd.nextInt(n)
         val phase = rnd.nextFloat() * 360f
         var speed: Float
@@ -510,16 +578,20 @@ class Course private constructor(
         val spin = if (hard) lerp(if (n <= 3) 58f else 62f, if (n <= 3) 94f else 100f, d) * vari else lerp(spinLo, spinHi, d) * vari
         val barSpd = if (hard) lerp(190f, 310f, d) else lerp(120f, 250f, d)
         when (type) {
-            T.RING -> { speed = dirS * spin; size = 320f }
+            T.RING -> { speed = dirS * spin; size = lerp(265f, 340f, sizeVar) }
             T.DOUBLE -> { speed = dirS * spin * 0.9f; size = 345f; inner = 195f }
             T.BARS -> { speed = dirS * barSpd * vari; size = 0f }
-            T.SQUARE -> { speed = dirS * spin * 0.95f; size = 250f }
+            T.SQUARE -> { speed = dirS * spin * 0.95f; size = lerp(225f, 260f, sizeVar) }
             T.SPIKES -> { speed = dirS * spin * 0.85f; size = 330f; aux = lerp(4f, 8f, d) }
             T.PEND -> { speed = dirS * lerp(70f, 120f, d) * vari; size = 330f; aux = lerp(250f, 205f, d) }
             T.CROSS -> { speed = dirS * spin * 0.8f; size = 290f; aux = 95f }
             T.GATE -> { speed = dirS * lerp(70f, 115f, d) * vari; size = 330f; aux = lerp(175f, 135f, d) }
             T.ORBIT -> { speed = dirS * spin * 0.9f; size = 270f; inner = 130f }
             T.COUNTER -> { speed = dirS * lerp(150f, 250f, d) * vari; size = 0f; aux = 120f }
+            T.ARC -> { speed = dirS * spin * 0.9f; size = lerp(280f, 330f, sizeVar); aux = lerp(125f, 90f, d) }
+            T.PULSE -> { speed = lerp(0.62f, 0.85f, d) * vari; size = 0f }
+            T.HEX -> { speed = dirS * spin * 0.9f; size = lerp(280f, 310f, sizeVar) }
+            T.LASER -> { speed = lerp(0.36f, 0.45f, d) * vari; size = 0f; aux = lerp(0.42f, 0.52f, d) }
             else -> { speed = dirS * spin * 0.9f; size = 370f }
         }
 
@@ -532,7 +604,7 @@ class Course private constructor(
         if (hard) {
             if (rnd.nextFloat() < Levels.driftProb(level)) drift = (if (rnd.nextBoolean()) 1f else -1f) * lerp(1100f, 1700f, d)
             if (rnd.nextFloat() < Levels.fadeProb(level)) fade = true
-            val rotating = type == T.RING || type == T.SQUARE || type == T.TRI || type == T.SPIKES || type == T.CROSS || type == T.ORBIT
+            val rotating = type == T.RING || type == T.ARC || type == T.HEX || type == T.SQUARE || type == T.TRI || type == T.SPIKES || type == T.CROSS || type == T.ORBIT
             val pw = if (type == T.SPIKES && level > 100) max(0.9f, Levels.wobProb(level)) else Levels.wobProb(level)
             if (rotating && rnd.nextFloat() < pw) wob = lerp(25f, 40f, d)
         }
