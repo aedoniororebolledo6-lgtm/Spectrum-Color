@@ -1321,6 +1321,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val m = match
         val status = when {
             m == null -> ""
+            m.badVersion -> "Versiones distintas"
             m.phase == Match.Phase.CLOSED -> "El jugador se fue"
             m.connected -> "¡${m.oppName} se unió!"
             else -> "Esperando jugador" + dots()
@@ -1328,6 +1329,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val cy = top + 480f
         Gl.panel(c, 110f, cy - 150f, 970f, cy + 150f, 70f, 1f, pal[0])
         Gl.textFit(c, status, 540f, cy + 14f, 60f, 800f, Gl.medium, Gl.white(245))
+        if (m != null && m.badVersion) {
+            Gl.text(c, "Actualiza la app en los dos celulares", 540f, cy + 90f, 34f, Gl.regular, Gl.white(170))
+        }
         if (m != null && !m.connected && m.phase != Match.Phase.CLOSED) {
             Gl.text(c, "Dile a tu amigo que toque \"Unirse\"", 540f, cy + 90f, 34f, Gl.regular, Gl.white(170))
         }
@@ -1359,7 +1363,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             return
         }
         if (m != null && m.phase == Match.Phase.CLOSED) {
-            Gl.text(c, "El anfitrión se fue", 540f, top + 560f, 52f, Gl.medium, Gl.white(220))
+            if (m.badVersion) {
+                Gl.text(c, "Versiones distintas del juego", 540f, top + 540f, 48f, Gl.medium, Gl.white(220))
+                Gl.text(c, "Actualiza Spectrum Color en los dos celulares", 540f, top + 610f, 32f, Gl.regular, Gl.white(170))
+            } else {
+                Gl.text(c, "El anfitrión se fue", 540f, top + 560f, 52f, Gl.medium, Gl.white(220))
+            }
             return
         }
         val status = if (connecting) netStatus else if (netStatus.isNotEmpty()) netStatus else "Buscando salas en tu Wi-Fi" + dots()

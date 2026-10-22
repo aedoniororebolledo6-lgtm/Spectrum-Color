@@ -57,15 +57,22 @@ class Match(
     companion object {
         const val NEXT_ROUND_DELAY_MS = 4500L
         val ROUND_OPTIONS = intArrayOf(1, 3, 5)
+
+        /** Sube cuando cambia la forma de generar los recorridos: dos celulares con versiones distintas no se pueden emparejar. */
+        const val PROTO = 3
     }
 
     /** Llamar al conectarse el socket. El invitado se presenta primero. */
     fun onConnected() {
-        if (!isHost) send("HELLO|$myName")
+        if (!isHost) send("HELLO|$myName|$PROTO")
     }
 
     /** true si el rival se fue (aunque la partida ya hubiera terminado). */
     var oppLeft = false
+        private set
+
+    /** true si la sala se cerró porque las dos apps son de versiones distintas. */
+    var badVersion = false
         private set
 
     fun onClosed() {
@@ -147,11 +154,27 @@ class Match(
         val p = line.split("|")
         when (p[0]) {
             "HELLO" -> if (isHost) {
+                if ((p.getOrNull(2)?.toIntOrNull() ?: 0) != PROTO) {
+                    badVersion = true
+                    send("BADVER|$PROTO")
+                    onClosed()
+                    return
+                }
                 oppName = NetUtil.clean(p.getOrElse(1) { "Rival" })
                 connected = true
-                send("WELCOME|$myName|$rounds")
+                send("WELCOME|$myName|$rounds|$PROTO")
+            }
+            "BADVER" -> {
+                badVersion = true
+                onClosed()
             }
             "WELCOME" -> if (!isHost) {
+                if ((p.getOrNull(3)?.toIntOrNull() ?: 0) != PROTO) {
+                    badVersion = true
+                    send("BADVER|$PROTO")
+                    onClosed()
+                    return
+                }
                 oppName = NetUtil.clean(p.getOrElse(1) { "Anfitrión" })
                 rounds = (p.getOrNull(2)?.toIntOrNull() ?: 3).coerceIn(1, 9)
                 connected = true
