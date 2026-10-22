@@ -70,6 +70,7 @@ object Gl {
         spacing: Float = 0f, shader: Shader? = null, glowColor: Int = 0,
         align: Paint.Align = Paint.Align.CENTER
     ) {
+        val str = I18n.t(s)
         val pp = p()
         pp.textAlign = align
         pp.textSize = size
@@ -78,7 +79,7 @@ object Gl {
         pp.color = color
         if (shader != null) pp.shader = shader
         if (glowColor != 0) pp.setShadowLayer(size * 0.25f, 0f, 0f, glowColor)
-        c.drawText(s, x, y, pp)
+        c.drawText(str, x, y, pp)
     }
 
     fun textWidth(s: String, size: Float, tf: Typeface, spacing: Float = 0f): Float {
@@ -86,7 +87,7 @@ object Gl {
         pp.textSize = size
         pp.typeface = tf
         pp.letterSpacing = spacing
-        return pp.measureText(s)
+        return pp.measureText(I18n.t(s))
     }
 
     /** Texto que se achica solo si no cabe en maxW. */

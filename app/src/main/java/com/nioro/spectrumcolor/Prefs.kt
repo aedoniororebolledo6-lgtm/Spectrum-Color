@@ -46,8 +46,19 @@ class Prefs(context: Context) {
         get() = sp.getInt("skin", 0)
         set(v) { sp.edit().putInt("skin", v).apply() }
 
+    /** Tema de fondo (0 = clásico, 1 = rojo, 2 = morado, 3 = rosa). */
+    var theme: Int
+        get() = sp.getInt("theme", 0).coerceIn(0, Themes.COUNT - 1)
+        set(v) { sp.edit().putInt("theme", v).apply() }
+
+    /** Idioma: 0 = español, 1 = inglés, 2 = ruso. */
+    var lang: Int
+        get() = sp.getInt("lang", I18n.systemDefault()).coerceIn(0, 2)
+        set(v) { sp.edit().putInt("lang", v).apply() }
+
+    /** Solo existe en la versión de desarrollador; en la normal siempre es falso. */
     var allOpen: Boolean
-        get() = sp.getBoolean("allOpen", false)
+        get() = BuildConfig.DEV && sp.getBoolean("allOpen", false)
         set(v) { sp.edit().putBoolean("allOpen", v).apply() }
 
     var name: String

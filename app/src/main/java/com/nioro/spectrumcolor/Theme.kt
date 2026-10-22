@@ -38,3 +38,25 @@ object Worlds {
         intArrayOf(0xFF05060F.toInt(), 0xFF0D1030.toInt(), 0xFF1A1245.toInt())
     )
 }
+
+/** Temas de fondo elegibles en Ajustes. El 0 usa el degradado propio de cada mundo. */
+object Themes {
+    const val COUNT = 4
+    val names = arrayOf("Clásico", "Rojo", "Morado", "Rosa")
+
+    /** Arriba, medio, abajo (el tema 0 no lo usa). */
+    val bg: Array<IntArray> = arrayOf(
+        intArrayOf(0xFF050816.toInt(), 0xFF0B1230.toInt(), 0xFF170F3C.toInt()),
+        intArrayOf(0xFF1A0508.toInt(), 0xFF35090F.toInt(), 0xFF5E1119.toInt()),
+        intArrayOf(0xFF0C0524.toInt(), 0xFF22104A.toInt(), 0xFF3F1B7A.toInt()),
+        intArrayOf(0xFF1F0615.toInt(), 0xFF45102F.toInt(), 0xFF7A1A53.toInt())
+    )
+
+    /** Colores de los resplandores del fondo y de los paneles en los menús. */
+    val glow: Array<IntArray> = arrayOf(
+        Worlds.colors[0],
+        intArrayOf(0xFFFF4D5E.toInt(), 0xFFFF8A4D.toInt(), 0xFFFF2B6B.toInt(), 0xFFFFB84D.toInt()),
+        intArrayOf(0xFF9A6BFF.toInt(), 0xFF6B7BFF.toInt(), 0xFFD04DFF.toInt(), 0xFF4DB8FF.toInt()),
+        intArrayOf(0xFFFF4FB8.toInt(), 0xFFFF8AD0.toInt(), 0xFFFF5F8A.toInt(), 0xFFD84DFF.toInt())
+    )
+}

@@ -2,7 +2,8 @@ package com.nioro.spectrumcolor
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.MediaPlayer
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.SoundPool
 
 object Sfx {
@@ -23,7 +24,7 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     private var pool: SoundPool? = null
     private val sid = IntArray(Sfx.N)
     private val ready = HashSet<Int>()
-    private var mp: MediaPlayer? = null
+    private var mp: AudioTrack? = null
     private var track = -1
     private var paused = false
 
@@ -92,7 +93,7 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
         }
         try {
             val v = prefs.musicVol * 0.85f
-            m.setVolume(v, v)
+            m.setVolume(v)
         } catch (e: Exception) {
             releasePlayer()
         }
@@ -101,7 +102,7 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     fun onPause() {
         paused = true
         try {
-            mp?.let { if (it.isPlaying) it.pause() }
+            mp?.let { if (it.playState == AudioTrack.PLAYSTATE_PLAYING) it.pause() }
         } catch (e: Exception) {
             releasePlayer()
         }
@@ -114,8 +115,8 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
             val m = mp
             if (m == null) {
                 if (track >= 0) startPlayer()
-            } else if (!m.isPlaying) {
-                m.start()
+            } else if (m.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                m.play()
             }
         } catch (e: Exception) {
             releasePlayer()
@@ -131,16 +132,58 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
         pool = null
     }
 
+    /** Lee un WAV PCM 16 bit mono/estéreo de res/raw y devuelve (muestras, frecuencia, canales). */
+    private fun readWav(res: Int): Triple<ShortArray, Int, Int>? {
+        val bytes = ctx.resources.openRawResource(res).use { it.readBytes() }
+        var p = 12
+        var rate = 22050
+        var ch = 1
+        while (p + 8 <= bytes.size) {
+            val id = String(bytes, p, 4, Charsets.US_ASCII)
+            val len = (bytes[p + 4].toInt() and 255) or ((bytes[p + 5].toInt() and 255) shl 8) or
+                ((bytes[p + 6].toInt() and 255) shl 16) or ((bytes[p + 7].toInt() and 255) shl 24)
+            if (id == "fmt ") {
+                ch = (bytes[p + 10].toInt() and 255) or ((bytes[p + 11].toInt() and 255) shl 8)
+                rate = (bytes[p + 12].toInt() and 255) or ((bytes[p + 13].toInt() and 255) shl 8) or
+                    ((bytes[p + 14].toInt() and 255) shl 16) or ((bytes[p + 15].toInt() and 255) shl 24)
+            } else if (id == "data") {
+                val n = minOf(len, bytes.size - p - 8) / 2
+                val out = ShortArray(n)
+                var q = p + 8
+                for (i in 0 until n) {
+                    out[i] = ((bytes[q].toInt() and 255) or (bytes[q + 1].toInt() shl 8)).toShort()
+                    q += 2
+                }
+                return Triple(out, rate, ch)
+            }
+            p += 8 + len + (len and 1)
+        }
+        return null
+    }
+
+    /** Bucle sin corte: el WAV completo en memoria y AudioTrack repitiéndolo (MediaPlayer deja un hueco al reiniciar). */
     private fun startPlayer() {
         try {
             val res = if (track == 0) R.raw.music_menu else R.raw.music_game
-            val m = MediaPlayer.create(ctx, res) ?: return
-            m.isLooping = true
+            val (pcm, rate, ch) = readWav(res) ?: return
+            val mask = if (ch == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val fmt = AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(rate)
+                .setChannelMask(mask)
+                .build()
+            val t = AudioTrack(attrs, fmt, pcm.size * 2, AudioTrack.MODE_STATIC, android.media.AudioManager.AUDIO_SESSION_ID_GENERATE)
+            t.write(pcm, 0, pcm.size)
+            t.setLoopPoints(0, pcm.size / ch, -1)
             val v = prefs.musicVol * 0.85f
-            m.setVolume(v, v)
-            if (!paused) m.start()
-            mp = m
-        } catch (e: Exception) {
+            t.setVolume(v)
+            if (!paused) t.play()
+            mp = t
+        } catch (e: Throwable) {
             mp = null
         }
     }

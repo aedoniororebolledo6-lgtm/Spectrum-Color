@@ -43,7 +43,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -59,7 +59,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private class Room(val name: String, val ip: String, val port: Int, var seen: Long)
 
     private val gold = 0xFFFFD84D.toInt()
-    private val prefs = Prefs(context)
+    private val prefs = Prefs(context).also { I18n.lang = it.lang }
     private val audio = Audio(context, prefs)
     private val rnd = Random(System.nanoTime())
     private val handler = Handler(Looper.getMainLooper())
@@ -109,9 +109,32 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var time = 0f
 
     // ---- navegación ----
+    private var scrT0 = -10f
+    private var scrDir = 1
+    private var ovT0 = -10f
+    private var uiIdx = 0
+    private fun depthOf(s: Scr): Int = when (s) {
+        Scr.HOME -> 0
+        Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> 1
+        Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN -> 2
+        Scr.PLAY -> 3
+    }
     private var scr = Scr.HOME
+        set(v) {
+            if (field != v) {
+                scrDir = if (depthOf(v) >= depthOf(field)) 1 else -1
+                field = v
+                scrT0 = time
+            }
+        }
     private var mode = Mode.LEVEL
     private var ov = Ov.NONE
+        set(v) {
+            if (field != v) {
+                field = v
+                ovT0 = time
+            }
+        }
     private var level = 1
     private var levelPage = 0
     private val hits = ArrayList<Hit>()
@@ -254,6 +277,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         when (scr) {
             Scr.HOME -> return false
             Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> goHome()
+            Scr.THEMES -> scr = Scr.SETTINGS
             Scr.MP_HOST, Scr.MP_JOIN -> {
                 leaveMp()
                 scr = Scr.MP_MENU
@@ -378,9 +402,17 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val k = id.substring(5).toIntOrNull() ?: return
                 if (k in Skins.names.indices && skinOpen(k)) prefs.skin = k
             }
-            id == "quit" -> api.quit()
+            id == "ttheme" -> scr = Scr.THEMES
+            id.startsWith("theme:") -> {
+                val k = id.substring(6).toIntOrNull() ?: return
+                if (k in 0 until Themes.COUNT) prefs.theme = k
+            }
+            id == "tlang" -> {
+                prefs.lang = (prefs.lang + 1) % 3
+                I18n.lang = prefs.lang
+            }
             id == "update" -> {
-                if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/SpectrumColor.apk")
+                if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/" + (if (BuildConfig.DEV) "SpectrumColorDev.apk" else "SpectrumColor.apk"))
                 else checkUpdate()
             }
             id == "back" -> onBack()
@@ -401,8 +433,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 haptic(HapticFeedbackConstants.VIRTUAL_KEY)
             }
             id == "teasy" -> prefs.easy = !prefs.easy
-            id == "tname" || id == "mp_name" -> api.prompt("Tu nombre", prefs.name, "Nombre") { prefs.name = it }
-            id == "topen" -> prefs.allOpen = !prefs.allOpen
+            id == "tname" || id == "mp_name" -> api.prompt(I18n.t("Tu nombre"), prefs.name, I18n.t("Nombre")) { prefs.name = it }
+            id == "topen" -> if (BuildConfig.DEV) prefs.allOpen = !prefs.allOpen
             id == "treset" -> {
                 if (time - resetArmedAt < 3f) {
                     prefs.resetProgress()
@@ -438,7 +470,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 }
             }
             id == "mp_start" -> match?.hostStart()
-            id == "mp_ip" -> api.prompt("IP del anfitrión", "", "Ejemplo: 192.168.1.20") { joinTyped(it) }
+            id == "mp_ip" -> api.prompt(I18n.t("IP del anfitrión"), "", I18n.t("Ejemplo: 192.168.1.20")) { joinTyped(it) }
             id.startsWith("room:") -> {
                 val parts2 = id.substring(5).split(":")
                 if (parts2.size == 2) joinRoom(parts2[0], parts2[1].toIntOrNull() ?: NetCfg.TCP_PORT)
@@ -947,40 +979,74 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         else -> 0
     }
 
-    private fun cur(): IntArray = Worlds.colors[curWorld().coerceIn(0, Worlds.colors.size - 1)]
+    private fun cur(): IntArray {
+        val th = prefs.theme
+        if (th != 0 && scr != Scr.PLAY && scr != Scr.LEVELS) return Themes.glow[th]
+        return Worlds.colors[curWorld().coerceIn(0, Worlds.colors.size - 1)]
+    }
+
+    private fun easeOut(a: Float): Float {
+        val u = 1f - a.coerceIn(0f, 1f)
+        return 1f - u * u * u
+    }
+
+    /** Resorte suave (como las ventanas de iOS): pasa un poco de 1 y se asienta. */
+    private fun spring(a: Float): Float {
+        val x = a.coerceIn(0f, 1f)
+        val k = 1.9f
+        val u = x - 1f
+        return 1f + (k + 1f) * u * u * u + k * u * u
+    }
 
     private fun drawAll(c: Canvas) {
-        when (scr) {
-            Scr.PLAY -> {
-                drawPlayWorld(c)
-                drawPlayUi(c)
+        uiIdx = 0
+        val a = ((time - scrT0) / 0.40f).coerceIn(0f, 1f)
+        val e = easeOut(a)
+        if (scr == Scr.PLAY) {
+            if (a < 1f) {
+                c.saveLayerAlpha(0f, 0f, Cfg.W, vh, (255 * e).toInt())
+                val z = 1.05f - 0.05f * e
+                c.scale(z, z, Cfg.W / 2f, vh / 2f)
             }
-            else -> {
-                drawBackground(c, 0f)
-                when (scr) {
-                    Scr.HOME -> drawHome(c)
-                    Scr.LEVELS -> drawLevels(c)
-                    Scr.SETTINGS -> drawSettings(c)
-                    Scr.SKINS -> drawSkins(c)
-                    Scr.MP_MENU -> drawMpMenu(c)
-                    Scr.MP_HOST -> drawMpHost(c)
-                    Scr.MP_JOIN -> drawMpJoin(c)
-                    else -> {}
-                }
-            }
+            drawPlayWorld(c)
+            drawPlayUi(c)
+            if (a < 1f) c.restore()
+            return
         }
+        drawBackground(c, 0f)
+        if (a < 1f) {
+            c.saveLayerAlpha(0f, 0f, Cfg.W, vh, (255 * e).toInt())
+            val z = 0.94f + 0.06f * e
+            c.translate(scrDir * (1f - e) * 110f, 0f)
+            c.scale(z, z, Cfg.W / 2f, vh / 2f)
+        }
+        when (scr) {
+            Scr.HOME -> drawHome(c)
+            Scr.LEVELS -> drawLevels(c)
+            Scr.SETTINGS -> drawSettings(c)
+            Scr.SKINS -> drawSkins(c)
+            Scr.THEMES -> drawThemes(c)
+            Scr.MP_MENU -> drawMpMenu(c)
+            Scr.MP_HOST -> drawMpHost(c)
+            Scr.MP_JOIN -> drawMpJoin(c)
+            else -> {}
+        }
+        if (a < 1f) c.restore()
     }
 
     private fun drawBackground(c: Canvas, camY: Float) {
         val w = curWorld().coerceIn(0, Worlds.bg.size - 1)
-        if (bgShader == null || bgShaderWorld != w) {
-            bgShader = LinearGradient(0f, 0f, 0f, vh, Worlds.bg[w], floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
-            bgShaderWorld = w
+        val th = prefs.theme
+        val key = w + th * 100
+        if (bgShader == null || bgShaderWorld != key) {
+            val cols = if (th == 0) Worlds.bg[w] else Themes.bg[th]
+            bgShader = LinearGradient(0f, 0f, 0f, vh, cols, floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+            bgShaderWorld = key
         }
         val pp = Gl.p()
         pp.shader = bgShader
         c.drawRect(0f, 0f, Cfg.W, vh, pp)
-        val pal = Worlds.colors[w]
+        val pal = if (th == 0) Worlds.colors[w] else Themes.glow[th]
         for (i in 0 until 4) {
             val rad = 520f + i * 60f
             val span = vh + 2f * rad
@@ -1019,6 +1085,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val s = if (pressed) 0.96f else 1f
         val hw = w / 2f * s
         val hh = h / 2f * s
+        val pa = ((time - scrT0 - uiIdx * 0.04f) / 0.42f).coerceIn(0f, 1f)
+        uiIdx++
+        val popping = pa < 1f
+        if (popping) {
+            c.saveLayerAlpha(cx - w, cy - h, cx + w, cy + h, (255 * easeOut(pa * 1.4f)).toInt())
+            val z = 0.80f + 0.20f * spring(pa)
+            c.scale(z, z, cx, cy)
+        }
         if (accent != 0 && enabled) Gl.glow(c, cx, cy, w * 0.62f, accent, if (pressed) 70 else 45)
         Gl.panel(
             c, cx - hw, cy - hh, cx + hw, cy + hh, hh,
@@ -1026,6 +1100,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (accent != 0) accent else cur()[0]
         )
         Gl.textFit(c, label, cx, cy + size * 0.35f, size, w - 60f, Gl.medium, Gl.white(if (enabled) 245 else 110))
+        if (popping) c.restore()
         if (enabled) hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
     }
 
@@ -1045,6 +1120,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         c.drawRoundRect(Gl.rect, 5f * k, 5f * k, pp)
         Gl.rect.set(x + 5f * k, y - 20f * k, x + 17f * k, y + 20f * k)
         c.drawRoundRect(Gl.rect, 5f * k, 5f * k, pp)
+    }
+
+    private fun iconGear(c: Canvas, x: Float, y: Float, r: Float) {
+        val k = r / 54f
+        for (i in 0 until 8) {
+            val a = i * 0.7853982f
+            Gl.line(c, x + cos(a) * 22f * k, y + sin(a) * 22f * k, x + cos(a) * 31f * k, y + sin(a) * 31f * k, 10f * k, Gl.white(235))
+        }
+        Gl.arc(c, x, y, 18f * k, 0f, 360f, 9f * k, Gl.white(240))
     }
 
     private fun iconChevron(c: Canvas, x: Float, y: Float, r: Float, dir: Int) {
@@ -1131,7 +1215,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun dim(c: Canvas, a: Int) {
         val pp = Gl.p()
         pp.color = Color.argb(a, 2, 4, 14)
-        c.drawRect(0f, 0f, Cfg.W, vh, pp)
+        c.drawRect(-Cfg.W, -vh, Cfg.W * 2f, vh * 2f, pp)
     }
 
     private fun title(c: Canvas, text: String, y: Float, size: Float = 60f) {
@@ -1158,13 +1242,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         iconButton(c, "skins", 950f, vh - 260f + bob, 66f) { cc, x, y, r ->
             drawBallAt(cc, x, y, r * 0.58f, pal[(time * 0.8f).toInt() % 4], effSkin(), time, false)
         }
+        Gl.glow(c, 130f, vh - 260f - bob, 120f, pal[0], 60)
+        iconButton(c, "settings", 130f, vh - 260f - bob, 66f) { cc, x, y, r -> iconGear(cc, x, y, r) }
 
-        val b0 = topI + 970f
+        val b0 = topI + 1040f
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
         button(c, "endless", "Modo infinito", 540f, b0 + 175f, 760f, 130f, 0, 50f)
         button(c, "mp", "Multijugador local", 540f, b0 + 350f, 760f, 130f, pal[1], 50f)
-        button(c, "settings", "Ajustes", 340f, b0 + 525f, 370f, 120f, 0, 46f)
-        button(c, "quit", "Salir", 740f, b0 + 525f, 370f, 120f, 0, 46f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -1256,7 +1340,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AJUSTES", top + 130f)
         val y0 = top + 330f
-        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + 1140f, 70f, 0.8f, pal[1])
+        val dev = BuildConfig.DEV
+        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + (if (dev) 1350f else 1220f), 70f, 0.8f, pal[1])
 
         settingRow(c, "Música", y0)
         toggle(c, "tmusic", 870f, y0, prefs.musicOn)
@@ -1269,18 +1354,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         settingRow(c, "Vibración", y0 + 420f)
         toggle(c, "thaptic", 870f, y0 + 420f, prefs.haptics)
 
-        settingRow(c, "Dificultad", y0 + 550f)
-        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", 800f, y0 + 550f, 300f, 100f, 0, 44f)
+        settingRow(c, "Dificultad", y0 + 545f)
+        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", 800f, y0 + 545f, 300f, 100f, 0, 44f)
 
-        settingRow(c, "Jugador", y0 + 680f)
-        button(c, "tname", prefs.name, 760f, y0 + 680f, 380f, 100f, 0, 40f)
+        settingRow(c, "Jugador", y0 + 665f)
+        button(c, "tname", prefs.name, 760f, y0 + 665f, 380f, 100f, 0, 40f)
 
-        settingRow(c, "Niveles", y0 + 810f)
-        button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 810f, 380f, 100f, 0, 40f)
+        settingRow(c, "Tema", y0 + 785f)
+        button(c, "ttheme", Themes.names[prefs.theme], 760f, y0 + 785f, 380f, 100f, Themes.glow[prefs.theme][0], 40f)
 
-        settingRow(c, "Progreso", y0 + 940f)
+        settingRow(c, "Idioma", y0 + 905f)
+        button(c, "tlang", I18n.langNames[prefs.lang], 760f, y0 + 905f, 380f, 100f, 0, 40f)
+
+        settingRow(c, "Progreso", y0 + 1025f)
         val armed = time - resetArmedAt < 3f
-        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 940f, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
+        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 1025f, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
 
         val ul = when (updState) {
             1 -> "Buscando…"
@@ -1289,10 +1377,72 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             4 -> "Sin conexión"
             else -> "Buscar"
         }
-        settingRow(c, "Actualización", y0 + 1070f)
-        button(c, "update", ul, 760f, y0 + 1070f, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
+        settingRow(c, "Actualización", y0 + 1145f)
+        button(c, "update", ul, 760f, y0 + 1145f, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
+
+        if (dev) {
+            settingRow(c, "Niveles", y0 + 1265f)
+            button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 1265f, 380f, 100f, 0, 40f)
+        }
 
         Gl.text(c, "Spectrum Color  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
+    }
+
+    private fun drawThemes(c: Canvas) {
+        val top = topI
+        iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        title(c, "TEMAS", top + 130f)
+        Gl.text(c, "Elige el color de fondo", 540f, top + 235f, 36f, Gl.regular, Gl.white(160))
+        val gy = top + 300f
+        for (t in 0 until Themes.COUNT) {
+            val cx = if (t % 2 == 0) 290f else 790f
+            val cy = gy + 320f + (t / 2) * 690f
+            val id = "theme:$t"
+            val sel = prefs.theme == t
+            val pressed = pressedId == id
+            val sc2 = if (pressed) 0.97f else 1f
+            val hw = 230f * sc2
+            val hh = 320f * sc2
+            val acc = Themes.glow[t][0]
+            if (sel) Gl.glow(c, cx, cy, 340f, acc, 70)
+            Gl.panel(c, cx - hw, cy - hh, cx + hw, cy + hh, 60f, if (sel) 1.3f else 0.9f, acc)
+            if (sel) {
+                val pb = Gl.p()
+                pb.style = Paint.Style.STROKE
+                pb.strokeWidth = 5f
+                pb.color = Gl.white(235)
+                Gl.rect.set(cx - hw, cy - hh, cx + hw, cy + hh)
+                c.drawRoundRect(Gl.rect, 60f, 60f, pb)
+            }
+            // vista previa pequeña: una "pantalla" con el degradado, resplandores, bola y botones
+            val pl = cx - 170f * sc2
+            val pr = cx + 170f * sc2
+            val pt = cy - 270f * sc2
+            val pb2 = cy + 160f * sc2
+            val cols = if (t == 0) Worlds.bg[0] else Themes.bg[t]
+            val pp = Gl.p()
+            pp.shader = LinearGradient(0f, pt, 0f, pb2, cols, floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+            Gl.rect.set(pl, pt, pr, pb2)
+            c.drawRoundRect(Gl.rect, 36f, 36f, pp)
+            c.save()
+            Gl.rect.set(pl, pt, pr, pb2)
+            val clip = android.graphics.Path()
+            clip.addRoundRect(Gl.rect, 36f, 36f, android.graphics.Path.Direction.CW)
+            c.clipPath(clip)
+            val g = Themes.glow[t]
+            Gl.glow(c, pl + 60f, pt + 90f, 150f, g[1], 70)
+            Gl.glow(c, pr - 40f, pb2 - 70f, 170f, g[0], 70)
+            Gl.text(c, "SPECTRUM", cx, pt + 70f, 34f, Gl.thin, Gl.white(235), 0.12f)
+            Gl.text(c, "COLOR", cx, pt + 112f, 38f, Gl.light, g[0], 0.25f)
+            drawBallAt(c, cx, pt + 205f + sin(time * 2f + t) * 5f, 34f, g[(time * 0.8f).toInt() % 4], effSkin(), time, true)
+            for (j in 0 until 3) {
+                val by = pt + 290f + j * 46f
+                Gl.panel(c, cx - 100f, by - 17f, cx + 100f, by + 17f, 17f, 0.9f, if (j == 0) g[0] else g[1])
+            }
+            c.restore()
+            Gl.text(c, Themes.names[t], cx, cy + 232f, 44f, Gl.medium, Gl.white(if (sel) 255 else 225), 0.05f)
+            hits.add(Hit(id, cx - 230f, cy - 320f, cx + 230f, cy + 320f))
+        }
     }
 
     private fun drawMpMenu(c: Canvas) {
@@ -2657,9 +2807,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val hb = min(viewBot, cy + h / 2f)
                 if (hb > ht) hits.add(Hit(id, cx - w / 2f, ht, cx + w / 2f, hb))
             } else {
-                drawLock(c, cx, cy - 40f, 2f, 130)
-                Gl.textFit(c, Skins.names[i], cx, cy + 62f, 32f, w - 24f, Gl.medium, Gl.white(110))
-                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 100f, 28f, Gl.regular, Gl.white(150))
+                // se ve completa, pero con una capa gris translúcida y un candado: no se puede elegir
+                drawBallAt(c, cx, cy - 50f, 52f, bc, i, time, false)
+                Gl.textFit(c, Skins.names[i], cx, cy + 36f, 32f, w - 24f, Gl.medium, Gl.white(230))
+                val gp = Gl.p()
+                gp.color = Color.argb(150, 92, 98, 116)
+                Gl.rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+                c.drawRoundRect(Gl.rect, 48f, 48f, gp)
+                drawLock(c, cx, cy + 74f, 0.95f, 235)
+                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 25f, Gl.regular, Gl.white(215))
             }
         }
         c.restore()
@@ -2757,13 +2913,29 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
         }
 
-        if (mode == Mode.MP) drawMpOverlays(c, sm, pal) else when (ov) {
-            Ov.PAUSE -> drawPause(c, pal)
-            Ov.DEAD -> drawDead(c, sm, cr, pal)
-            Ov.WIN -> drawWin(c, pal)
+        val oa = ((time - ovT0) / 0.42f).coerceIn(0f, 1f)
+        if (mode == Mode.MP) {
+            drawMpOverlays(c, sm, pal)
+            if (ov == Ov.PAUSE) popOverlay(c, oa) { drawPause(c, pal) }
+        } else when (ov) {
+            Ov.PAUSE -> popOverlay(c, oa) { drawPause(c, pal) }
+            Ov.DEAD -> popOverlay(c, oa) { drawDead(c, sm, cr, pal) }
+            Ov.WIN -> popOverlay(c, oa) { drawWin(c, pal) }
             Ov.NONE -> {}
         }
-        if (mode == Mode.MP && ov == Ov.PAUSE) drawPause(c, pal)
+    }
+
+    /** Ventanas emergentes: aparecen con un resorte suave y se desvanecen, como en iOS. */
+    private fun popOverlay(c: Canvas, a: Float, draw: () -> Unit) {
+        if (a >= 1f) {
+            draw()
+            return
+        }
+        c.saveLayerAlpha(0f, 0f, Cfg.W, vh, (255 * easeOut(a * 1.6f)).toInt())
+        val z = 0.86f + 0.14f * spring(a)
+        c.scale(z, z, Cfg.W / 2f, vh / 2f)
+        draw()
+        c.restore()
     }
 
     private fun drawPause(c: Canvas, pal: IntArray) {

@@ -90,8 +90,8 @@ class MainActivity : Activity(), HostApi {
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle(title)
                     .setView(box)
-                    .setPositiveButton("Aceptar") { _, _ -> onOk(input.text.toString()) }
-                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton(I18n.t("Aceptar")) { _, _ -> onOk(input.text.toString()) }
+                    .setNegativeButton(I18n.t("Cancelar"), null)
                     .show()
             } catch (e: Exception) {
                 // si la ventana ya se cerró, no pasa nada

@@ -29,6 +29,23 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // "normal" = versión pública; "dev" = versión de desarrollador (con el botón para abrir todos los niveles).
+    flavorDimensions += "modo"
+    productFlavors {
+        create("normal") {
+            dimension = "modo"
+            buildConfigField("boolean", "DEV", "false")
+        }
+        create("dev") {
+            dimension = "modo"
+            buildConfigField("boolean", "DEV", "true")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
