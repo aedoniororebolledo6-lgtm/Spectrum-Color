@@ -269,9 +269,13 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas").getOrElse(t) { "?" }
+
+val bestStarsTL = ThreadLocal.withInitial { 0 }
+
 class FNode(val sims: Array<Sim>, val pend: IntArray)
 
-fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxSeconds: Float = 120f, beam: Int = 6000): Pair<Boolean, Float> {
+fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxSeconds: Float = 150f, beam: Int = (System.getenv("BEAM") ?: "6000").toInt()): Pair<Boolean, Float> {
     var frontier = ArrayList<FNode>()
     frontier.add(FNode(Array(delays.size) { Sim(course, visH) }, IntArray(delays.size) { -1 }))
     val layers = (maxSeconds / (Cfg.STEP * grain)).toInt()
@@ -304,10 +308,20 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
                 if (seen.add(key)) next.add(FNode(sims, pend))
             }
         }
+        for (nd in next) if (nd.sims[0].starCount > bestStarsTL.get()) bestStarsTL.set(nd.sims[0].starCount)
         if (next.isEmpty()) return Pair(false, layer * grain * Cfg.STEP)
         if (next.size > beam) {
+            // la mitad de la franja se llena con los estados que más avanzaron (más estrellas y más arriba);
+            // la otra mitad al azar, para no perder variedad
             next.shuffle(rnd)
-            frontier = ArrayList(next.subList(0, beam))
+            val keep = beam / 2
+            val sorted = ArrayList(next)
+            sorted.sortWith(compareByDescending<FNode> { it.sims[0].starCount }.thenBy { it.sims[0].by })
+            val chosen = LinkedHashSet<FNode>()
+            for (k in 0 until keep) chosen.add(sorted[k])
+            var k = 0
+            while (chosen.size < beam && k < next.size) { chosen.add(next[k]); k++ }
+            frontier = ArrayList(chosen)
         } else {
             frontier = next
         }
@@ -365,8 +379,9 @@ fun main(args: Array<String>) {
         val out = arrayOfNulls<String>(lv.size)
         for ((idx, l) in lv.withIndex()) pool.submit {
             val t0 = System.currentTimeMillis()
+            bestStarsTL.set(0)
             val (ok, secs) = feasible(Course.level(l), 2400f, dl)
-            out[idx] = "nivel %3d  colores %d  obstáculos %2d  %s  (%.1f s de juego, %.1f s de cálculo)".format(l, Levels.colors(l), Levels.gates(l), if (ok) "POSIBLE" else "NO ENCONTRADO", secs, (System.currentTimeMillis() - t0) / 1000f)
+            out[idx] = "nivel %3d  colores %d  obstáculos %2d  %s  (%.1f s de juego, %.1f s de cálculo)%s".format(l, Levels.colors(l), Levels.gates(l), if (ok) "POSIBLE" else "NO ENCONTRADO", secs, (System.currentTimeMillis() - t0) / 1000f, if (ok) "" else "  mejor: ${bestStarsTL.get()} estrellas, se atasca en ${tname(Course.level(l).obs.getOrNull(bestStarsTL.get())?.type ?: -1)} #${bestStarsTL.get()}")
             synchronized(out) { println(out[idx]) }
         }
         pool.shutdown()

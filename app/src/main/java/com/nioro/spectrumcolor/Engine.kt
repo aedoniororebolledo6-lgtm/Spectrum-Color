@@ -42,6 +42,9 @@ object Cfg {
      */
     const val ENABLE_DOUBLE = false
 
+    /** Velocidad de la barra inferior de COUNTER respecto a la superior: distinta, para que con el tiempo coincidan todos los colores. */
+    const val COUNTER_RATIO = 0.62f
+
     const val ORB_R = 36f        // radio de las bolitas de las órbitas
     const val SPIKE_H = 22f      // altura de los pinchos
 }
@@ -143,7 +146,7 @@ object Geo {
     fun crossAng(o: Ob, t: Float, k: Int): Float = (rot(o, t) + k * 90f) * PI_F / 180f
 
     fun laneColor(o: Ob, lane: Int, x: Float, t: Float): Int {
-        val off = o.phase * 3f + (if (lane == 0) o.speed else -o.speed) * t
+        val off = o.phase * 3f + (if (lane == 0) o.speed else -o.speed * Cfg.COUNTER_RATIO) * t
         val j = floor((x - off) / Cfg.BAR_SEG).toInt()
         return (((j % o.n) + o.n) % o.n + o.shift) % o.n
     }
@@ -432,14 +435,17 @@ class Course private constructor(
         if (isLevel) {
             if (!Levels.isHard(level)) Levels.colors(level)
             else if (level <= 40) 3
-            else if (level <= 70) (if (i % 2 == 0) 4 else 3)
-            else 4
+            else if (level <= 100) (if (i % 2 == 0) 4 else 3)
+            else (if (i % 3 == 2) 3 else 4)
         } else if (g < 5) 3 else 4
 
     private fun diffFor(i: Int, g: Int): Float =
         if (isLevel) {
-            val d = Levels.difficulty(level)
-            (d * 0.94f + 0.06f * (i / gateTotal.toFloat())).coerceIn(0f, 1f)
+            // En los niveles difíciles la velocidad se queda en el tramo que la búsqueda comprobó posible;
+            // la dificultad extra viene de más obstáculos, mezclas, viento, desvanecimientos y vaivén.
+            val cap = if (Levels.isHard(level)) 0.8f else 1f
+            val d = Levels.difficulty(level) * cap
+            (d * 0.94f + 0.06f * cap * (i / gateTotal.toFloat())).coerceIn(0f, 1f)
         } else {
             min(0.85f, g / 65f)
         }
@@ -481,11 +487,13 @@ class Course private constructor(
     private fun genNext() {
         val i = obs.size
         val g = i + gateOffset
-        val n = colorsFor(i, g)
         val d = diffFor(i, g)
         val type = pickType(i, g)
         lastType = type
         val hard = isLevel && Levels.isHard(level)
+        var n = colorsFor(i, g)
+        // en los niveles difíciles solo los obstáculos con "espera natural" usan 4 colores
+        if (hard && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT) n = 3
 
         val dirS = if (rnd.nextBoolean()) 1f else -1f
         val vari = 0.92f + rnd.nextFloat() * 0.16f

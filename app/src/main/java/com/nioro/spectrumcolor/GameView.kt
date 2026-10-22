@@ -1436,7 +1436,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.ORBIT -> drawOrbit(c, o, t, pal)
             T.COUNTER -> {
                 drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
-                drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * t, pal)
+                drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * Cfg.COUNTER_RATIO * t, pal)
             }
             else -> drawPoly(c, o, t, pal)
         }
