@@ -118,6 +118,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var pressedId: String? = null
     private var dragSlider: String? = null
     private var downX = 0f
+    private var downY = 0f
+    private var lastY = 0f
+    private var dragged = false
+    private var skinScroll = 0f
+    private var skinMax = 0f
     private var resetArmedAt = -10f
 
     // ---- partida ----
@@ -358,7 +363,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 scr = Scr.MP_MENU
             }
             id == "settings" -> scr = Scr.SETTINGS
-            id == "skins" -> scr = Scr.SKINS
+            id == "skins" -> {
+                scr = Scr.SKINS
+                val row = effSkin() / 4
+                skinScroll = (row * 280f - 300f).coerceAtLeast(0f)
+            }
             id.startsWith("skin:") -> {
                 val k = id.substring(5).toIntOrNull() ?: return
                 if (k in Skins.names.indices && skinOpen(k)) prefs.skin = k
@@ -450,6 +459,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = x
+                downY = y
+                lastY = y
+                dragged = false
                 val id = hitAt(x, y)
                 pressedId = id
                 if (id != null && id.startsWith("sl:")) {
@@ -464,6 +476,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             MotionEvent.ACTION_MOVE -> {
                 if (dragSlider != null) setSlider(x)
+                if (scr == Scr.SKINS) {
+                    if (!dragged && abs(y - downY) > 22f) {
+                        dragged = true
+                        pressedId = null
+                    }
+                    if (dragged) skinScroll = (skinScroll - (y - lastY)).coerceIn(0f, skinMax)
+                    lastY = y
+                }
             }
             MotionEvent.ACTION_UP -> {
                 val id = pressedId
@@ -471,6 +491,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (dragSlider != null) {
                     dragSlider = null
                     audio.play(Sfx.CLICK)
+                } else if (scr == Scr.SKINS && dragged) {
+                    // era un deslizamiento, no un toque
                 } else if (scr == Scr.LEVELS && abs(x - downX) > 160f) {
                     levelPage = if (x < downX) min(Levels.WORLDS - 1, levelPage + 1) else max(0, levelPage - 1)
                     audio.play(Sfx.CLICK)
@@ -2000,6 +2022,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     c.drawRect(x + px[i] * q * 1.2f - q / 2f, y + py[i] * q * 1.2f - q / 2f, x + px[i] * q * 1.2f + q / 2f, y + py[i] * q * 1.2f + q / 2f, pp)
                 }
             }
+            in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -2076,6 +2099,253 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         c.drawOval(Gl.rect, pp)
     }
 
+    private fun pw(a: Int): Paint {
+        val p = Gl.p()
+        p.color = Gl.white(a)
+        return p
+    }
+
+    private fun pk(color: Int): Paint {
+        val p = Gl.p()
+        p.color = color
+        return p
+    }
+
+    private fun ps(a: Int, w: Float): Paint {
+        val p = Gl.p()
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = w
+        p.strokeCap = Paint.Cap.ROUND
+        p.strokeJoin = Paint.Join.ROUND
+        p.color = Gl.white(a)
+        return p
+    }
+
+    /** Dibujos de las apariencias 20..39 (dentro de la bola, ya recortada). */
+    private fun drawSkinIcon(c: Canvas, x: Float, y: Float, r: Float, skin: Int, col: Int, tm: Float) {
+        val dark = Color.argb(185, 10, 14, 30)
+        val path = Gl.path
+        when (skin) {
+            20 -> { // voleibol
+                Gl.arc(c, x - r * 0.95f, y - r * 0.15f, r * 1.0f, -42f, 84f, r * 0.09f, Gl.white(200))
+                Gl.arc(c, x + r * 0.2f, y + r * 1.05f, r * 1.05f, 205f, 80f, r * 0.09f, Gl.white(200))
+                Gl.arc(c, x + r * 0.55f, y - r * 0.95f, r * 1.05f, 100f, 75f, r * 0.09f, Gl.white(200))
+            }
+            21 -> { // cápsula
+                Gl.rect.set(x - r, y - r * 0.11f, x + r, y + r * 0.11f)
+                c.drawRect(Gl.rect, pk(dark))
+                c.drawCircle(x, y, r * 0.28f, pk(Gl.darken(col, 0.35f)))
+                c.drawCircle(x, y, r * 0.28f, ps(230, r * 0.07f))
+                c.drawCircle(x, y, r * 0.12f, pw(230))
+            }
+            22 -> { // flechas hacia afuera
+                for (k in 0 until 4) {
+                    val a = (45.0 + k * 90.0) * Math.PI / 180.0
+                    val ca = cos(a).toFloat()
+                    val sa = sin(a).toFloat()
+                    val x0 = x + ca * r * 0.16f
+                    val y0 = y + sa * r * 0.16f
+                    val x1 = x + ca * r * 0.6f
+                    val y1 = y + sa * r * 0.6f
+                    Gl.line(c, x0, y0, x1, y1, r * 0.09f, Gl.white(220))
+                    for (sgn in intArrayOf(-1, 1)) {
+                        val b = a + Math.PI + sgn * 0.7
+                        Gl.line(c, x1, y1, x1 + (cos(b) * r * 0.22f).toFloat(), y1 + (sin(b) * r * 0.22f).toFloat(), r * 0.09f, Gl.white(220))
+                    }
+                }
+            }
+            23 -> { // calabaza
+                for (sgn in intArrayOf(-1, 1)) {
+                    path.reset()
+                    path.moveTo(x + sgn * r * 0.34f, y - r * 0.32f)
+                    path.lineTo(x + sgn * r * 0.14f, y - r * 0.02f)
+                    path.lineTo(x + sgn * r * 0.5f, y - r * 0.02f)
+                    path.close()
+                    c.drawPath(path, pk(dark))
+                }
+                path.reset()
+                path.moveTo(x - r * 0.5f, y + r * 0.2f)
+                var up = false
+                var px = x - r * 0.5f
+                while (px < x + r * 0.5f) {
+                    px += r * 0.125f
+                    path.lineTo(px, y + r * (if (up) 0.2f else 0.4f))
+                    up = !up
+                }
+                c.drawPath(path, ps(255, r * 0.09f).also { it.color = dark })
+            }
+            24 -> { // claqueta
+                Gl.rect.set(x - r * 0.5f, y - r * 0.05f, x + r * 0.5f, y + r * 0.45f)
+                c.drawRoundRect(Gl.rect, r * 0.06f, r * 0.06f, pw(205))
+                Gl.rect.set(x - r * 0.52f, y - r * 0.42f, x + r * 0.52f, y - r * 0.12f)
+                c.drawRoundRect(Gl.rect, r * 0.05f, r * 0.05f, pw(235))
+                for (k in 0 until 3) {
+                    val sx = x - r * 0.34f + k * r * 0.3f
+                    Gl.line(c, sx, y - r * 0.12f, sx + r * 0.14f, y - r * 0.42f, r * 0.07f, dark)
+                }
+            }
+            25 -> { // bomba
+                c.drawCircle(x - r * 0.05f, y + r * 0.14f, r * 0.42f, pk(dark))
+                Gl.line(c, x + r * 0.2f, y - r * 0.2f, x + r * 0.38f, y - r * 0.5f, r * 0.07f, Gl.white(220))
+                val k = 0.5f + 0.5f * sin(tm * 8f)
+                c.drawCircle(x + r * 0.42f, y - r * 0.56f, r * (0.08f + 0.05f * k), pw(250))
+                Gl.arc(c, x - r * 0.05f, y + r * 0.14f, r * 0.28f, 200f, 60f, r * 0.05f, Gl.white(150))
+            }
+            26 -> { // hongo
+                Gl.rect.set(x - r * 0.55f, y - r * 0.5f, x + r * 0.55f, y + r * 0.3f)
+                c.drawArc(Gl.rect, 180f, 180f, true, pw(215))
+                Gl.rect.set(x - r * 0.2f, y - r * 0.02f, x + r * 0.2f, y + r * 0.5f)
+                c.drawRoundRect(Gl.rect, r * 0.08f, r * 0.08f, pw(235))
+                c.drawCircle(x - r * 0.25f, y - r * 0.2f, r * 0.09f, pk(Gl.darken(col, 0.4f)))
+                c.drawCircle(x + r * 0.22f, y - r * 0.25f, r * 0.07f, pk(Gl.darken(col, 0.4f)))
+                c.drawCircle(x + r * 0.02f, y - r * 0.08f, r * 0.06f, pk(Gl.darken(col, 0.4f)))
+            }
+            27 -> { // pergamino
+                Gl.rect.set(x - r * 0.34f, y - r * 0.48f, x + r * 0.34f, y + r * 0.48f)
+                c.drawRoundRect(Gl.rect, r * 0.08f, r * 0.08f, pw(215))
+                for (k in 0 until 4) Gl.line(c, x - r * 0.2f, y - r * 0.28f + k * r * 0.19f, x + r * 0.2f, y - r * 0.28f + k * r * 0.19f, r * 0.05f, dark)
+                c.drawCircle(x - r * 0.34f, y - r * 0.48f, r * 0.1f, pw(240))
+                c.drawCircle(x + r * 0.34f, y + r * 0.48f, r * 0.1f, pw(240))
+            }
+            28 -> { // enfoque
+                for (sx in intArrayOf(-1, 1)) for (sy in intArrayOf(-1, 1)) {
+                    val cx = x + sx * r * 0.52f
+                    val cy = y + sy * r * 0.52f
+                    Gl.line(c, cx, cy, cx, cy - sy * r * 0.26f, r * 0.08f, Gl.white(225))
+                    Gl.line(c, cx, cy, cx - sx * r * 0.26f, cy, r * 0.08f, Gl.white(225))
+                }
+                c.drawCircle(x, y, r * 0.17f, ps(230, r * 0.07f))
+            }
+            29 -> { // flor
+                for (k in 0 until 5) {
+                    val a = (-90.0 + k * 72.0) * Math.PI / 180.0
+                    c.drawCircle(x + (cos(a) * r * 0.3f).toFloat(), y + (sin(a) * r * 0.3f).toFloat(), r * 0.22f, pw(205))
+                }
+                c.drawCircle(x, y, r * 0.15f, pk(Gl.darken(col, 0.45f)))
+            }
+            30 -> { // escudo
+                path.reset()
+                path.moveTo(x - r * 0.42f, y - r * 0.46f)
+                path.lineTo(x + r * 0.42f, y - r * 0.46f)
+                path.lineTo(x + r * 0.42f, y + r * 0.04f)
+                path.quadTo(x + r * 0.42f, y + r * 0.38f, x, y + r * 0.56f)
+                path.quadTo(x - r * 0.42f, y + r * 0.38f, x - r * 0.42f, y + r * 0.04f)
+                path.close()
+                c.drawPath(path, pw(90))
+                c.drawPath(path, ps(230, r * 0.07f))
+                path.reset()
+                path.moveTo(x, y - r * 0.46f)
+                path.lineTo(x + r * 0.42f, y - r * 0.46f)
+                path.lineTo(x + r * 0.42f, y + r * 0.04f)
+                path.quadTo(x + r * 0.42f, y + r * 0.38f, x, y + r * 0.56f)
+                path.close()
+                c.drawPath(path, pk(dark))
+            }
+            31 -> { // trofeo
+                path.reset()
+                path.moveTo(x - r * 0.4f, y - r * 0.46f)
+                path.lineTo(x + r * 0.4f, y - r * 0.46f)
+                path.lineTo(x + r * 0.24f, y + r * 0.08f)
+                path.lineTo(x - r * 0.24f, y + r * 0.08f)
+                path.close()
+                c.drawPath(path, pw(225))
+                Gl.rect.set(x - r * 0.07f, y + r * 0.06f, x + r * 0.07f, y + r * 0.3f)
+                c.drawRect(Gl.rect, pw(225))
+                Gl.rect.set(x - r * 0.3f, y + r * 0.28f, x + r * 0.3f, y + r * 0.44f)
+                c.drawRoundRect(Gl.rect, r * 0.05f, r * 0.05f, pw(235))
+                Gl.arc(c, x - r * 0.42f, y - r * 0.28f, r * 0.17f, 90f, 180f, r * 0.06f, Gl.white(210))
+                Gl.arc(c, x + r * 0.42f, y - r * 0.28f, r * 0.17f, 270f, 180f, r * 0.06f, Gl.white(210))
+            }
+            32 -> { // mariposa
+                for (sgn in intArrayOf(-1, 1)) {
+                    c.save()
+                    c.rotate(sgn * 24f, x + sgn * r * 0.3f, y - r * 0.15f)
+                    Gl.rect.set(x + sgn * r * 0.3f - r * 0.26f, y - r * 0.15f - r * 0.3f, x + sgn * r * 0.3f + r * 0.26f, y - r * 0.15f + r * 0.3f)
+                    c.drawOval(Gl.rect, pw(210))
+                    c.restore()
+                    Gl.rect.set(x + sgn * r * 0.22f - r * 0.18f, y + r * 0.2f - r * 0.2f, x + sgn * r * 0.22f + r * 0.18f, y + r * 0.2f + r * 0.2f)
+                    c.drawOval(Gl.rect, pw(170))
+                }
+                Gl.line(c, x, y - r * 0.4f, x, y + r * 0.42f, r * 0.08f, dark)
+            }
+            33 -> { // alerta
+                path.reset()
+                path.moveTo(x, y - r * 0.5f)
+                path.lineTo(x + r * 0.5f, y + r * 0.4f)
+                path.lineTo(x - r * 0.5f, y + r * 0.4f)
+                path.close()
+                c.drawPath(path, pw(225))
+                Gl.line(c, x, y - r * 0.12f, x, y + r * 0.14f, r * 0.09f, dark)
+                c.drawCircle(x, y + r * 0.27f, r * 0.06f, pk(dark))
+            }
+            34 -> { // corona
+                path.reset()
+                path.moveTo(x - r * 0.46f, y + r * 0.3f)
+                path.lineTo(x - r * 0.46f, y - r * 0.28f)
+                path.lineTo(x - r * 0.22f, y - r * 0.02f)
+                path.lineTo(x, y - r * 0.4f)
+                path.lineTo(x + r * 0.22f, y - r * 0.02f)
+                path.lineTo(x + r * 0.46f, y - r * 0.28f)
+                path.lineTo(x + r * 0.46f, y + r * 0.3f)
+                path.close()
+                c.drawPath(path, pw(225))
+                Gl.rect.set(x - r * 0.46f, y + r * 0.16f, x + r * 0.46f, y + r * 0.3f)
+                c.drawRect(Gl.rect, pk(dark))
+            }
+            35 -> { // equilibrio (yin-yang)
+                Gl.rect.set(x - r * 0.6f, y - r * 0.6f, x + r * 0.6f, y + r * 0.6f)
+                c.drawArc(Gl.rect, 90f, 180f, true, pw(215))
+                c.drawCircle(x, y - r * 0.3f, r * 0.3f, pw(215))
+                c.drawCircle(x, y + r * 0.3f, r * 0.3f, pk(Gl.darken(col, 0.45f)))
+                c.drawCircle(x, y - r * 0.3f, r * 0.08f, pk(Gl.darken(col, 0.45f)))
+                c.drawCircle(x, y + r * 0.3f, r * 0.08f, pw(230))
+            }
+            36 -> { // hoja
+                path.reset()
+                path.moveTo(x - r * 0.42f, y + r * 0.42f)
+                path.quadTo(x - r * 0.5f, y - r * 0.5f, x + r * 0.46f, y - r * 0.46f)
+                path.quadTo(x + r * 0.5f, y + r * 0.5f, x - r * 0.42f, y + r * 0.42f)
+                path.close()
+                c.drawPath(path, pw(210))
+                Gl.line(c, x - r * 0.4f, y + r * 0.4f, x + r * 0.3f, y - r * 0.3f, r * 0.06f, dark)
+            }
+            37 -> { // copo de nieve
+                for (k in 0 until 3) {
+                    val a = (k * 60.0) * Math.PI / 180.0
+                    val ca = cos(a).toFloat()
+                    val sa = sin(a).toFloat()
+                    Gl.line(c, x - ca * r * 0.62f, y - sa * r * 0.62f, x + ca * r * 0.62f, y + sa * r * 0.62f, r * 0.07f, Gl.white(225))
+                    for (e in intArrayOf(-1, 1)) {
+                        val ex = x + e * ca * r * 0.4f
+                        val ey = y + e * sa * r * 0.4f
+                        for (sg in intArrayOf(-1, 1)) {
+                            val b = a + sg * 0.9 + (if (e < 0) Math.PI else 0.0)
+                            Gl.line(c, ex, ey, ex + (cos(b) * r * 0.16f).toFloat(), ey + (sin(b) * r * 0.16f).toFloat(), r * 0.05f, Gl.white(200))
+                        }
+                    }
+                }
+            }
+            38 -> { // gota
+                path.reset()
+                path.moveTo(x, y - r * 0.52f)
+                path.cubicTo(x + r * 0.52f, y + r * 0.08f, x + r * 0.34f, y + r * 0.52f, x, y + r * 0.52f)
+                path.cubicTo(x - r * 0.34f, y + r * 0.52f, x - r * 0.52f, y + r * 0.08f, x, y - r * 0.52f)
+                path.close()
+                c.drawPath(path, pw(210))
+                Gl.arc(c, x, y + r * 0.12f, r * 0.26f, 120f, 60f, r * 0.05f, dark)
+            }
+            39 -> { // luna creciente
+                val a = Path()
+                a.addCircle(x, y, r * 0.48f, Path.Direction.CW)
+                val b = Path()
+                b.addCircle(x + r * 0.24f, y - r * 0.1f, r * 0.4f, Path.Direction.CW)
+                a.op(b, Path.Op.DIFFERENCE)
+                c.drawPath(a, pw(225))
+                c.drawCircle(x + r * 0.4f, y + r * 0.28f, r * 0.05f, pw(220))
+            }
+        }
+    }
+
     // ---- menú de apariencias ----
 
     private fun drawSkins(c: Canvas) {
@@ -2093,9 +2363,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val w = 240f
         val h = 262f
         val gy = top + 650f
+        val viewBot = vh - 150f
+        val rows = (Skins.names.size + 3) / 4
+        skinMax = max(0f, rows * (h + 18f) - 18f - (viewBot - gy))
+        skinScroll = skinScroll.coerceIn(0f, skinMax)
+        c.save()
+        c.clipRect(0f, gy - 12f, Cfg.W, viewBot)
         for (i in Skins.names.indices) {
             val cx = 135f + (i % 4) * 270f
-            val cy = gy + h / 2f + (i / 4) * (h + 18f)
+            val cy = gy + h / 2f + (i / 4) * (h + 18f) - skinScroll
+            if (cy + h / 2f < gy - 12f || cy - h / 2f > viewBot) continue
             val open = skinOpen(i)
             val id = "skin:$i"
             val pressed = open && pressedId == id
@@ -2117,12 +2394,23 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (open) {
                 drawBallAt(c, cx, cy - 32f, 56f, bc, i, time, false)
                 Gl.textFit(c, Skins.names[i], cx, cy + 82f, 34f, w - 24f, Gl.medium, Gl.white(240))
-                hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
+                val ht = max(gy, cy - h / 2f)
+                val hb = min(viewBot, cy + h / 2f)
+                if (hb > ht) hits.add(Hit(id, cx - w / 2f, ht, cx + w / 2f, hb))
             } else {
                 drawLock(c, cx, cy - 40f, 2f, 130)
                 Gl.textFit(c, Skins.names[i], cx, cy + 62f, 32f, w - 24f, Gl.medium, Gl.white(110))
                 Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 100f, 28f, Gl.regular, Gl.white(150))
             }
+        }
+        c.restore()
+        // indicador de desplazamiento
+        if (skinMax > 0f) {
+            val trackH = viewBot - gy
+            val barH = max(60f, trackH * trackH / (trackH + skinMax))
+            val by0 = gy + (trackH - barH) * (skinScroll / skinMax)
+            Gl.rect.set(Cfg.W - 10f, by0, Cfg.W - 4f, by0 + barH)
+            c.drawRoundRect(Gl.rect, 3f, 3f, pw(70))
         }
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}", 540f, vh - 90f,
@@ -2270,26 +2558,27 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         dim(c, 140)
         val cy = vh / 2f
         val last = level >= Levels.PLAYABLE
-        Gl.panel(c, 100f, cy - 520f, 980f, cy + 520f, 70f, 1f, pal[0])
-        Gl.textFit(c, "¡NIVEL COMPLETADO!", 540f, cy - 380f, 64f, 780f, Gl.medium, Gl.white(245), 0.08f)
-        Gl.text(c, "Nivel $level", 540f, cy - 305f, 42f, Gl.regular, Gl.white(180))
+        // panel centrado: los botones quedan dentro con el mismo margen arriba y abajo
+        Gl.panel(c, 100f, cy - 480f, 980f, cy + 490f, 70f, 1f, pal[0])
+        Gl.textFit(c, "¡NIVEL COMPLETADO!", 540f, cy - 355f, 64f, 780f, Gl.medium, Gl.white(245), 0.08f)
+        Gl.text(c, "Nivel $level", 540f, cy - 285f, 42f, Gl.regular, Gl.white(180))
         for (k in 0 until 3) {
             val on = k < earnedStars
             val sx = 540f + (k - 1) * 190f
-            val sy = cy - 150f - (if (k == 1) 30f else 0f)
+            val sy = cy - 130f - (if (k == 1) 30f else 0f)
             if (on) Gl.glow(c, sx, sy, 130f, gold, 70)
             starShape(c, sx, sy, 80f, 34f, 0f, if (on) gold else Gl.white(28), if (on) Gl.white(220) else Gl.white(80))
         }
+        var y = cy + 70f
         if (last) {
-            Gl.text(c, "¡Completaste todos los niveles!", 540f, cy + 40f, 38f, Gl.medium, Gl.white(220))
-        }
-        var y = cy + 170f
-        if (!last) {
+            Gl.text(c, "¡Completaste todos los niveles!", 540f, cy - 10f, 38f, Gl.medium, Gl.white(220))
+            y = cy + 100f
+        } else {
             button(c, "next", "Siguiente nivel", 540f, y, 700f, 130f, pal[0], 54f)
-            y += 150f
+            y += 155f
         }
         button(c, "retry", "Repetir", 540f, y, 700f, 120f, 0, 48f)
-        y += 140f
+        y += 150f
         button(c, "exit", "Niveles", 540f, y, 700f, 120f, 0, 48f)
     }
 
