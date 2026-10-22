@@ -122,6 +122,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var lastY = 0f
     private var dragged = false
     private var skinScroll = 0f
+    private var skinTab = 0
     private var skinMax = 0f
     private var resetArmedAt = -10f
 
@@ -365,8 +366,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "settings" -> scr = Scr.SETTINGS
             id == "skins" -> {
                 scr = Scr.SKINS
-                val row = effSkin() / 4
+                skinTab = if (Skins.isAnim(effSkin())) 1 else 0
+                val row = (effSkin() - (if (skinTab == 1) Skins.ANIM_FIRST else 0)) / 4
                 skinScroll = (row * 280f - 300f).coerceAtLeast(0f)
+            }
+            id == "tab0" || id == "tab1" -> {
+                skinTab = if (id == "tab1") 1 else 0
+                skinScroll = 0f
             }
             id.startsWith("skin:") -> {
                 val k = id.substring(5).toIntOrNull() ?: return
@@ -2032,6 +2038,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 }
             }
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
+            in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -2355,6 +2362,242 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     }
 
+    private val uSpace = Color.argb(255, 5, 8, 25)
+
+    private fun dot(c: Canvas, x: Float, y: Float, rad: Float, color: Int, a: Int) {
+        val p = Gl.p()
+        p.color = Gl.alpha(color, a)
+        c.drawCircle(x, y, max(0.5f, rad), p)
+    }
+
+    private fun frac(v: Float): Float = v - floor(v)
+
+    /** Apariencias animadas 40..59: elementos naturales y espaciales dentro de la bola (ya recortada). */
+    private fun drawAnimIcon(c: Canvas, x: Float, y: Float, r: Float, skin: Int, col: Int, tm: Float) {
+        val under = intArrayOf(90, 60, 0, 110, 130, 0, 40, 60, 140, 150, 130, 170, 120, 150, 150, 150, 130, 150, 160, 90)
+        val ua = under[skin - Skins.ANIM_FIRST]
+        if (ua > 0) c.drawCircle(x, y, r, pk(Gl.alpha(uSpace, ua)))
+        val path = Gl.path
+        when (skin) {
+            40 -> { // fuego
+                for (k in 0 until 9) {
+                    val u = frac(tm * 0.85f + k / 9f)
+                    val px = x + sin(k * 2.3f + tm * 3f) * r * 0.22f * (1f - u * 0.4f)
+                    val py = y + r * (0.62f - u * 1.15f)
+                    val cc = if (u < 0.3f) 0xFFFFE082.toInt() else if (u < 0.65f) 0xFFFF8F00.toInt() else 0xFFE53935.toInt()
+                    dot(c, px, py, r * (0.30f * (1f - u) + 0.05f), cc, (230 * (1f - u * 0.85f)).toInt())
+                }
+                dot(c, x, y + r * 0.7f, r * 0.45f, 0xFFFFB300.toInt(), 120)
+            }
+            41 -> { // humo
+                for (k in 0 until 8) {
+                    val u = frac(tm * 0.35f + k / 8f)
+                    val px = x + sin(k * 1.9f + tm * 1.4f) * r * 0.25f
+                    val py = y + r * (0.6f - u * 1.3f)
+                    dot(c, px, py, r * (0.14f + 0.34f * u), if (k % 2 == 0) 0xFFCFD8DC.toInt() else 0xFF90A4AE.toInt(), (150 * (1f - u)).toInt())
+                }
+            }
+            42 -> { // agua
+                for (k in 0 until 3) {
+                    path.reset()
+                    val by = y + (k - 1) * r * 0.42f
+                    path.moveTo(x - r, by)
+                    var px = -1f
+                    while (px <= 1.001f) {
+                        path.lineTo(x + px * r, by + sin(px * 4.2f + tm * 2.2f + k * 1.7f) * r * 0.13f)
+                        px += 0.1f
+                    }
+                    c.drawPath(path, ps(if (k == 1) 230 else 160, r * 0.11f).also { it.color = Gl.alpha(if (k == 1) 0xFFB3E5FC.toInt() else Color.WHITE, if (k == 1) 230 else 160) })
+                }
+                for (k in 0 until 4) {
+                    val u = frac(tm * 0.4f + k * 0.27f)
+                    dot(c, x + sin(k * 3.1f) * r * 0.5f, y + r * (0.8f - u * 1.5f), r * 0.07f, Color.WHITE, (200 * (1f - u)).toInt())
+                }
+            }
+            43 -> { // tormenta
+                for (k in 0 until 4) dot(c, x + (k - 1.5f) * r * 0.42f + sin(tm * 0.8f + k) * r * 0.08f, y - r * 0.45f + (k % 2) * r * 0.1f, r * 0.34f, 0xFF607D8B.toInt(), 230)
+                val ph = tm % 2.6f
+                val flash = if (ph < 0.12f || (ph > 0.22f && ph < 0.3f)) 1f else 0f
+                if (flash > 0f) {
+                    c.drawCircle(x, y, r, pk(Gl.white(60)))
+                    path.reset()
+                    path.moveTo(x + r * 0.08f, y - r * 0.2f)
+                    path.lineTo(x - r * 0.12f, y + r * 0.08f)
+                    path.lineTo(x + r * 0.1f, y + r * 0.1f)
+                    path.lineTo(x - r * 0.16f, y + r * 0.55f)
+                    c.drawPath(path, ps(255, r * 0.1f).also { it.color = 0xFFFFF59D.toInt() })
+                }
+                for (k in 0 until 6) {
+                    val u = frac(tm * 1.6f + k * 0.17f)
+                    Gl.line(c, x + (k - 2.5f) * r * 0.3f, y + r * (0.0f + u * 0.9f), x + (k - 2.5f) * r * 0.3f - r * 0.05f, y + r * (0.14f + u * 0.9f), r * 0.04f, Gl.white(150))
+                }
+            }
+            44 -> { // lava
+                for (k in 0 until 5) {
+                    val px = x + sin(tm * 0.7f + k * 1.9f) * r * 0.4f
+                    val py = y + sin(tm * 0.9f + k * 2.7f) * r * 0.6f
+                    dot(c, px, py, r * (0.26f + 0.08f * sin(tm + k)), 0xFFFF7043.toInt(), 215)
+                    dot(c, px, py, r * 0.14f, 0xFFFFEB3B.toInt(), 200)
+                }
+            }
+            45 -> { // escarcha
+                for (k in 0 until 10) {
+                    val u = frac(tm * 0.3f + k * 0.137f)
+                    dot(c, x + sin(k * 2.7f + tm) * r * 0.7f, y - r + u * 2f * r, r * (0.05f + 0.03f * (k % 3)), Color.WHITE, 220)
+                }
+                for (k in 0 until 3) {
+                    val a = k * 60.0 * Math.PI / 180.0
+                    Gl.line(c, x - (cos(a) * r * 0.45f).toFloat(), y - (sin(a) * r * 0.45f).toFloat(), x + (cos(a) * r * 0.45f).toFloat(), y + (sin(a) * r * 0.45f).toFloat(), r * 0.04f, Gl.white(90))
+                }
+            }
+            46 -> { // remolino
+                for (arm in 0 until 3) for (i in 0 until 9) {
+                    val ang = tm * 2.4f + arm * 2.094f + i * 0.5f
+                    val rad = r * (0.08f + i * 0.095f)
+                    dot(c, x + cos(ang) * rad, y + sin(ang) * rad, r * (0.06f + 0.012f * i), Color.WHITE, 230 - i * 20)
+                }
+            }
+            47 -> { // lluvia
+                for (k in 0 until 9) {
+                    val u = frac(tm * 1.2f + k * 0.113f)
+                    val px = x - r + (k * 0.27f % 1f) * 2f * r
+                    val py = y - r + u * 2.2f * r
+                    Gl.line(c, px, py, px - r * 0.07f, py + r * 0.22f, r * 0.045f, Gl.alpha(0xFFB3E5FC.toInt(), 220))
+                }
+            }
+            48 -> { // luciérnagas
+                for (k in 0 until 7) {
+                    val px = x + sin(tm * 0.6f + k * 2.1f) * r * 0.6f
+                    val py = y + cos(tm * 0.5f + k * 1.3f) * r * 0.6f
+                    val a = (0.5f + 0.5f * sin(tm * 2.2f + k * 1.7f))
+                    dot(c, px, py, r * 0.2f, 0xFFCDDC39.toInt(), (60 * a).toInt())
+                    dot(c, px, py, r * 0.07f, 0xFFF9FBE7.toInt(), (80 + 175 * a).toInt())
+                }
+            }
+            49 -> { // brasas
+                for (k in 0 until 10) {
+                    val u = frac(tm * 0.6f + k * 0.1f)
+                    val px = x + sin(k * 2.9f + tm * 2f) * r * 0.5f
+                    dot(c, px, y + r * (0.8f - u * 1.6f), r * (0.08f + 0.05f * (k % 3)), if (k % 2 == 0) 0xFFFF9800.toInt() else 0xFFFF5722.toInt(), (240 * (1f - u)).toInt())
+                }
+                dot(c, x, y + r * 0.85f, r * 0.5f, 0xFFD84315.toInt(), 130)
+            }
+            50 -> { // nebulosa
+                val cols = intArrayOf(0xFFAB47BC.toInt(), 0xFFEC407A.toInt(), 0xFF26C6DA.toInt())
+                for (k in 0 until 3) {
+                    val px = x + sin(tm * 0.35f + k * 2.1f) * r * 0.35f
+                    val py = y + cos(tm * 0.3f + k * 1.7f) * r * 0.35f
+                    Gl.glow(c, px, py, r * 0.8f, cols[k], 170)
+                }
+                for (k in 0 until 8) {
+                    val a = 0.5f + 0.5f * sin(tm * 2f + k * 1.9f)
+                    dot(c, x + sin(k * 4.1f) * r * 0.8f, y + cos(k * 2.3f) * r * 0.8f, r * 0.04f, Color.WHITE, (90 + 160 * a).toInt())
+                }
+            }
+            51 -> { // agujero negro
+                for (i in 0 until 14) {
+                    val ang = tm * (1.6f + (i % 4) * 0.25f) + i * 0.9f
+                    val rad = r * (0.3f + (i % 5) * 0.11f)
+                    dot(c, x + cos(ang) * rad, y + sin(ang) * rad * 0.4f, r * 0.05f, if (i % 2 == 0) 0xFFFFB74D.toInt() else Color.WHITE, 220)
+                }
+                c.save()
+                c.rotate(-20f, x, y)
+                Gl.rect.set(x - r * 0.75f, y - r * 0.2f, x + r * 0.75f, y + r * 0.2f)
+                c.drawOval(Gl.rect, ps(210, r * 0.06f).also { it.color = 0xFFFFA726.toInt() })
+                c.restore()
+                c.drawCircle(x, y, r * 0.24f, pk(Color.BLACK))
+            }
+            52 -> { // supernova
+                val u = frac(tm * 0.5f)
+                dot(c, x, y, r * (0.15f + 0.25f * sin(tm * 6f) * 0.2f + 0.2f), 0xFFFFF8E1.toInt(), 255)
+                Gl.glow(c, x, y, r * 0.9f, 0xFFFFCA28.toInt(), 150)
+                c.drawCircle(x, y, r * (0.2f + 0.8f * u), ps((220 * (1f - u)).toInt(), r * 0.08f).also { it.color = Gl.alpha(0xFFFFF176.toInt(), (220 * (1f - u)).toInt()) })
+                for (k in 0 until 8) {
+                    val a = k * 45.0 * Math.PI / 180.0 + tm * 0.4f
+                    Gl.line(c, x + (cos(a) * r * 0.2f).toFloat(), y + (sin(a) * r * 0.2f).toFloat(), x + (cos(a) * r * (0.45f + 0.3f * u)).toFloat(), y + (sin(a) * r * (0.45f + 0.3f * u)).toFloat(), r * 0.04f, Gl.alpha(0xFFFFF59D.toInt(), 200))
+                }
+            }
+            53 -> { // cometa
+                for (k in 0 until 6) dot(c, x + sin(k * 5.3f) * r * 0.8f, y + cos(k * 3.7f) * r * 0.8f, r * 0.035f, Color.WHITE, 170)
+                val u = frac(tm * 0.45f)
+                val hx = x - r * 0.9f + u * r * 1.8f
+                val hy = y - r * 0.6f + u * r * 1.2f
+                for (k in 1..10) {
+                    val t2 = k / 10f
+                    dot(c, hx - t2 * r * 0.7f, hy - t2 * r * 0.47f, r * (0.12f * (1f - t2) + 0.02f), 0xFF80DEEA.toInt(), (200 * (1f - t2)).toInt())
+                }
+                dot(c, hx, hy, r * 0.13f, Color.WHITE, 255)
+            }
+            54 -> { // sistema solar
+                c.drawCircle(x, y, r * 0.36f, ps(40, r * 0.02f))
+                c.drawCircle(x, y, r * 0.62f, ps(40, r * 0.02f))
+                dot(c, x, y, r * 0.17f, 0xFFFFD54F.toInt(), 255)
+                Gl.glow(c, x, y, r * 0.5f, 0xFFFFB300.toInt(), 120)
+                dot(c, x + cos(tm * 2.2f) * r * 0.36f, y + sin(tm * 2.2f) * r * 0.36f, r * 0.08f, 0xFF4FC3F7.toInt(), 255)
+                dot(c, x + cos(tm * 1.2f + 2f) * r * 0.62f, y + sin(tm * 1.2f + 2f) * r * 0.62f, r * 0.11f, 0xFFEF5350.toInt(), 255)
+            }
+            55 -> { // pulsar
+                c.save()
+                c.rotate(tm * 120f, x, y)
+                for (sgn in intArrayOf(-1, 1)) {
+                    path.reset()
+                    path.moveTo(x, y)
+                    path.lineTo(x + sgn * r * 1.1f, y - r * 0.12f)
+                    path.lineTo(x + sgn * r * 1.1f, y + r * 0.12f)
+                    path.close()
+                    c.drawPath(path, pk(Gl.white(140)))
+                }
+                c.restore()
+                Gl.glow(c, x, y, r * 0.5f, 0xFF80D8FF.toInt(), 200)
+                dot(c, x, y, r * 0.11f, Color.WHITE, 255)
+            }
+            56 -> { // aurora boreal
+                val cols = intArrayOf(0xFF69F0AE.toInt(), 0xFF40C4FF.toInt(), 0xFFB388FF.toInt())
+                for (k in 0 until 3) {
+                    path.reset()
+                    var first = true
+                    var px = -1f
+                    while (px <= 1.001f) {
+                        val py = y - r * 0.15f + sin(px * 3f + tm * 1.3f + k * 1.4f) * r * 0.25f + (k - 1) * r * 0.25f
+                        if (first) { path.moveTo(x + px * r, py); first = false } else path.lineTo(x + px * r, py)
+                        px += 0.1f
+                    }
+                    c.drawPath(path, ps(150, r * 0.22f).also { it.color = Gl.alpha(cols[k], (110 + 70 * sin(tm + k)).toInt()) })
+                }
+                for (k in 0 until 6) dot(c, x + sin(k * 4.1f) * r * 0.8f, y - r * 0.5f + cos(k * 2.3f) * r * 0.4f, r * 0.035f, Color.WHITE, 190)
+            }
+            57 -> { // espiral
+                Gl.glow(c, x, y, r * 0.55f, 0xFFFFE082.toInt(), 190)
+                for (arm in 0 until 2) for (i in 0 until 14) {
+                    val ang = tm * 0.9f + arm * 3.1416f + i * 0.42f
+                    val rad = r * (0.1f + i * 0.058f)
+                    dot(c, x + cos(ang) * rad, y + sin(ang) * rad, r * (0.075f - i * 0.003f), if (i < 5) 0xFFFFF8E1.toInt() else 0xFF9FA8DA.toInt(), 230 - i * 10)
+                }
+            }
+            58 -> { // eclipse
+                val pulse = 0.5f + 0.5f * sin(tm * 2f)
+                Gl.glow(c, x, y, r * 0.95f, 0xFFFFE0B2.toInt(), (110 + 90 * pulse).toInt())
+                c.drawCircle(x, y, r * 0.42f, ps(230, r * 0.05f).also { it.color = Gl.alpha(0xFFFFF3E0.toInt(), 230) })
+                c.drawCircle(x, y, r * 0.4f, pk(Color.BLACK))
+                val a = tm * 0.6f
+                dot(c, x + cos(a) * r * 0.42f, y + sin(a) * r * 0.42f, r * (0.07f + 0.04f * pulse), Color.WHITE, 255)
+            }
+            59 -> { // plasma
+                val cols = intArrayOf(0xFFFF4081.toInt(), 0xFF40C4FF.toInt(), 0xFFFFEA00.toInt(), 0xFFB388FF.toInt())
+                for (k in 0 until 4) {
+                    val px = x + sin(tm * (0.9f + k * 0.3f) + k * 1.7f) * r * 0.5f
+                    val py = y + cos(tm * (0.7f + k * 0.25f) + k * 2.3f) * r * 0.5f
+                    Gl.glow(c, px, py, r * 0.65f, cols[k], 190)
+                }
+                for (k in 0 until 3) {
+                    val a = tm * 1.5f + k * 2.1f
+                    Gl.line(c, x, y, x + cos(a) * r * 0.85f, y + sin(a) * r * 0.85f, r * 0.03f, Gl.white(110))
+                }
+                dot(c, x, y, r * 0.1f, Color.WHITE, 220)
+            }
+        }
+    }
+
     // ---- menú de apariencias ----
 
     private fun drawSkins(c: Canvas) {
@@ -2369,18 +2612,25 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, Skins.names[k0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
         Gl.text(c, "La bola conserva su color de juego", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
 
+        // pestañas: clásicas / animadas
+        button(c, "tab0", "Clásicas", 300f, top + 690f, 380f, 84f, if (skinTab == 0) pal[0] else 0, 38f)
+        button(c, "tab1", "Animadas", 780f, top + 690f, 380f, 84f, if (skinTab == 1) pal[1] else 0, 38f)
+
         val w = 240f
         val h = 262f
-        val gy = top + 650f
+        val gy = top + 770f
         val viewBot = vh - 150f
-        val rows = (Skins.names.size + 3) / 4
+        val first = if (skinTab == 1) Skins.ANIM_FIRST else 0
+        val count = if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
+        val rows = (count + 3) / 4
         skinMax = max(0f, rows * (h + 18f) - 18f - (viewBot - gy))
         skinScroll = skinScroll.coerceIn(0f, skinMax)
         c.save()
         c.clipRect(0f, gy - 12f, Cfg.W, viewBot)
-        for (i in Skins.names.indices) {
-            val cx = 135f + (i % 4) * 270f
-            val cy = gy + h / 2f + (i / 4) * (h + 18f) - skinScroll
+        for (j in 0 until count) {
+            val i = first + j
+            val cx = 135f + (j % 4) * 270f
+            val cy = gy + h / 2f + (j / 4) * (h + 18f) - skinScroll
             if (cy + h / 2f < gy - 12f || cy - h / 2f > viewBot) continue
             val open = skinOpen(i)
             val id = "skin:$i"
