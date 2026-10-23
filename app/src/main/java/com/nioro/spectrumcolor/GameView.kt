@@ -41,7 +41,7 @@ interface HostApi {
  * Spectrum Color: pantalla única dibujada con Canvas. Todo se dibuja en "unidades de diseño"
  * (el ancho de la pantalla siempre vale 1080), igual que el motor de juego (Engine.kt).
  */
-class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback {
+class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
     private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES }
     private enum class Mode { LEVEL, ENDLESS, MP }
@@ -147,6 +147,19 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var skinScroll = 0f
     private var skinTab = 0
     private var skinMax = 0f
+    // ---- tema Gatitos: los gatitos se mueven al inclinar el celular y se apartan del dedo ----
+    private val catOx = FloatArray(32)
+    private val catOy = FloatArray(32)
+    private val catVx = FloatArray(32)
+    private val catVy = FloatArray(32)
+    private val catPx = FloatArray(32)
+    private val catPy = FloatArray(32)
+    private var tiltX = 0f
+    private var tiltY = 0.7f
+    private var touchX = -1000f
+    private var touchY = -1000f
+    private var touching = false
+    private var sensorOn = false
     private var slidePtr = -1
     private var slideRefX = 0f
     private var slideRefBx = Cfg.W / 2f
@@ -213,6 +226,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         running = false
         Choreographer.getInstance().removeFrameCallback(this)
         audio.onPause()
+        if (sensorOn) stopSensor()
         pressedId = null
         dragSlider = null
         if (scr == Scr.PLAY && mode != Mode.MP && ov == Ov.NONE) {
@@ -498,6 +512,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val x = e.x / sc
         val y = e.y / sc
         when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> if (scr != Scr.PLAY) {
+                touchX = x
+                touchY = y
+                touching = true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
+            else -> {}
+        }
+        when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = x
                 downY = y
@@ -585,6 +608,63 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     }
 
+    override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+
+    override fun onSensorChanged(ev: android.hardware.SensorEvent) {
+        if (ev.sensor.type != android.hardware.Sensor.TYPE_ACCELEROMETER || ev.values.size < 2) return
+        val gx = (-ev.values[0] / 9.81f).coerceIn(-1.2f, 1.2f)
+        val gy = (ev.values[1] / 9.81f).coerceIn(-1.2f, 1.2f)
+        tiltX += (gx - tiltX) * 0.2f
+        tiltY += (gy - tiltY) * 0.2f
+    }
+
+    private fun startSensor() {
+        try {
+            val sm = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+            val s = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER) ?: return
+            sm.registerListener(this, s, android.hardware.SensorManager.SENSOR_DELAY_GAME)
+            sensorOn = true
+        } catch (e: Exception) {
+            sensorOn = false
+        }
+    }
+
+    private fun stopSensor() {
+        try {
+            (context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager).unregisterListener(this)
+        } catch (e: Exception) {
+        }
+        sensorOn = false
+    }
+
+    private fun updateCats(dt: Float) {
+        val on = prefs.theme == Themes.CATS
+        if (on && !sensorOn) startSensor() else if (!on && sensorOn) stopSensor()
+        if (!on) return
+        val n = min(bubbles.size, 32)
+        for (i in 0 until n) {
+            val m = 0.7f + (i % 5) * 0.12f
+            val tx = tiltX * 230f * m
+            val ty = (tiltY - 0.7f) * 150f * m
+            var ax = (tx - catOx[i]) * 22f - catVx[i] * 4.5f
+            var ay = (ty - catOy[i]) * 22f - catVy[i] * 4.5f
+            if (touching) {
+                val dx = catPx[i] - touchX
+                val dy = catPy[i] - touchY
+                val d = sqrt(dx * dx + dy * dy)
+                if (d in 1f..320f) {
+                    val f = (1f - d / 320f) * 9000f
+                    ax += dx / d * f
+                    ay += dy / d * f
+                }
+            }
+            catVx[i] += ax * dt
+            catVy[i] += ay * dt
+            catOx[i] = (catOx[i] + catVx[i] * dt).coerceIn(-320f, 320f)
+            catOy[i] = (catOy[i] + catVy[i] * dt).coerceIn(-320f, 320f)
+        }
+    }
+
     private fun setSlider(x: Float) {
         val v = ((x - SL_X0) / (SL_X1 - SL_X0)).coerceIn(0f, 1f)
         when (dragSlider) {
@@ -615,6 +695,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun update(dt: Float) {
         time += dt
+        updateCats(dt)
         pollNet()
         val m = match
         if (m != null) {
@@ -1095,11 +1176,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Gl.glow(c, x, y, rad, pal[i], 70)
         }
         val hw = th == Themes.HALLOWEEN
+        val cats = th == Themes.CATS
         for ((bi, b) in bubbles.withIndex()) {
             val s = b.size
             val span = vh + 2f * s
             val x = b.nx * Cfg.W + sin(time * 0.6f + b.sway) * 14f
             val y = ((b.ny * vh - camY * b.depth - time * 8f * (b.depth * 4f)) % span + span) % span - s
+            if (cats && bi < 32) {
+                val kx = x + catOx[bi]
+                val ky = y + catOy[bi]
+                catPx[bi] = kx
+                catPy[bi] = ky
+                val kr = s * 0.9f + 8f
+                val ex = kr * 1.7f
+                if (scr == Scr.PLAY) c.saveLayerAlpha(kx - ex, ky - ex, kx + ex, ky + ex, 120)
+                Cats.kitten(c, kx, ky, kr, bi % 4, time, tiltX.coerceIn(-1f, 1f), (tiltY - 0.7f).coerceIn(-1f, 1f))
+                if (scr == Scr.PLAY) c.restore()
+                continue
+            }
             if (hw) {
                 if (bi % 2 == 0) Spooky.pumpkin(c, x, y, s * 0.95f + 8f, s > 26f, time)
                 else {
@@ -1293,6 +1387,22 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
         Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
 
+        if (prefs.theme == Themes.CATS) {
+            // orejas sobre "SPECTRUM" y bigotes a los lados de "COLOR"
+            val tw = Gl.textWidth("SPECTRUM", 112f, Gl.thin, 0.14f)
+            val cw = Gl.textWidth("COLOR", 124f, Gl.light, 0.3f)
+            val wig = sin(time * 1.5f) * 4f
+            for (sgn in intArrayOf(-1, 1)) {
+                val ex = 540f + sgn * (tw / 2f - 10f)
+                Gl.glow(c, ex - sgn * 40f, ty - 120f, 110f, pal[0], 50)
+                Cats.tri(c, ex - sgn * 18f, ty - 74f, ex - sgn * 130f, ty - 82f, ex + sgn * 12f, ty - 190f + wig * sgn, 0xFFFFA040.toInt())
+                Cats.tri(c, ex - sgn * 38f, ty - 84f, ex - sgn * 100f, ty - 88f, ex - sgn * 4f, ty - 160f + wig * sgn, 0xFFFFB0BE.toInt())
+            }
+            for (sgn in intArrayOf(-1, 1)) {
+                Cats.whiskers(c, 540f + sgn * (cw / 2f + 30f), ty + 92f, 190f, sgn, 5f, 210)
+            }
+            Cats.tri(c, 540f - 20f, ty + 188f, 540f + 20f, ty + 188f, 540f, ty + 214f, 0xFFFF7F9A.toInt())
+        }
         if (prefs.theme == Themes.HALLOWEEN) {
             Spooky.web(c, 0f, 0f, 470f, 130, 0f, 90f, 4)
             Spooky.web(c, Cfg.W, 0f, 470f, 130, 90f, 90f, 4)
@@ -1519,6 +1629,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 Spooky.web(c, pl, pt, 130f, 140, 0f, 90f, 3)
                 Spooky.web(c, pr, pt, 130f, 140, 90f, 90f, 3)
                 Spooky.pumpkin(c, cx, pt + 205f + sin(time * 2f) * 4f, 40f, true, time)
+            } else if (t == Themes.CATS) {
+                Cats.kitten(c, cx, pt + 215f + sin(time * 2f) * 4f, 46f, ((time / 2f).toInt()) % 4, time, 0f, 0f)
             } else {
                 drawBallAt(c, cx, pt + 205f + sin(time * 2f + t) * 5f, 34f, g[(time * 0.8f).toInt() % 4], effSkin(), time, true)
             }

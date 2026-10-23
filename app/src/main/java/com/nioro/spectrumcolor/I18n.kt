@@ -65,6 +65,7 @@ object I18n {
         d("Rosa", "Pink", "Розовая")
         d("Verde", "Green", "Зелёная")
         d("Halloween", "Halloween", "Хэллоуин")
+        d("Gatitos", "Kittens", "Котята")
         d("Elige el color de fondo", "Choose the background color", "Выберите цвет фона")
         d("Tu nombre", "Your name", "Ваше имя")
         d("Nombre", "Name", "Имя")
