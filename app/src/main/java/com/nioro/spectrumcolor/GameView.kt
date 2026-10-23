@@ -1139,7 +1139,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         uiIdx++
         val popping = pa < 1f
         if (popping) {
-            c.saveLayerAlpha(cx - w, cy - h, cx + w, cy + h, (255 * easeOut(pa * 1.4f)).toInt())
+            // el área de la capa debe cubrir el resplandor y la sombra del botón, si no se ve un marco rectangular
+            val ext = max(w, h) * 0.9f
+            c.saveLayerAlpha(cx - ext, cy - ext, cx + ext, cy + ext, (255 * easeOut(pa * 1.4f)).toInt())
             val z = 0.80f + 0.20f * spring(pa)
             c.scale(z, z, cx, cy)
         }
