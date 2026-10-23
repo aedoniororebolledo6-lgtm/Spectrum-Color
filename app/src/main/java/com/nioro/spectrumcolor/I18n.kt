@@ -95,6 +95,9 @@ object I18n {
         d("Clásicas", "Classic", "Классические")
         d("Animadas", "Animated", "Анимированные")
         p("(\\d+) estrellas", "$1 stars", "$1 звёзд")
+        p("(\\d+) pts infinito", "$1 endless pts", "$1 оч. в беск.")
+        p("o (\\d+) mundos", "or $1 worlds", "или миров: $1")
+        p("Infinito (\\d+)  ·  Mundos (\\d+)/(\\d+)", "Endless $1  ·  Worlds $2/$3", "Беск. $1  ·  Миры $2/$3")
         p("Estrellas (\\d+)/(\\d+)", "Stars $1/$2", "Звёзды $1/$2")
         p("Estrellas (\\d+)/(\\d+)   ·   Récord infinito (\\d+)", "Stars $1/$2   ·   Endless best $3", "Звёзды $1/$2   ·   Рекорд $3")
         val sk = arrayOf(

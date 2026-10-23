@@ -2046,7 +2046,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private val ballClip = Path()
 
-    private fun skinOpen(k: Int): Boolean = prefs.allOpen || prefs.totalStars() >= Skins.need[k]
+    private fun skinOpen(k: Int): Boolean {
+        if (prefs.allOpen) return true
+        if (Skins.special(k)) return prefs.endlessBest >= Skins.endNeed(k) || prefs.worldsDone() >= Skins.worldNeed(k)
+        return prefs.totalStars() >= Skins.need[k]
+    }
 
     private fun effSkin(): Int {
         val k = prefs.skin
@@ -3181,8 +3185,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 gp.color = Color.argb(150, 92, 98, 116)
                 Gl.rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
                 c.drawRoundRect(Gl.rect, 48f, 48f, gp)
-                drawLock(c, cx, cy + 74f, 0.95f, 235)
-                Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 25f, Gl.regular, Gl.white(215))
+                if (Skins.special(i)) {
+                    drawLock(c, cx, cy + 62f, 0.8f, 235)
+                    Gl.text(c, "${Skins.endNeed(i)} pts infinito", cx, cy + 98f, 23f, Gl.regular, Gl.white(220))
+                    Gl.text(c, "o ${Skins.worldNeed(i)} mundos", cx, cy + 123f, 23f, Gl.regular, Gl.white(220))
+                } else {
+                    drawLock(c, cx, cy + 74f, 0.95f, 235)
+                    Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 25f, Gl.regular, Gl.white(215))
+                }
             }
         }
         c.restore()
@@ -3195,7 +3205,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             c.drawRoundRect(Gl.rect, 3f, 3f, pw(70))
         }
         Gl.text(
-            c, "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}", 540f, vh - 90f,
+            c,
+            if (skinTab == 1) "Infinito ${prefs.endlessBest}  ·  Mundos ${prefs.worldsDone()}/${Levels.WORLDS}" else "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}",
+            540f, vh - 90f,
             34f, Gl.regular, Gl.white(150)
         )
     }

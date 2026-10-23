@@ -28,5 +28,11 @@ object Skins {
         14, 33, 52, 71, 90, 109, 128, 147, 166, 185, 204, 223, 242, 261, 280, 299, 318
     )
 
+    /** Las apariencias 60..76 no usan estrellas: se abren con récord del modo infinito O con mundos completados. */
+    const val SPECIAL_FIRST = 60
+    fun special(k: Int): Boolean = k >= SPECIAL_FIRST
+    fun endNeed(k: Int): Int = 20 + (k - SPECIAL_FIRST) * 10
+    fun worldNeed(k: Int): Int = 1 + ((k - SPECIAL_FIRST) * 11) / 16
+
     fun isAnim(k: Int): Boolean = k >= ANIM_FIRST
 }

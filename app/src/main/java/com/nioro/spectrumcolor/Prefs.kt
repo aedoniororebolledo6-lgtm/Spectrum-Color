@@ -91,6 +91,20 @@ class Prefs(context: Context) {
         return l
     }
 
+    /** Mundos con todos sus niveles superados (al menos 1 estrella en cada uno). */
+    fun worldsDone(): Int {
+        var n = 0
+        for (w in 0 until Levels.WORLDS) {
+            var ok = true
+            for (i in 0 until Levels.PER_WORLD) {
+                val l = Levels.worldFirst(w) + i
+                if (l > Levels.COUNT || starArr[l] <= 0) { ok = false; break }
+            }
+            if (ok) n++
+        }
+        return n
+    }
+
     fun totalStars(): Int {
         var n = 0
         for (i in 1..Levels.COUNT) n += starArr[i]
