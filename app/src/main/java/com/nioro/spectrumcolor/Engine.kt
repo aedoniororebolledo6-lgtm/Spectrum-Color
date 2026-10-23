@@ -47,6 +47,12 @@ object Cfg {
 
     const val ORB_R = 36f        // radio de las bolitas de las órbitas
     const val SPIKE_H = 22f      // altura de los pinchos
+
+    /** Zonas de deslizar: velocidad máxima lateral de la bola y rapidez con que vuelve al centro al salir de la zona. */
+    const val SLIDE_VMAX = 2400f
+    const val SLIDE_RETURN = 12f
+    const val PILLAR_HH = 44f    // semialtura de un pilar
+    const val SLIDE_MARGIN = 6f  // margen de la bola contra las paredes
 }
 
 object T {
@@ -65,7 +71,14 @@ object T {
     const val PULSE = 12     // barra de ancho completo que cambia de color con el tiempo
     const val HEX = 13       // hexágono giratorio
     const val LASER = 14     // rayo que se enciende y se apaga (mata sin importar el color)
-    const val COUNT = 15
+    const val SGATE = 15     // muro con un hueco que se mueve: hay que deslizarse hasta el hueco
+    const val CBAND = 16     // franja de tramos de color: desliza hasta un tramo de tu color
+    const val SAW = 17       // sierras que patrullan de lado a lado (matan sin importar el color)
+    const val PILLAR = 18    // pilar que oscila: hay que rodearlo
+    const val COUNT = 19
+
+    /** Obstáculos que solo aparecen dentro de las zonas de deslizar. */
+    fun isSlide(type: Int): Boolean = type >= SGATE
 }
 
 fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
@@ -86,7 +99,9 @@ class Ob(
 ) {
     /** Distancia máxima desde el centro hasta cualquier parte del obstáculo. */
     val reach: Float = when (type) {
-        T.BARS, T.PEND, T.GATE, T.PULSE, T.LASER -> Cfg.BAR_DY + Cfg.BAR_H + 6f
+        T.BARS, T.PEND, T.GATE, T.PULSE, T.LASER, T.SGATE, T.CBAND -> Cfg.BAR_DY + Cfg.BAR_H + 6f
+        T.SAW -> aux + 6f
+        T.PILLAR -> Cfg.PILLAR_HH + 6f
         T.HEX -> size + Cfg.THICK / 2f
         T.COUNTER -> aux + Cfg.BAR_H + 6f
         T.SQUARE -> size * 1.4143f + Cfg.THICK / 2f
@@ -147,6 +162,22 @@ object Geo {
     fun orbY(o: Ob, t: Float, k: Int, inner: Boolean): Float {
         val a = (if (inner) rotInner(o, t) + k * 180f else rot(o, t) + k * 120f) * PI_F / 180f
         return o.y + sin(a) * (if (inner) o.inner else o.size)
+    }
+
+    /** Centro del hueco de una compuerta SGATE: siempre a un lado del centro (inner = desplazamiento), con un vaivén suave. */
+    fun sgateX(o: Ob, t: Float): Float = Cfg.W / 2f + o.inner + o.size * sin(rot(o, t) * PI_F / 180f)
+
+    /** Posición de la sierra k de un obstáculo SAW (inner = cantidad de sierras). */
+    fun sawX(o: Ob, t: Float, k: Int): Float {
+        val cnt = max(1, o.inner.toInt())
+        return Cfg.W / 2f + o.size * sin((rot(o, t) + k * 360f / cnt) * PI_F / 180f)
+    }
+
+    /** Color del tramo de una franja CBAND en la posición x (ancho de tramo = size). */
+    fun cbandColor(o: Ob, x: Float, t: Float): Int {
+        val off = o.phase * 3f + o.speed * t
+        val j = floor((x - off) / o.size).toInt()
+        return (((j % o.n) + o.n) % o.n + o.shift) % o.n
     }
 
     fun crossAng(o: Ob, t: Float, k: Int): Float = (rot(o, t) + k * 90f) * PI_F / 180f
@@ -277,7 +308,7 @@ object Geo {
             T.SPIKES -> return spikeHit(o, bx, by, color, t)
             T.PEND -> {
                 if (abs(by - o.y) > Cfg.BAR_H + graze) return false
-                val rel = Cfg.W / 2f - swingX(o, t)
+                val rel = bx - swingX(o, t)
                 if (abs(rel) > o.aux + Cfg.BALL_R * 0.6f) return false
                 val cc = if (rel < 0f) o.shift % o.n else (o.shift + 1) % o.n
                 return cc != color
@@ -300,7 +331,27 @@ object Geo {
             }
             T.GATE -> {
                 if (abs(by - o.y) > Cfg.BAR_H + graze) return false
-                return abs(Cfg.W / 2f - swingX(o, t)) > o.aux - Cfg.BALL_R * 0.75f
+                return abs(bx - swingX(o, t)) > o.aux - Cfg.BALL_R * 0.75f
+            }
+            T.SGATE -> {
+                if (abs(by - o.y) > Cfg.BAR_H + graze) return false
+                return abs(bx - sgateX(o, t)) > o.aux - Cfg.BALL_R * 0.75f
+            }
+            T.CBAND -> {
+                if (abs(by - o.y) > Cfg.BAR_H + graze) return false
+                return cbandColor(o, bx, t) != color
+            }
+            T.SAW -> {
+                val rr = o.aux + Cfg.BALL_R * 0.8f
+                val dy = by - o.y
+                for (k in 0 until max(1, o.inner.toInt())) {
+                    val dx = bx - sawX(o, t, k)
+                    if (dx * dx + dy * dy < rr * rr) return true
+                }
+                return false
+            }
+            T.PILLAR -> {
+                return abs(bx - swingX(o, t)) < o.aux + Cfg.BALL_R * 0.8f && abs(by - o.y) < Cfg.PILLAR_HH + Cfg.BALL_R * 0.8f
             }
             T.ORBIT -> {
                 val rr = Cfg.ORB_R + Cfg.BALL_R * 0.85f
@@ -434,14 +485,41 @@ object Levels {
     private val unlockAt = intArrayOf(
         1, 999, 1, 5, 9,        // anillo, doble, barras, cuadrado, triángulo
         21, 31, 41, 51, 61, 71, // pinchos, péndulo, cruz, puertas, órbitas, opuestas
-        4, 7, 13, 46            // arco abierto, barra que cambia de color, hexágono, rayo
+        4, 7, 13, 46,           // arco abierto, barra que cambia de color, hexágono, rayo
+        999, 999, 999, 999      // obstáculos de deslizar: solo dentro de las zonas
     )
 
     fun unlockLevel(type: Int): Int = unlockAt[type]
 
+    /** Primer nivel con zonas de deslizar (mundo 2). */
+    const val SLIDE_FROM = 11
+
+    /** Tamaños de los bloques de deslizar de un nivel (cada obstáculo del bloque cuenta como un obstáculo más). */
+    fun slidePlan(level: Int): IntArray = when {
+        level < SLIDE_FROM -> IntArray(0)
+        level <= 20 -> intArrayOf(2)
+        level <= 40 -> intArrayOf(if (level % 2 == 0) 3 else 2)
+        level <= 90 -> if (level % 2 == 0) intArrayOf(2, 3) else intArrayOf(3)
+        level <= 110 -> intArrayOf(3, 3)
+        else -> if (level % 10 == 0) intArrayOf(3, 3, 3) else intArrayOf(3, 3)
+    }
+
+    /** Cuántos obstáculos normales se generan antes de que empiece el bloque b. */
+    fun slideStart(level: Int, b: Int, normal: Int, nb: Int): Int {
+        val raw = ((b + 1) * normal) / (nb + 1)
+        return max(3, raw)
+    }
+
+    /** Dificultad propia de los bloques (0 = nivel 11, 1 = nivel 120). */
+    fun slideDiff(level: Int): Float = ((level - SLIDE_FROM).coerceAtLeast(0) / (COUNT - SLIDE_FROM).toFloat()).coerceIn(0f, 1f)
+
+    fun totalGates(level: Int): Int = gates(level) + slidePlan(level).sum()
+
     /** Obstáculo desde el que aparece cada tipo en el modo infinito. */
-    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64)
+    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64, 9999, 9999, 9999, 9999)
 }
+
+class Zone(val bottom: Float, val top: Float)
 
 class Course private constructor(
     val seed: Long,
@@ -453,7 +531,7 @@ class Course private constructor(
     companion object {
         /** [salt] cambia el recorrido de un nivel sin tocar los demás (ver Levels.salt). */
         fun level(level: Int, salt: Int = Levels.salt(level)): Course {
-            val c = Course(level * 7919L + 13L + salt * 104729L, true, level, Levels.gates(level), 0)
+            val c = Course(level * 7919L + 13L + salt * 104729L, true, level, Levels.totalGates(level), 0)
             c.build()
             return c
         }
@@ -464,6 +542,15 @@ class Course private constructor(
 
     val obs = ArrayList<Ob>()
     val sws = ArrayList<Sw>()
+    val zones = ArrayList<Zone>()
+    private var normalCount = 0
+    private val normalTotal: Int = if (isLevel) Levels.gates(level) else -1
+
+    /** true si la altura y está dentro de una zona de deslizar (ahí la bola se puede mover de lado). */
+    fun inZone(y: Float): Boolean {
+        for (z in zones) if (y <= z.bottom && y >= z.top) return true
+        return false
+    }
     var startColor = 0
         private set
     var finishY = Float.NEGATIVE_INFINITY
@@ -477,8 +564,63 @@ class Course private constructor(
     val totalGates: Int get() = gateTotal
 
     private fun build() {
-        while (obs.size < gateTotal) genNext()
+        val plan = if (isLevel) Levels.slidePlan(level) else IntArray(0)
+        val starts = IntArray(plan.size) { Levels.slideStart(level, it, normalTotal, plan.size) }
+        for (b in 1 until starts.size) if (starts[b] <= starts[b - 1] + 1) starts[b] = starts[b - 1] + 2
+        var nb = 0
+        while (normalCount < normalTotal) {
+            genNext()
+            while (nb < plan.size && normalCount == starts[nb]) {
+                genBlock(plan[nb], nb)
+                nb++
+            }
+        }
         finishY = cursor - 560f
+    }
+
+    /**
+     * Zona de deslizar: un tramo con obstáculos laterales. Dentro de la zona la bola se mueve de lado con el dedo;
+     * al salir vuelve sola al centro (y se salta como siempre). Usa su propio azar para no cambiar los obstáculos normales.
+     */
+    private fun genBlock(size: Int, idx: Int) {
+        val sr = Random(seed * 31L + 977L * (idx + 1) + 5L)
+        val sd = Levels.slideDiff(level)
+        val zoneBottom = cursor - 110f
+        cursor -= 190f
+        val kinds = ArrayList<Int>()
+        kinds.add(T.SGATE)
+        kinds.add(T.CBAND)
+        if (level >= 21) kinds.add(T.SAW)
+        if (level >= 31) kinds.add(T.PILLAR)
+        var last = -1
+        for (k in 0 until size) {
+            var type = kinds[sr.nextInt(kinds.size)]
+            if (type == last) type = kinds[(kinds.indexOf(type) + 1) % kinds.size]
+            last = type
+            val n = max(3, curColor + 1) // incluye el color con el que llega la bola (no hay cambiadores dentro de la zona)
+            val dirS = if (sr.nextBoolean()) 1f else -1f
+            val vari = 0.92f + sr.nextFloat() * 0.16f
+            val shift = sr.nextInt(n)
+            val phase = sr.nextFloat() * 360f
+            var speed = 0f
+            var sz = 0f
+            var inner = 0f
+            var aux = 0f
+            when (type) {
+                T.SGATE -> { speed = dirS * lerp(40f, 85f, sd) * vari; sz = lerp(40f, 160f, sd); aux = lerp(175f, 135f, sd); inner = (if (sr.nextBoolean()) 1f else -1f) * lerp(260f, 320f, sd) }
+                T.CBAND -> { speed = dirS * lerp(110f, 240f, sd) * vari; sz = lerp(360f, 280f, sd) }
+                T.SAW -> { speed = dirS * lerp(75f, 120f, sd) * vari; sz = lerp(300f, 430f, sd); aux = lerp(52f, 68f, sd); inner = if (sd < 0.5f) 2f else 3f }
+                else -> { speed = dirS * lerp(40f, 80f, sd) * vari; sz = lerp(0f, 200f, sd); aux = lerp(120f, 170f, sd) }
+            }
+            val probe = Ob(type, 0f, n, shift, speed, phase, sz, inner, aux)
+            val gap = lerp(430f, 385f, sd)
+            val y = cursor - gap - probe.reach
+            obs.add(Ob(type, y, n, shift, speed, phase, sz, inner, aux))
+            cursor = y - probe.reach
+        }
+        val zoneTop = cursor - 140f
+        zones.add(Zone(zoneBottom, zoneTop))
+        cursor = zoneTop - 200f
     }
 
     /** Genera obstáculos hasta cubrir la altura topY (solo modo infinito). */
@@ -501,7 +643,7 @@ class Course private constructor(
             // la dificultad extra viene de más obstáculos, mezclas, viento, desvanecimientos y vaivén.
             val cap = if (Levels.isHard(level)) 0.8f else 1f
             val d = Levels.difficulty(level) * cap
-            (d * 0.94f + 0.06f * cap * (i / gateTotal.toFloat())).coerceIn(0f, 1f)
+            (d * 0.94f + 0.06f * cap * (i / normalTotal.toFloat())).coerceIn(0f, 1f)
         } else {
             min(0.85f, g / 65f)
         }
@@ -515,8 +657,8 @@ class Course private constructor(
 
     private fun pickType(i: Int, g: Int): Int {
         val hard = isLevel && Levels.isHard(level)
-        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f)
-        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f)
+        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f, 0f, 0f, 0f, 0f)
+        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f, 0f, 0f, 0f, 0f)
         val wf = if (isLevel) Levels.worldFirst(Levels.world(level)) else 0
         var sum = 0f
         for (t in 0 until T.COUNT) {
@@ -551,7 +693,8 @@ class Course private constructor(
     }
 
     private fun genNext() {
-        val i = obs.size
+        val i = normalCount
+        normalCount++
         val g = i + gateOffset
         val d = diffFor(i, g)
         val type = pickType(i, g)
@@ -664,6 +807,11 @@ class Sim(val course: Course, val visH: Float) {
     var finished = false
     var taps = 0
 
+    /** Posición lateral de la bola (solo cambia dentro de las zonas de deslizar) y hacia dónde la lleva el dedo. */
+    var bx = Cfg.W / 2f
+    var targetX = Cfg.W / 2f
+    var vmax = Cfg.SLIDE_VMAX
+
     /** Causa de la muerte (solo diagnóstico): -2 = sigue vivo, -1 = cayó fuera de la pantalla, >=0 = índice del obstáculo. */
     var deathObs = -2
 
@@ -674,6 +822,7 @@ class Sim(val course: Course, val visH: Float) {
         t = o.t; by = o.by; bvy = o.bvy; camY = o.camY; color = o.color
         swCount = o.swCount; starCount = o.starCount; started = o.started
         dead = o.dead; finished = o.finished; taps = o.taps; timeScale = o.timeScale; deathObs = o.deathObs
+        bx = o.bx; targetX = o.targetX; vmax = o.vmax
     }
 
     fun copy(): Sim {
@@ -709,6 +858,19 @@ class Sim(val course: Course, val visH: Float) {
             by += bvy * dt
         }
 
+        // movimiento lateral: libre dentro de una zona; fuera, la bola vuelve al centro
+        if (course.zones.isNotEmpty() && course.inZone(by)) {
+            val mv = vmax * dt
+            bx += (targetX - bx).coerceIn(-mv, mv)
+            bx = bx.coerceIn(Cfg.BALL_R + Cfg.SLIDE_MARGIN, Cfg.W - Cfg.BALL_R - Cfg.SLIDE_MARGIN)
+        } else if (bx != Cfg.W / 2f) {
+            bx += (Cfg.W / 2f - bx) * (1f - exp(-Cfg.SLIDE_RETURN * dt))
+            if (abs(bx - Cfg.W / 2f) < 0.3f) bx = Cfg.W / 2f
+            targetX = bx
+        } else {
+            targetX = bx
+        }
+
         val target = by - visH * 0.52f
         if (target < camY) camY += (target - camY) * (1f - exp(-14f * dt))
 
@@ -741,7 +903,7 @@ class Sim(val course: Course, val visH: Float) {
         for (i in lo..hi) {
             val o = course.obs[i]
             if (abs(by - o.y) > o.reach + Cfg.BALL_R) continue
-            if (Geo.hits(o, Cfg.W / 2f, by, color, t)) {
+            if (Geo.hits(o, bx, by, color, t)) {
                 dead = true
                 deathObs = i
                 return

@@ -126,6 +126,9 @@ object I18n {
         )
         for (s in sk) { val a = s.split("|"); d(a[0], a[1], a[2]) }
         // --- partida ---
+        d("Habrá tramos donde deslizas el dedo", "Some sections let you slide your finger", "Будут участки, где нужно водить пальцем")
+        d("¡Desliza el dedo para mover la bola!", "Slide your finger to move the ball!", "Водите пальцем, чтобы двигать шар!")
+        d("DESLIZA", "SLIDE", "ВЕДИ")
         d("Toca para saltar", "Tap to jump", "Нажмите, чтобы прыгнуть")
         d("Atraviesa solo el color de tu pelota", "Only pass through your ball's color", "Проходите только через цвет шара")
         d("META", "FINISH", "ФИНИШ")

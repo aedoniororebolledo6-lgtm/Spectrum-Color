@@ -147,6 +147,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var skinScroll = 0f
     private var skinTab = 0
     private var skinMax = 0f
+    private var slidePtr = -1
+    private var slideRefX = 0f
+    private var slideRefBx = Cfg.W / 2f
     private var resetArmedAt = -10f
 
     // ---- partida ----
@@ -507,12 +510,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     setSlider(x)
                 } else if (id == null && scr == Scr.PLAY) {
                     gameTap()
+                    beginSlide(e, 0)
                 }
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (scr == Scr.PLAY) gameTap()
+                if (scr == Scr.PLAY) {
+                    gameTap()
+                    beginSlide(e, e.actionIndex)
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (scr == Scr.PLAY && e.getPointerId(e.actionIndex) == slidePtr) {
+                    var other = -1
+                    for (k in 0 until e.pointerCount) if (k != e.actionIndex) other = k
+                    if (other >= 0) beginSlide(e, other) else slidePtr = -1
+                }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (scr == Scr.PLAY) moveSlide(e)
                 if (dragSlider != null) setSlider(x)
                 if (scr == Scr.SKINS) {
                     if (!dragged && abs(y - downY) > 22f) {
@@ -526,6 +541,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             MotionEvent.ACTION_UP -> {
                 val id = pressedId
                 pressedId = null
+                slidePtr = -1
                 if (dragSlider != null) {
                     dragSlider = null
                     audio.play(Sfx.CLICK)
@@ -539,11 +555,34 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 }
             }
             MotionEvent.ACTION_CANCEL -> {
+                slidePtr = -1
                 pressedId = null
                 dragSlider = null
             }
         }
         return true
+    }
+
+    /** Empieza a seguir un dedo para deslizar la bola (movimiento relativo: no salta al punto tocado). */
+    private fun beginSlide(e: MotionEvent, idx: Int) {
+        slidePtr = e.getPointerId(idx)
+        slideRefX = e.getX(idx) / sc
+        slideRefBx = sim?.bx ?: (Cfg.W / 2f)
+    }
+
+    private fun moveSlide(e: MotionEvent) {
+        val sm = sim ?: return
+        val cr = course ?: return
+        if (slidePtr < 0) return
+        val pi = e.findPointerIndex(slidePtr)
+        if (pi < 0) return
+        val px = e.getX(pi) / sc
+        if (ov == Ov.NONE && !sm.dead && !sm.finished && sm.started && cr.inZone(sm.by)) {
+            sm.targetX = slideRefBx + (px - slideRefX) * 1.25f
+        } else {
+            slideRefX = px
+            slideRefBx = sm.bx
+        }
     }
 
     private fun setSlider(x: Float) {
@@ -634,7 +673,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val cr = course ?: return
         val pal = Worlds.colors[world]
         if (sm.starCount > lastStarCount) {
-            for (i in lastStarCount until min(sm.starCount, cr.obs.size)) sparkle(Cfg.W / 2f, cr.obs[i].y, Color.WHITE, 14)
+            for (i in lastStarCount until min(sm.starCount, cr.obs.size)) sparkle(sm.bx, cr.obs[i].y, Color.WHITE, 14)
             lastStarCount = sm.starCount
             audio.play(Sfx.STAR)
             haptic(HapticFeedbackConstants.VIRTUAL_KEY)
@@ -646,7 +685,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             lastSwCount = sm.swCount
             audio.play(Sfx.SWITCH)
         }
-        if (sm.started && !sm.dead && !sm.finished) trail.add(floatArrayOf(Cfg.W / 2f, sm.by, 0f))
+        if (sm.started && !sm.dead && !sm.finished) trail.add(floatArrayOf(sm.bx, sm.by, 0f))
         if (sm.dead && !endHandled) {
             endHandled = true
             onDeath(sm)
@@ -666,7 +705,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val sp = 250f + rnd.nextFloat() * 900f
             val life = 0.8f + rnd.nextFloat() * 0.7f
             val col = if (i % 2 == 0) pal[sm.color % 4] else pal[rnd.nextInt(4)]
-            parts.add(Part(Cfg.W / 2f, sm.by, cos(a) * sp, sin(a) * sp - 300f, col, 8f + rnd.nextFloat() * 16f, life, life))
+            parts.add(Part(sm.bx, sm.by, cos(a) * sp, sin(a) * sp - 300f, col, 8f + rnd.nextFloat() * 16f, life, life))
         }
         when (mode) {
             Mode.LEVEL -> deaths++
@@ -690,7 +729,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val a = -1.57f + (rnd.nextFloat() - 0.5f) * 2.6f
             val sp = 500f + rnd.nextFloat() * 1100f
             val life = 1.0f + rnd.nextFloat() * 0.9f
-            parts.add(Part(Cfg.W / 2f, sm.by, cos(a) * sp, sin(a) * sp, pal[rnd.nextInt(4)], 8f + rnd.nextFloat() * 12f, life, life))
+            parts.add(Part(sm.bx, sm.by, cos(a) * sp, sin(a) * sp, pal[rnd.nextInt(4)], 8f + rnd.nextFloat() * 12f, life, life))
         }
     }
 
@@ -1611,17 +1650,32 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (s.y > camY + vh + 100f) continue
             drawSwitcher(c, s, cr, pal)
         }
+        for (z in cr.zones) {
+            if (z.bottom < camY - 40f || z.top > camY + vh + 40f) continue
+            drawZone(c, z, pal)
+        }
         for (o in cr.obs) {
             if (o.y + o.reach < camY - 40f || o.y - o.reach > camY + vh + 40f) continue
             drawObstacle(c, o, sm.t, pal)
         }
         for (i in sm.starCount until min(cr.obs.size, sm.starCount + 6)) {
             val o = cr.obs[i]
+            if (T.isSlide(o.type)) continue
             if (o.y < camY - 60f || o.y > camY + vh + 60f) continue
             drawStar(c, Cfg.W / 2f, o.y)
         }
         drawTrail(c, pal[sm.color % 4])
         if (!sm.dead) drawBall(c, sm, pal[sm.color % 4])
+        if (!sm.dead && !sm.finished && sm.started && cr.inZone(sm.by)) {
+            // flechas junto a la bola: aquí se puede deslizar
+            val a = (110 + 90 * sin(time * 5f)).toInt()
+            val off = 66f + 6f * sin(time * 5f)
+            for (sgn in intArrayOf(-1, 1)) {
+                val ax = sm.bx + sgn * off
+                Gl.line(c, ax, sm.by - 18f, ax + sgn * 16f, sm.by, 6f, Gl.white(a))
+                Gl.line(c, ax + sgn * 16f, sm.by, ax, sm.by + 18f, 6f, Gl.white(a))
+            }
+        }
         drawParts(c)
         c.restore()
     }
@@ -1671,6 +1725,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.ARC -> drawArcOb(c, o, t, pal)
             T.PULSE -> drawPulse(c, o, t, pal)
             T.LASER -> drawLaser(c, o, t)
+            T.SGATE -> drawSGate(c, o, t)
+            T.CBAND -> drawCBand(c, o, t, pal)
+            T.SAW -> drawSaws(c, o, t)
+            T.PILLAR -> drawPillar(c, o, t)
             T.COUNTER -> {
                 drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
                 drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * Cfg.COUNTER_RATIO * t, pal)
@@ -1678,6 +1736,125 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             else -> drawPoly(c, o, t, pal)
         }
         if (layer) c.restore()
+    }
+
+    // ---- zonas de deslizar y sus obstáculos ----
+
+    /** Tramo del recorrido donde la bola se mueve de lado: franja de cristal con rieles laterales. */
+    private fun drawZone(c: Canvas, z: Zone, pal: IntArray) {
+        val h = z.bottom - z.top
+        val pp = Gl.p()
+        pp.shader = LinearGradient(0f, z.top, 0f, z.bottom, intArrayOf(Gl.alpha(pal[0], 0), Gl.alpha(pal[0], 30), Gl.alpha(pal[1], 30), Gl.alpha(pal[1], 0)), floatArrayOf(0f, 0.12f, 0.88f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(0f, z.top, Cfg.W, z.bottom, pp)
+        // rieles laterales con luz que sube
+        for (sgn in intArrayOf(0, 1)) {
+            val x = if (sgn == 0) 30f else Cfg.W - 30f
+            Gl.line(c, x, z.top, x, z.bottom, 8f, Gl.white(40))
+            var yy = z.bottom - ((time * 140f) % 160f)
+            while (yy > z.top) {
+                Gl.line(c, x, yy, x, max(z.top, yy - 60f), 8f, Gl.alpha(pal[sgn], 190))
+                yy -= 160f
+            }
+            // flechas hacia adentro, indican el movimiento lateral
+            var ay = z.bottom - 150f
+            while (ay > z.top + 80f) {
+                val d = if (sgn == 0) 1f else -1f
+                val a = (70 + 60 * sin(time * 3f + ay * 0.01f)).toInt()
+                Gl.line(c, x + d * 22f, ay - 16f, x + d * 40f, ay, 5f, Gl.white(a))
+                Gl.line(c, x + d * 40f, ay, x + d * 22f, ay + 16f, 5f, Gl.white(a))
+                ay -= 300f
+            }
+        }
+        // cartel de entrada
+        if (h > 300f) {
+            val a = (170 + 70 * sin(time * 3f)).toInt()
+            val ty = z.bottom - 60f
+            Gl.text(c, "DESLIZA", Cfg.W / 2f, ty + 14f, 40f, Gl.medium, Gl.white(a), 0.3f, null, Gl.alpha(pal[0], 150))
+            for (sgn in intArrayOf(-1, 1)) {
+                val ax = Cfg.W / 2f + sgn * 190f
+                Gl.line(c, ax, ty - 14f, ax + sgn * 18f, ty, 6f, Gl.white(a))
+                Gl.line(c, ax + sgn * 18f, ty, ax, ty + 14f, 6f, Gl.white(a))
+            }
+        }
+    }
+
+    private fun drawSGate(c: Canvas, o: Ob, t: Float) {
+        val gx = Geo.sgateX(o, t)
+        val half = Cfg.BAR_H
+        val l1 = gx - o.aux
+        val r0 = gx + o.aux
+        Gl.glow(c, gx, o.y, o.aux * 1.1f, 0xFF4DFF8E.toInt(), 38)
+        if (l1 > -120f) capsule(c, -120f, l1, o.y, half, danger)
+        if (r0 < Cfg.W + 120f) capsule(c, r0, Cfg.W + 120f, o.y, half, danger)
+    }
+
+    private fun drawCBand(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val half = Cfg.BAR_H
+        val off = o.phase * 3f + o.speed * t
+        val j0 = floor((0f - off) / o.size).toInt() - 1
+        val j1 = floor((Cfg.W - off) / o.size).toInt() + 1
+        for (j in j0..j1) {
+            val x0 = off + j * o.size + 4f
+            val x1 = off + (j + 1) * o.size - 4f
+            capsule(c, x0, x1, o.y, half, pal[(((j % o.n) + o.n) % o.n + o.shift) % o.n])
+        }
+    }
+
+    private fun drawSaws(c: Canvas, o: Ob, t: Float) {
+        Gl.line(c, Cfg.W / 2f - o.size, o.y, Cfg.W / 2f + o.size, o.y, 3f, Gl.white(22))
+        for (k in 0 until max(1, o.inner.toInt())) {
+            val x = Geo.sawX(o, t, k)
+            val r = o.aux
+            Gl.glow(c, x, o.y, r * 1.9f, danger, 60)
+            val path = Gl.path
+            path.reset()
+            val spin = t * (if (o.speed >= 0f) 5.5f else -5.5f) + k
+            for (i in 0 until 20) {
+                val rr = if (i % 2 == 0) r else r * 0.8f
+                val a = spin + i * 3.14159265f / 10f
+                val px = x + cos(a) * rr
+                val py = o.y + sin(a) * rr
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            path.close()
+            var pp = Gl.p()
+            pp.color = Gl.alpha(danger, 205)
+            c.drawPath(path, pp)
+            pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 2.4f
+            pp.strokeJoin = Paint.Join.ROUND
+            pp.color = Gl.white(150)
+            c.drawPath(path, pp)
+            pp = Gl.p()
+            pp.color = Gl.white(60)
+            c.drawCircle(x, o.y, r * 0.5f, pp)
+            pp = Gl.p()
+            pp.color = Gl.white(190)
+            c.drawCircle(x, o.y, r * 0.16f, pp)
+        }
+    }
+
+    private fun drawPillar(c: Canvas, o: Ob, t: Float) {
+        val px = Geo.swingX(o, t)
+        val hh = Cfg.PILLAR_HH
+        Gl.glow(c, px, o.y, o.aux * 1.3f, danger, 40)
+        Gl.panel(c, px - o.aux, o.y - hh, px + o.aux, o.y + hh, 26f, 1.25f, danger)
+        val pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 3f
+        pp.color = Gl.alpha(danger, 220)
+        Gl.rect.set(px - o.aux, o.y - hh, px + o.aux, o.y + hh)
+        c.drawRoundRect(Gl.rect, 26f, 26f, pp)
+        // franjas de peligro
+        c.save()
+        c.clipRect(px - o.aux + 6f, o.y - hh + 6f, px + o.aux - 6f, o.y + hh - 6f)
+        var sx = px - o.aux - 40f
+        while (sx < px + o.aux + 40f) {
+            Gl.line(c, sx, o.y + hh, sx + 2f * hh, o.y - hh, 8f, Gl.alpha(danger, 120))
+            sx += 44f
+        }
+        c.restore()
     }
 
     private fun drawArcOb(c: Canvas, o: Ob, t: Float, pal: IntArray) {
@@ -2061,7 +2238,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawBall(c: Canvas, sm: Sim, col: Int) {
         val r = Cfg.BALL_R
-        val x = Cfg.W / 2f
+        val x = sm.bx
         val y = if (sm.started) sm.by else sm.by + sin(time * 3f) * 9f
         drawBallAt(c, x, y, r, col, effSkin(), time, true)
     }
@@ -3289,11 +3466,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         ) {
             val a = (160 + 90 * sin(time * 4f)).toInt()
             Gl.text(c, "Toca para saltar", 540f, vh * 0.62f, 60f, Gl.medium, Gl.white(a), 0.05f, null, pal[0])
+            if (mode == Mode.LEVEL && cr.zones.isNotEmpty() && level <= 14 && !sm.started) {
+                Gl.text(c, "Habrá tramos donde deslizas el dedo", 540f, vh * 0.62f + 76f, 38f, Gl.regular, Gl.white(210))
+            }
             if (mode == Mode.LEVEL && level <= 2) {
                 Gl.text(c, "Atraviesa solo el color de tu pelota", 540f, vh * 0.62f + 76f, 38f, Gl.regular, Gl.white(210))
             }
         }
 
+        if (mode == Mode.LEVEL && ov == Ov.NONE && sm.started && !sm.dead && !sm.finished && level <= 14) {
+            val zb = cr.zones.firstOrNull { sm.by <= it.bottom + 700f && sm.by >= it.top }
+            if (zb != null) {
+                val a = (200 + 55 * sin(time * 4f)).toInt()
+                Gl.text(c, "¡Desliza el dedo para mover la bola!", 540f, vh * 0.30f, 44f, Gl.medium, Gl.white(a), 0.02f, null, pal[0])
+            }
+        }
         val oa = ((time - ovT0) / 0.42f).coerceIn(0f, 1f)
         if (mode == Mode.MP) {
             drawMpOverlays(c, sm, pal)

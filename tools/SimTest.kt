@@ -139,6 +139,14 @@ fun validateCourse(c: Course, label: String): List<String> {
         }
         if ((o.present and (1 shl color)) == 0) errs.add("$label: color $color imposible en obstáculo $i (tipo ${o.type})")
     }
+    // los obstáculos normales no pueden estar dentro de una zona de deslizar (ahí la bola no está en el centro)
+    for ((i, o) in c.obs.withIndex()) {
+        if (T.isSlide(o.type)) {
+            if (!c.inZone(o.y)) errs.add("$label: obstáculo de deslizar $i fuera de zona")
+        } else for (z in c.zones) {
+            if (o.y + o.reach >= z.top && o.y - o.reach <= z.bottom) errs.add("$label: obstáculo normal $i dentro de una zona")
+        }
+    }
     return errs
 }
 
@@ -269,7 +277,7 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
-fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo").getOrElse(t) { "?" }
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar").getOrElse(t) { "?" }
 
 val bestStarsTL = ThreadLocal.withInitial { 0 }
 
@@ -277,14 +285,16 @@ class FNode(val sims: Array<Sim>, val pend: IntArray)
 
 fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxSeconds: Float = 150f, beam: Int = (System.getenv("BEAM") ?: "6000").toInt()): Pair<Boolean, Float> {
     var frontier = ArrayList<FNode>()
-    frontier.add(FNode(Array(delays.size) { Sim(course, visH) }, IntArray(delays.size) { -1 }))
+    val slideV = (System.getenv("SLIDEV") ?: "1300").toFloat()
+    frontier.add(FNode(Array(delays.size) { Sim(course, visH).also { s -> s.vmax = slideV } }, IntArray(delays.size) { -1 }))
     val layers = (maxSeconds / (Cfg.STEP * grain)).toInt()
     val rnd = Random(5)
     for (layer in 0 until layers) {
         val seen = HashSet<Long>()
         val next = ArrayList<FNode>()
         for (node in frontier) {
-            for (tap in 0..1) {
+            val moves = if (course.zones.isNotEmpty() && course.inZone(node.sims[0].by)) intArrayOf(-1, 0, 1) else intArrayOf(0)
+            for (tap in 0..1) for (mv in moves) {
                 val sims = Array(delays.size) { node.sims[it].copy() }
                 val pend = node.pend.copyOf()
                 var ok = true
@@ -294,6 +304,7 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
                     val sm = sims[i]
                     for (k in 0 until grain) {
                         if (pend[i] == 0) { sm.tap(); pend[i] = -1 } else if (pend[i] > 0) pend[i]--
+                        sm.targetX = if (mv == 0) sm.bx else sm.bx + mv * 5000f
                         sm.step()
                         if (sm.dead) { ok = false; break }
                         if (sm.finished) break
@@ -305,7 +316,8 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
                 if (fin) return Pair(true, (layer + 1) * grain * Cfg.STEP)
                 val a = sims[0]
                 val key = ((a.by / 7f).toInt().toLong() shl 40) xor ((a.bvy / 40f).toInt().toLong() shl 24) xor (a.starCount.toLong() shl 8) xor (a.swCount.toLong() shl 2) xor (if (pend[0] >= 0) 1L else 0L)
-                if (seen.add(key)) next.add(FNode(sims, pend))
+                val key2 = key * 31L + (a.bx / 36f).toInt().toLong()
+                if (seen.add(key2)) next.add(FNode(sims, pend))
             }
         }
         for (nd in next) if (nd.sims[0].starCount > bestStarsTL.get()) bestStarsTL.set(nd.sims[0].starCount)
@@ -332,7 +344,7 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
 /** Diagnóstico: ¿dónde y por qué muere el bot? Uso: diag <nivel> */
 fun diag(level: Int) {
     val cfg = BotCfg(slots = 7, slotSteps = 14, jitter = 10, skip = 0.05f)
-    val names = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo")
+    val names = Array(T.COUNT) { tname(it) }
     val c0 = Course.level(level)
     println("nivel $level: colores=${Levels.colors(level)} obstáculos=" + c0.obs.joinToString(",") { names[it.type] })
     val deathsAt = IntArray(c0.obs.size + 2)
