@@ -1371,34 +1371,36 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         title(c, "AJUSTES", top + 130f)
         val y0 = top + 330f
         val dev = BuildConfig.DEV
-        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + (if (dev) 1350f else 1220f), 70f, 0.8f, pal[1])
+        // en pantallas más bajas las filas se juntan un poco para que todo quepa
+        val rs = min(1f, (vh - 120f - y0) / (if (dev) 1350f else 1220f))
+        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + (if (dev) 1350f else 1220f) * rs, 70f, 0.8f, pal[1])
 
         settingRow(c, "Música", y0)
         toggle(c, "tmusic", 870f, y0, prefs.musicOn)
-        slider(c, "music", y0 + 95f, prefs.musicVol, prefs.musicOn)
+        slider(c, "music", y0 + 95f * rs, prefs.musicVol, prefs.musicOn)
 
-        settingRow(c, "Efectos", y0 + 200f)
-        toggle(c, "tsfx", 870f, y0 + 200f, prefs.sfxOn)
-        slider(c, "sfx", y0 + 295f, prefs.sfxVol, prefs.sfxOn)
+        settingRow(c, "Efectos", y0 + 200f * rs)
+        toggle(c, "tsfx", 870f, y0 + 200f * rs, prefs.sfxOn)
+        slider(c, "sfx", y0 + 295f * rs, prefs.sfxVol, prefs.sfxOn)
 
-        settingRow(c, "Vibración", y0 + 420f)
-        toggle(c, "thaptic", 870f, y0 + 420f, prefs.haptics)
+        settingRow(c, "Vibración", y0 + 420f * rs)
+        toggle(c, "thaptic", 870f, y0 + 420f * rs, prefs.haptics)
 
-        settingRow(c, "Dificultad", y0 + 545f)
-        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", 800f, y0 + 545f, 300f, 100f, 0, 44f)
+        settingRow(c, "Dificultad", y0 + 545f * rs)
+        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", 800f, y0 + 545f * rs, 300f, 100f, 0, 44f)
 
-        settingRow(c, "Jugador", y0 + 665f)
-        button(c, "tname", prefs.name, 760f, y0 + 665f, 380f, 100f, 0, 40f)
+        settingRow(c, "Jugador", y0 + 665f * rs)
+        button(c, "tname", prefs.name, 760f, y0 + 665f * rs, 380f, 100f, 0, 40f)
 
-        settingRow(c, "Tema", y0 + 785f)
-        button(c, "ttheme", Themes.names[prefs.theme], 760f, y0 + 785f, 380f, 100f, Themes.glow[prefs.theme][0], 40f)
+        settingRow(c, "Tema", y0 + 785f * rs)
+        button(c, "ttheme", Themes.names[prefs.theme], 760f, y0 + 785f * rs, 380f, 100f, Themes.glow[prefs.theme][0], 40f)
 
-        settingRow(c, "Idioma", y0 + 905f)
-        button(c, "tlang", I18n.langNames[prefs.lang], 760f, y0 + 905f, 380f, 100f, 0, 40f)
+        settingRow(c, "Idioma", y0 + 905f * rs)
+        button(c, "tlang", I18n.langNames[prefs.lang], 760f, y0 + 905f * rs, 380f, 100f, 0, 40f)
 
-        settingRow(c, "Progreso", y0 + 1025f)
+        settingRow(c, "Progreso", y0 + 1025f * rs)
         val armed = time - resetArmedAt < 3f
-        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 1025f, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
+        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 1025f * rs, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
 
         val ul = when (updState) {
             1 -> "Buscando…"
@@ -1407,12 +1409,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             4 -> "Sin conexión"
             else -> "Buscar"
         }
-        settingRow(c, "Actualización", y0 + 1145f)
-        button(c, "update", ul, 760f, y0 + 1145f, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
+        settingRow(c, "Actualización", y0 + 1145f * rs)
+        button(c, "update", ul, 760f, y0 + 1145f * rs, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
 
         if (dev) {
-            settingRow(c, "Niveles", y0 + 1265f)
-            button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 1265f, 380f, 100f, 0, 40f)
+            settingRow(c, "Niveles", y0 + 1265f * rs)
+            button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 1265f * rs, 380f, 100f, 0, 40f)
         }
 
         Gl.text(c, "Spectrum Color  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
