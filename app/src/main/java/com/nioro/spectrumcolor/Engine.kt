@@ -433,9 +433,12 @@ object Levels {
 
     /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
     private val salts = IntArray(COUNT + 1).also {
-        it[12] = 1   // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
-        it[15] = 1
-        it[17] = 3
+        // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
+        it[11] = 3
+        it[12] = 2
+        it[15] = 2
+        it[17] = 5
+        it[18] = 1
         it[20] = 1
     }
 
