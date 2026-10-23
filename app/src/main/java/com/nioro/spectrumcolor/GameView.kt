@@ -2234,6 +2234,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
+            in 60..76 -> drawAnimIcon2(c, x, y, r, skin, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -2789,6 +2790,327 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     Gl.line(c, x, y, x + cos(a) * r * 0.85f, y + sin(a) * r * 0.85f, r * 0.03f, Gl.white(110))
                 }
                 dot(c, x, y, r * 0.1f, Color.WHITE, 220)
+            }
+        }
+    }
+
+    private fun hf(n: Float): Float = frac(sin(n * 12.9898f) * 43758.547f)
+
+    /** Apariencias animadas 60..76: fenómenos, ciencia y magia (también recortadas a la bola). */
+    private fun drawAnimIcon2(c: Canvas, x: Float, y: Float, r: Float, skin: Int, tm: Float) {
+        val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100)
+        val ua = under[skin - 60]
+        if (ua > 0) c.drawCircle(x, y, r, pk(Gl.alpha(uSpace, ua)))
+        val path = Gl.path
+        val pi = Math.PI.toFloat()
+        when (skin) {
+            60 -> { // tornado
+                for (i in 0 until 8) {
+                    val u = i / 7f
+                    val yy = y - r * 0.75f + u * r * 1.45f
+                    val rx = r * (0.78f - 0.62f * u)
+                    val sx = x + sin(tm * 2.6f + u * 5f) * r * 0.08f * (1f - u * 0.5f)
+                    Gl.rect.set(sx - rx, yy - r * 0.07f, sx + rx, yy + r * 0.07f)
+                    c.drawOval(Gl.rect, ps(if (i % 2 == 0) 230 else 160, r * 0.06f))
+                }
+                for (k in 0 until 6) {
+                    val a = tm * 3.2f + k * 1.05f
+                    val u = frac(tm * 0.5f + k * 0.17f)
+                    dot(c, x + cos(a) * r * (0.2f + 0.5f * (1f - u)), y + r * (0.8f - 1.5f * u), r * 0.045f, 0xFFB0BEC5.toInt(), 220)
+                }
+            }
+            61 -> { // terremoto
+                c.drawCircle(x, y, r, pk(Gl.alpha(0xFF8D6E63.toInt(), 200)))
+                val sh = sin(tm * 38f) * r * 0.025f
+                val pulse = 0.5f + 0.5f * sin(tm * 3f)
+                c.save()
+                c.translate(sh, -sh * 0.6f)
+                for (k in 0 until 4) {
+                    val a = k * 1.57f + 0.5f
+                    path.reset()
+                    path.moveTo(x, y)
+                    for (s in 1..5) {
+                        val rad = r * 0.2f * s
+                        val jit = (hf(k * 7f + s * 3.1f) - 0.5f) * r * 0.35f
+                        path.lineTo(x + cos(a) * rad - sin(a) * jit, y + sin(a) * rad + cos(a) * jit)
+                    }
+                    c.drawPath(path, ps(255, r * 0.1f).also { it.color = Gl.alpha(0xFFFF8F00.toInt(), (90 + 100 * pulse).toInt()) })
+                    c.drawPath(path, ps(255, r * 0.045f).also { it.color = 0xFF2B1A12.toInt() })
+                }
+                c.restore()
+                for (k in 0 until 6) {
+                    val u = frac(tm * 0.7f + k * 0.17f)
+                    dot(c, x + (hf(k * 2.1f) - 0.5f) * r * 1.4f, y + r * 0.8f - u * r * 0.9f, r * 0.06f, 0xFFD7CCC8.toInt(), (170 * (1f - u)).toInt())
+                }
+            }
+            62 -> { // volcán
+                path.reset()
+                path.moveTo(x - r * 1.1f, y + r)
+                path.lineTo(x - r * 0.22f, y + r * 0.2f)
+                path.lineTo(x + r * 0.22f, y + r * 0.2f)
+                path.lineTo(x + r * 1.1f, y + r)
+                path.close()
+                c.drawPath(path, pk(0xFF4E342E.toInt()))
+                Gl.line(c, x + r * 0.05f, y + r * 0.25f, x + r * 0.4f, y + r * 0.95f, r * 0.07f, Gl.alpha(0xFFFF6D00.toInt(), 200))
+                Gl.glow(c, x, y + r * 0.2f, r * 0.55f, 0xFFFF6D00.toInt(), 190)
+                for (k in 0 until 9) {
+                    val u = frac(tm * 0.65f + k / 9f)
+                    val dir = (hf(k * 3.3f) - 0.5f) * 1.6f
+                    val h = 4f * u * (1f - u) * (0.6f + 0.5f * hf(k * 1.7f))
+                    dot(c, x + dir * r * 0.7f * u, y + r * 0.2f - r * 1.2f * h, r * 0.07f, if (k % 2 == 0) 0xFFFFD54F.toInt() else 0xFFFF7043.toInt(), (240 * (1f - u * 0.4f)).toInt())
+                }
+                for (k in 0 until 4) {
+                    val u = frac(tm * 0.3f + k * 0.25f)
+                    dot(c, x + sin(k * 2.3f + tm) * r * 0.2f, y - r * 0.1f - u * r * 0.8f, r * (0.1f + 0.2f * u), 0xFF90A4AE.toInt(), (120 * (1f - u)).toInt())
+                }
+            }
+            63 -> { // avalancha
+                c.drawCircle(x, y, r, pk(Gl.alpha(0xFFB3E5FC.toInt(), 110)))
+                for (k in 0 until 12) {
+                    val u = frac(tm * 0.45f + k * 0.083f)
+                    val px = x - r * 0.9f + u * r * 1.8f + (hf(k * 1.9f) - 0.5f) * r * 0.4f
+                    val py = y - r * 0.8f + u * r * 1.6f + sin(k * 2f) * r * 0.15f
+                    dot(c, px, py, r * (0.08f + 0.1f * hf(k * 2.2f)), if (k % 3 == 0) 0xFFE1F5FE.toInt() else Color.WHITE, 235)
+                }
+                Gl.rect.set(x - r, y + r * 0.55f, x + r, y + r * 1.3f)
+                c.drawOval(Gl.rect, pk(Gl.alpha(Color.WHITE, 235)))
+            }
+            64 -> { // matriz digital
+                for (cn in 0 until 6) {
+                    val cx = x + (cn - 2.5f) * r * 0.32f
+                    val sp = 0.5f + hf(cn * 5.1f) * 0.7f
+                    for (k in 0 until 5) {
+                        val u = frac(tm * sp + cn * 0.31f - k * 0.09f)
+                        val py = y - r + u * 2.2f * r
+                        val a = (235 * (1f - k / 5f)).toInt()
+                        c.drawRect(cx - r * 0.05f, py - r * 0.07f, cx + r * 0.05f, py + r * 0.07f, pk(Gl.alpha(if (k == 0) 0xFFE8FFE8.toInt() else 0xFF00E676.toInt(), a)))
+                    }
+                }
+            }
+            65 -> { // holograma
+                val cc = 0xFF4DD0E1.toInt()
+                c.drawCircle(x, y, r, pk(Gl.alpha(cc, 35)))
+                val rr = r * 0.85f
+                for (k in -2..2) {
+                    val ly = y + k * r * 0.33f
+                    val rx = sqrt(max(0f, rr * rr - (k * r * 0.33f) * (k * r * 0.33f)))
+                    Gl.rect.set(x - rx, ly - rx * 0.18f, x + rx, ly + rx * 0.18f)
+                    c.drawOval(Gl.rect, ps(160, r * 0.03f).also { it.color = Gl.alpha(cc, 170) })
+                }
+                for (k in 0 until 3) {
+                    val rxl = abs(cos(tm * 1.2f + k * 1.047f)) * rr
+                    Gl.rect.set(x - rxl, y - rr, x + rxl, y + rr)
+                    c.drawOval(Gl.rect, ps(160, r * 0.03f).also { it.color = Gl.alpha(cc, 150) })
+                }
+                val sy = y - r + frac(tm * 0.6f) * 2f * r
+                Gl.line(c, x - rr, sy, x + rr, sy, r * 0.05f, Gl.alpha(0xFFB2EBF2.toInt(), 160))
+            }
+            66 -> { // teseracto
+                val a = tm * 0.9f
+                val ox = FloatArray(4)
+                val oy = FloatArray(4)
+                val ix = FloatArray(4)
+                val iy = FloatArray(4)
+                for (k in 0 until 4) {
+                    val ao = a + k * 1.5708f + 0.7854f
+                    ox[k] = x + cos(ao) * r * 0.66f
+                    oy[k] = y + sin(ao) * r * 0.66f
+                    val ai = -a * 1.3f + k * 1.5708f + 0.7854f
+                    ix[k] = x + cos(ai) * r * 0.33f
+                    iy[k] = y + sin(ai) * r * 0.33f
+                }
+                val ca = 0xFF80DEEA.toInt()
+                val cb = 0xFFEA80FC.toInt()
+                Gl.glow(c, x, y, r * 0.4f, cb, 70)
+                for (k in 0 until 4) {
+                    val n = (k + 1) % 4
+                    Gl.line(c, ox[k], oy[k], ox[n], oy[n], r * 0.05f, Gl.alpha(ca, 230))
+                    Gl.line(c, ix[k], iy[k], ix[n], iy[n], r * 0.05f, Gl.alpha(cb, 230))
+                    Gl.line(c, ox[k], oy[k], ix[k], iy[k], r * 0.03f, Gl.white(130))
+                }
+            }
+            67 -> { // caos cuántico
+                val cols = intArrayOf(0xFFFF4081.toInt(), 0xFF40C4FF.toInt(), 0xFFFFEA00.toInt(), 0xFFB388FF.toInt(), 0xFF69F0AE.toInt())
+                c.drawCircle(x, y, r * 0.8f, ps(40, r * 0.02f))
+                for (k in 0 until 16) {
+                    val st = floor(tm * 3f + k * 0.37f)
+                    val f = frac(tm * 3f + k * 0.37f)
+                    val ang = hf(st * 1.3f + k) * 6.2832f
+                    val rad = sqrt(hf(st * 2.7f + k * 3f)) * r * 0.85f
+                    dot(c, x + cos(ang) * rad, y + sin(ang) * rad, r * 0.06f, cols[k % 5], (60 + 195 * sin(f * pi)).toInt())
+                }
+            }
+            68 -> { // materia oscura
+                Gl.glow(c, x, y, r * 0.9f, 0xFF4A148C.toInt(), 150)
+                for (k in 0 until 7) {
+                    val a = tm * 0.7f + k * 0.9f
+                    val rad = r * (0.35f + 0.3f * sin(tm * 0.5f + k))
+                    Gl.glow(c, x + cos(a) * rad, y + sin(a) * rad * 0.8f, r * 0.45f, if (k % 2 == 0) 0xFF7B1FA2.toInt() else 0xFF311B92.toInt(), 130)
+                }
+                c.drawCircle(x, y, r * 0.3f, pk(0xFF06000F.toInt()))
+                c.drawCircle(x, y, r * 0.3f, ps(120, r * 0.03f).also { it.color = Gl.alpha(0xFFB388FF.toInt(), 120) })
+                for (k in 0 until 8) {
+                    val tw = 0.5f + 0.5f * sin(tm * 1.5f + k * 2.1f)
+                    dot(c, x + sin(k * 4.1f) * r * 0.8f, y + cos(k * 2.3f) * r * 0.8f, r * 0.03f, 0xFFE1BEE7.toInt(), (40 + 120 * tw).toInt())
+                }
+            }
+            69 -> { // agujero de gusano
+                for (k in 0 until 7) {
+                    val u = frac(tm * 0.45f + k / 7f)
+                    val rad = r * (1f - 0.92f * u)
+                    val a = (60 + 190 * u).toInt()
+                    val colr = if (k % 2 == 0) 0xFF40C4FF.toInt() else 0xFFB388FF.toInt()
+                    c.drawCircle(x, y, rad, ps(a, r * 0.05f).also { it.color = Gl.alpha(colr, a) })
+                }
+                Gl.glow(c, x, y, r * 0.35f, Color.WHITE, 200)
+                dot(c, x, y, r * 0.06f, Color.WHITE, 255)
+            }
+            70 -> { // ecos del big bang
+                val cols = intArrayOf(0xFFFF80AB.toInt(), 0xFF82B1FF.toInt(), 0xFFFFE57F.toInt())
+                for (k in 0 until 5) {
+                    val u = frac(tm * 0.4f + k * 0.2f)
+                    val a = (230 * (1f - u)).toInt()
+                    c.drawCircle(x, y, r * 1.1f * u, ps(a, r * (0.02f + 0.07f * (1f - u))).also { it.color = Gl.alpha(cols[k % 3], a) })
+                }
+                val fl = 0.6f + 0.4f * sin(tm * 5f)
+                Gl.glow(c, x, y, r * 0.45f, 0xFFFFF3E0.toInt(), (170 * fl).toInt())
+                dot(c, x, y, r * 0.09f, Color.WHITE, 255)
+                for (k in 0 until 8) {
+                    val u = frac(tm * 0.4f + k * 0.125f)
+                    val a = k * 0.785f
+                    dot(c, x + cos(a) * r * u, y + sin(a) * r * u, r * 0.035f, Color.WHITE, (220 * (1f - u)).toInt())
+                }
+            }
+            71 -> { // bioluminiscencia
+                for (k in 0 until 7) {
+                    val px = x + sin(tm * 0.4f + k * 2.3f) * r * 0.6f
+                    val py = y + cos(tm * 0.33f + k * 1.7f) * r * 0.6f
+                    val p = 0.5f + 0.5f * sin(tm * 1.8f + k * 1.3f)
+                    val cc = if (k % 2 == 0) 0xFF1DE9B6.toInt() else 0xFF18FFFF.toInt()
+                    Gl.glow(c, px, py, r * 0.32f, cc, (60 + 110 * p).toInt())
+                    val ang = tm * 0.5f + k
+                    Gl.line(c, px - cos(ang) * r * 0.09f, py - sin(ang) * r * 0.09f, px + cos(ang) * r * 0.09f, py + sin(ang) * r * 0.09f, r * 0.07f, Gl.alpha(cc, (150 + 100 * p).toInt()))
+                }
+                for (k in 0 until 8) {
+                    val u = frac(tm * 0.2f + k * 0.125f)
+                    dot(c, x + sin(k * 3.7f) * r * 0.8f, y + r - u * 2f * r, r * 0.025f, 0xFFB9F6CA.toInt(), 160)
+                }
+            }
+            72 -> { // adn giratorio
+                for (i in 0 until 12) {
+                    val yy = y - r * 0.82f + i * r * 0.149f
+                    val ph = tm * 2.2f + i * 0.55f
+                    val sx = sin(ph) * r * 0.4f
+                    val d1 = cos(ph)
+                    Gl.line(c, x - sx, yy, x + sx, yy, r * 0.03f, Gl.white(90))
+                    dot(c, x + sx, yy, r * (0.07f + 0.03f * d1), 0xFF40C4FF.toInt(), (170 + 80 * d1).toInt())
+                    dot(c, x - sx, yy, r * (0.07f - 0.03f * d1), 0xFFFF4081.toInt(), (170 - 80 * d1).toInt())
+                }
+            }
+            73 -> { // telaraña estelar
+                Gl.glow(c, x, y, r * 0.8f, 0xFF7C4DFF.toInt(), 100)
+                c.save()
+                c.rotate(tm * 8f, x, y)
+                Spooky.web(c, x, y, r * 0.92f, 190, 0f, 360f, 4)
+                c.restore()
+                for (k in 0 until 8) {
+                    val j = 1 + (k * 3) % 4
+                    val ang = Math.toRadians((tm * 8f + k * 45f).toDouble())
+                    val rad = r * 0.92f * j / 4f
+                    val tw = 0.5f + 0.5f * sin(tm * 3f + k * 1.7f)
+                    val px = x + cos(ang).toFloat() * rad
+                    val py = y + sin(ang).toFloat() * rad
+                    Gl.glow(c, px, py, r * 0.14f, 0xFFE3F2FD.toInt(), (60 + 100 * tw).toInt())
+                    dot(c, px, py, r * 0.045f, 0xFFE3F2FD.toInt(), (110 + 145 * tw).toInt())
+                }
+            }
+            74 -> { // runas antiguas
+                val cc = 0xFFB388FF.toInt()
+                val c2 = Gl.alpha(0xFFE1BEE7.toInt(), 240)
+                val pulse = 0.5f + 0.5f * sin(tm * 2f)
+                Gl.glow(c, x, y, r * 0.9f, cc, (70 + 60 * pulse).toInt())
+                c.drawCircle(x, y, r * 0.82f, ps(200, r * 0.03f).also { it.color = Gl.alpha(cc, 200) })
+                c.drawCircle(x, y, r * 0.52f, ps(150, r * 0.02f).also { it.color = Gl.alpha(cc, 150) })
+                c.save()
+                c.rotate(tm * 25f, x, y)
+                for (k in 0 until 6) {
+                    val a = k * 1.0472f
+                    val gx = x + cos(a) * r * 0.67f
+                    val gy = y + sin(a) * r * 0.67f
+                    c.save()
+                    c.rotate(Math.toDegrees(a.toDouble()).toFloat() + 90f, gx, gy)
+                    val w = r * 0.07f
+                    when (k % 3) {
+                        0 -> {
+                            Gl.line(c, gx, gy - w * 1.6f, gx, gy + w * 1.6f, r * 0.035f, c2)
+                            Gl.line(c, gx, gy - w * 0.8f, gx + w * 1.2f, gy - w * 1.6f, r * 0.035f, c2)
+                        }
+                        1 -> {
+                            Gl.line(c, gx - w, gy + w * 1.4f, gx, gy - w * 1.4f, r * 0.035f, c2)
+                            Gl.line(c, gx, gy - w * 1.4f, gx + w, gy + w * 1.4f, r * 0.035f, c2)
+                            Gl.line(c, gx - w * 0.6f, gy + w * 0.2f, gx + w * 0.6f, gy + w * 0.2f, r * 0.035f, c2)
+                        }
+                        else -> {
+                            Gl.line(c, gx - w, gy - w, gx + w, gy + w, r * 0.035f, c2)
+                            Gl.line(c, gx - w, gy + w, gx + w, gy - w, r * 0.035f, c2)
+                        }
+                    }
+                    c.restore()
+                }
+                c.restore()
+                Gl.line(c, x, y - r * 0.2f, x, y + r * 0.2f, r * 0.04f, Gl.white(220))
+                Gl.line(c, x - r * 0.14f, y - r * 0.1f, x + r * 0.14f, y + r * 0.1f, r * 0.04f, Gl.white(220))
+            }
+            75 -> { // alquimia
+                val gold = 0xFFFFD54F.toInt()
+                c.drawCircle(x, y, r * 0.78f, ps(210, r * 0.04f).also { it.color = Gl.alpha(gold, 210) })
+                for (h in 0 until 2) {
+                    path.reset()
+                    for (i in 0 until 3) {
+                        val a = tm * (if (h == 0) 0.8f else -0.8f) + i * 2.0944f + (if (h == 0) -1.5708f else 1.5708f)
+                        val px = x + cos(a) * r * 0.66f
+                        val py = y + sin(a) * r * 0.66f
+                        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                    }
+                    path.close()
+                    c.drawPath(path, ps(170, r * 0.03f).also { it.color = Gl.alpha(gold, 170) })
+                }
+                val orb = intArrayOf(0xFFCFD8DC.toInt(), gold, 0xFFFF8A50.toInt())
+                for (k in 0 until 3) {
+                    val a = tm * 1.4f + k * 2.0944f
+                    val px = x + cos(a) * r * 0.45f
+                    val py = y + sin(a) * r * 0.45f
+                    Gl.glow(c, px, py, r * 0.25f, orb[k], 110)
+                    dot(c, px, py, r * 0.1f, orb[k], 255)
+                }
+                for (k in 0 until 4) {
+                    val u = frac(tm * 0.35f + k * 0.25f)
+                    dot(c, x + sin(k * 2.9f) * r * 0.3f, y + r * 0.7f - u * r * 1.4f, r * 0.04f, 0xFFFFF8E1.toInt(), (200 * (1f - u)).toInt())
+                }
+            }
+            76 -> { // gema del tiempo
+                val gc = 0xFF4DD0E1.toInt()
+                val p = 0.5f + 0.5f * sin(tm * 2f)
+                Gl.glow(c, x, y, r * 0.85f, gc, (80 + 60 * p).toInt())
+                path.reset()
+                path.moveTo(x, y - r * 0.8f)
+                path.lineTo(x + r * 0.5f, y)
+                path.lineTo(x, y + r * 0.8f)
+                path.lineTo(x - r * 0.5f, y)
+                path.close()
+                c.drawPath(path, pk(Gl.alpha(gc, 90)))
+                c.drawPath(path, ps(230, r * 0.045f).also { it.color = Gl.alpha(0xFFB2EBF2.toInt(), 230) })
+                Gl.line(c, x - r * 0.5f, y, x + r * 0.5f, y, r * 0.025f, Gl.white(110))
+                Gl.line(c, x, y - r * 0.8f, x, y + r * 0.8f, r * 0.025f, Gl.white(70))
+                for (k in 0 until 5) {
+                    val u = frac(tm * 0.8f + k * 0.2f)
+                    dot(c, x + sin(k * 3f) * r * 0.08f, y - r * 0.6f + u * r * 1.2f, r * 0.025f, 0xFFFFF59D.toInt(), 220)
+                }
+                val a = tm * 2.5f
+                Gl.line(c, x, y, x + sin(a) * r * 0.3f, y - cos(a) * r * 0.3f, r * 0.05f, Color.WHITE)
+                val a2 = tm * 0.4f
+                Gl.line(c, x, y, x + sin(a2) * r * 0.2f, y - cos(a2) * r * 0.2f, r * 0.06f, Gl.alpha(0xFFFFF59D.toInt(), 230))
+                dot(c, x, y, r * 0.05f, Color.WHITE, 255)
             }
         }
     }

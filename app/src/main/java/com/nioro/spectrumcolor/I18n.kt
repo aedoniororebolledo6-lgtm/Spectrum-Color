@@ -112,7 +112,14 @@ object I18n {
             "Nebulosa|Nebula|Туманность", "Agujero negro|Black hole|Чёрная дыра", "Supernova|Supernova|Сверхновая",
             "Cometa|Comet|Комета", "Sistema solar|Solar system|Солнечная система", "Pulsar|Pulsar|Пульсар",
             "Aurora boreal|Northern lights|Северное сияние", "Espiral|Spiral|Спираль", "Eclipse|Eclipse|Затмение",
-            "Plasma|Plasma|Плазма"
+            "Plasma|Plasma|Плазма",
+            "Tornado|Tornado|Торнадо", "Terremoto|Earthquake|Землетрясение", "Volcán|Volcano|Вулкан",
+            "Avalancha|Avalanche|Лавина", "Matriz Digital|Digital Matrix|Цифровая матрица", "Holograma|Hologram|Голограмма",
+            "Teseracto|Tesseract|Тессеракт", "Caos Cuántico|Quantum Chaos|Квантовый хаос", "Materia Oscura|Dark Matter|Тёмная материя",
+            "Agujero de Gusano|Wormhole|Червоточина", "Ecos del Big Bang|Big Bang Echoes|Эхо Большого взрыва",
+            "Bioluminiscencia|Bioluminescence|Биолюминесценция", "ADN Giratorio|Spinning DNA|Вращающаяся ДНК",
+            "Telaraña Estelar|Starweb|Звёздная паутина", "Runas Antiguas|Ancient Runes|Древние руны",
+            "Alquimia|Alchemy|Алхимия", "Gema del Tiempo|Time Gem|Камень времени"
         )
         for (s in sk) { val a = s.split("|"); d(a[0], a[1], a[2]) }
         // --- partida ---
