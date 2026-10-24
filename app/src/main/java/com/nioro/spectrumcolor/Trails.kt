@@ -144,8 +144,8 @@ object Trails {
         c.restore()
     }
 
-    private val bx = FloatArray(64)
-    private val by = FloatArray(64)
+    private val bx = FloatArray(300)
+    private val by = FloatArray(300)
 
     /** Dibuja el rastro `st`. p: puntos (x, y, edad en segundos), del más viejo al más nuevo. R: radio de la bola. */
     fun draw(c: Canvas, st: Int, p: List<FloatArray>, col: Int, pal: IntArray, R: Float, tm: Float) {
@@ -239,7 +239,7 @@ object Trails {
                 var m = 0
                 for (i in 0 until n0) {
                     val t = p[i]
-                    if (1f - t[2] / L <= 0f || m >= 63) continue
+                    if (1f - t[2] / L <= 0f || m >= 299) continue
                     bx[m] = t[0] + (h(i + seed, 8) - 0.5f) * R * 1.3f
                     by[m] = t[1] + (h(i + seed, 9) - 0.5f) * R * 1.3f
                     m++
@@ -284,7 +284,7 @@ object Trails {
                 var m = 0
                 for (i in 0 until n0) {
                     val t = p[i]; val f = 1f - t[2] / L
-                    if (f <= 0f || m >= 63) continue
+                    if (f <= 0f || m >= 299) continue
                     normal(p, i)
                     val o = sin(t[2] * 20f + tm * 5f) * R * 0.7f * s
                     bx[m] = t[0] + nx * o; by[m] = t[1] + ny * o; m++
@@ -301,7 +301,7 @@ object Trails {
                 var m = 0
                 for (i in 0 until n0) {
                     val t = p[i]; val f = 1f - t[2] / L
-                    if (f <= 0f || m >= 63) continue
+                    if (f <= 0f || m >= 299) continue
                     normal(p, i)
                     val o = sin(t[2] * 16f + s * 2.094f + tm * 3f) * R * 0.8f
                     bx[m] = t[0] + nx * o; by[m] = t[1] + ny * o; m++
