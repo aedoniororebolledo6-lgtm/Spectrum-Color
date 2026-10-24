@@ -44,7 +44,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -116,7 +116,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var uiIdx = 0
     private fun depthOf(s: Scr): Int = when (s) {
         Scr.HOME -> 0
-        Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> 1
+        Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> 1
         Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
         Scr.PLAY -> 3
     }
@@ -326,7 +326,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     fun onBack(): Boolean {
         when (scr) {
             Scr.HOME -> return false
-            Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> goHome()
+            Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
+            Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> goHome()
             Scr.THEMES -> scr = Scr.SETTINGS
             Scr.EDITOR -> edBack()
             Scr.MP_HOST, Scr.MP_JOIN -> {
@@ -399,7 +400,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun beginPlay(c: Course, m: Mode) {
         mode = m
         course = c
-        world = if (c.isLevel) (if (c.palette >= 0) c.palette.coerceIn(0, Worlds.colors.size - 1) else Levels.world(c.level)) else (((c.seed % 12L) + 12L) % 12L).toInt()
+        world = if (c.isLevel) (if (c.palette >= 0) c.palette.coerceIn(0, Worlds.colors.size - 1) else Levels.world(c.level) % Worlds.colors.size) else (((c.seed % 12L) + 12L) % 12L).toInt()
         resetSim()
         scr = Scr.PLAY
         ov = Ov.NONE
@@ -439,10 +440,17 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         audio.play(Sfx.CLICK)
         when {
             id == "edit" -> if (BuildConfig.DEV) {
+                edMode = false
+                edRefreshPending()
+                scr = Scr.EDIT_HOME
+            }
+            id == "ehx" -> if (BuildConfig.DEV) {
                 edMode = true
-                levelPage = Levels.world(prefs.unlocked())
+                levelPage = 0
                 scr = Scr.LEVELS
             }
+            id == "ehn" -> if (BuildConfig.DEV) edNewLevel()
+            id == "ehp" -> if (BuildConfig.DEV) edPublish(edPendingList())
             id == "play" -> {
                 edMode = false
                 levelPage = Levels.world(prefs.unlocked())
@@ -1288,6 +1296,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.MP_HOST -> drawMpHost(c)
             Scr.MP_JOIN -> drawMpJoin(c)
             Scr.EDITOR -> drawEditor(c)
+            Scr.EDIT_HOME -> drawEditHome(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -1650,7 +1659,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val avail = Levels.worldAvailable(wp)
         Gl.text(c, "MUNDO ${wp + 1}", 540f, ry - 34f, 34f, Gl.medium, Gl.white(150), 0.3f)
         val shader = LinearGradient(300f, 0f, 780f, 0f, pal[0], pal[1], Shader.TileMode.CLAMP)
-        Gl.text(c, Worlds.names[wp], 540f, ry + 52f, 72f, Gl.light, Color.WHITE, 0.06f, shader)
+        Gl.text(c, Worlds.name(wp), 540f, ry + 52f, 72f, Gl.light, Color.WHITE, 0.06f, shader)
 
         val gridTop = top + 440f
         val availH = vh - gridTop - 170f
@@ -3837,7 +3846,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             return
         }
         edConfirm = false
-        levelPage = Levels.world(edLevel)
+        prefs.recountLevels()
+        levelPage = Levels.world(edLevel).coerceIn(0, Levels.WORLDS - 1)
         scr = Scr.LEVELS
     }
 
@@ -4126,9 +4136,28 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val s = d.serialize()
                 prefs.setCustom(edLevel, s)
                 LevelData.parse(s)?.let { Custom.map[edLevel] = it }
+                prefs.recountLevels()
                 edDirty = false
                 edConfirm = false
                 edToast("Nivel $edLevel guardado")
+            }
+            id == "edpub" -> {
+                edMenu = 0
+                edActivate("edsave")
+                edPublish(listOf(edLevel))
+            }
+            id == "eddelv" -> {
+                edMenu = 0
+                if (edLevel != Levels.COUNT || Official.map.containsKey(edLevel)) {
+                    edToast("Solo se puede eliminar el último nivel si aún no es oficial")
+                    return
+                }
+                prefs.setCustom(edLevel, null)
+                Custom.map.remove(edLevel)
+                prefs.recountLevels()
+                edDirty = false
+                levelPage = Levels.world(max(1, Levels.COUNT))
+                scr = Scr.LEVELS
             }
             id == "edorig" -> {
                 edMenu = 0
@@ -4403,7 +4432,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             items.add("edredo" to "Rehacer")
             items.add("edtest" to "Probar nivel")
             items.add("edsave" to "Guardar")
-            items.add("edorig" to "Restaurar original")
+            items.add("edpub" to "Publicar al juego oficial")
+            items.add("edorig" to (if (edLevel > Levels.BASE) "Vaciar nivel" else "Restaurar original"))
+            if (edLevel > Levels.BASE) items.add("eddelv" to "Eliminar nivel")
             items.add("edexit" to "Salir del editor")
         } else {
             for (i in edTplNames.indices) items.add("edtp:$i" to edTplNames[i])
@@ -4419,6 +4450,83 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 else -> true
             }
             button(c, it.first, it.second, 680f, y0 + i * step + 30f, 660f, 80f, 0, 34f, enabled)
+        }
+    }
+
+
+    // ---- pantalla "Editar": editar existentes, crear nuevos y publicar al juego oficial ----
+    private var edPending: List<Int> = emptyList()
+
+    private fun edPendingList(): List<Int> = Custom.map.keys.sorted().filter { l ->
+        val s = Custom.map[l]?.serialize() ?: return@filter false
+        Official.map[l]?.serialize() != s && prefs.pubHash(l) != s.hashCode()
+    }
+
+    private fun edRefreshPending() {
+        edPending = edPendingList()
+    }
+
+    private fun edNewLevel() {
+        val n = Levels.COUNT + 1
+        if (n > 400) { edToast("Ya no caben más niveles"); return }
+        Levels.setCount(n) // provisional: si se sale sin guardar, se recalcula
+        openEditor(n)
+        edDirty = true
+    }
+
+    /** Empaqueta un nivel como texto comprimido (para ir en la dirección del aviso de GitHub). */
+    private fun edPack(s: String): String {
+        val bos = java.io.ByteArrayOutputStream()
+        java.util.zip.DeflaterOutputStream(bos, java.util.zip.Deflater(9)).use { it.write(s.toByteArray(Charsets.UTF_8)) }
+        return android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+    }
+
+    /**
+     * "Tira" los niveles al juego oficial: abre GitHub con un aviso ya escrito (NIVELES …). Al enviarlo, una acción
+     * automática del repositorio guarda los niveles en el código y compila de nuevo el juego para todos.
+     */
+    private fun edPublish(levels: List<Int>) {
+        if (levels.isEmpty()) { edToast("No hay niveles pendientes de publicar"); return }
+        val sel = ArrayList<Int>()
+        val body = StringBuilder()
+        var len = 0
+        for (l in levels) {
+            val s = Custom.map[l]?.serialize() ?: continue
+            val line = "L$l " + edPack(s) + "\n"
+            val add = android.net.Uri.encode(line).length
+            if (sel.isNotEmpty() && len + add > 6500) break
+            sel.add(l)
+            body.append(line)
+            len += add
+        }
+        if (sel.isEmpty()) { edToast("No hay niveles para publicar"); return }
+        val title = "NIVELES " + sel.joinToString(",")
+        val url = "https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/issues/new?title=" + android.net.Uri.encode(title) +
+            "&body=" + android.net.Uri.encode(body.toString())
+        for (l in sel) prefs.setPub(l, Custom.map[l]!!.serialize().hashCode())
+        edRefreshPending()
+        edToast(if (levels.size > sel.size) "Se publican ${sel.size}. Pulsa de nuevo para el resto" else "En GitHub pulsa «Submit new issue»")
+        api.openUrl(url)
+    }
+
+    private fun drawEditHome(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        title(c, "EDITAR", top + 130f, 60f)
+        button(c, "ehx", "Editar niveles existentes", 540f, top + 400f, 840f, 150f, pal[0], 46f)
+        Gl.text(c, "Cambia cualquiera de los ${Levels.BASE} niveles del juego", 540f, top + 520f, 30f, Gl.regular, Gl.white(160))
+        button(c, "ehn", "Crear nivel nuevo", 540f, top + 640f, 840f, 150f, pal[1], 46f)
+        Gl.text(c, "Se añade al final, como nivel ${Levels.COUNT + 1}", 540f, top + 760f, 30f, Gl.regular, Gl.white(160))
+        val n = edPending.size
+        button(c, "ehp", if (n > 0) "Publicar al juego oficial ($n)" else "Publicar al juego oficial", 540f, top + 880f, 840f, 150f, pal[2], 42f, n > 0)
+        Gl.text(c, if (n > 0) "Niveles tuyos aún no publicados: " + edPending.joinToString(", ") else "No hay niveles pendientes", 540f, top + 1000f, 30f, Gl.regular, Gl.white(160))
+        Gl.textFit(c, "Al publicar se abre GitHub: pulsa «Submit new issue» y el juego", 540f, top + 1110f, 30f, 960f, Gl.regular, Gl.white(120))
+        Gl.textFit(c, "se vuelve a compilar solo con tus niveles (unos 4 minutos).", 540f, top + 1155f, 30f, 960f, Gl.regular, Gl.white(120))
+        if (time - edMsgT < 2.6f) {
+            val a = (255 * (1f - ((time - edMsgT - 2f) / 0.6f).coerceIn(0f, 1f))).toInt()
+            Gl.panel(c, 90f, top + 1240f, 990f, top + 1326f, 40f, 1f, pal[1])
+            Gl.textFit(c, edMsg, 540f, top + 1296f, 34f, 840f, Gl.medium, Gl.white(a))
         }
     }
 

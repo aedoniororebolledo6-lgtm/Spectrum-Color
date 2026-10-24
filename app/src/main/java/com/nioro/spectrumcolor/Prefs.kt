@@ -6,11 +6,11 @@ import android.content.SharedPreferences
 /** Ajustes y progreso guardados en el celular. */
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("spectrum_color", Context.MODE_PRIVATE)
-    private val starArr = IntArray(Levels.COUNT + 1)
+    private val starArr = IntArray(600)
 
     init {
         val s = sp.getString("stars", "") ?: ""
-        for (i in 0 until minOf(s.length, Levels.COUNT)) {
+        for (i in 0 until minOf(s.length, 599)) {
             val d = s[i] - '0'
             starArr[i + 1] = if (d in 0..3) d else 0
         }
@@ -24,13 +24,38 @@ class Prefs(context: Context) {
     }
 
     init {
+        try {
+            val names = context.assets.list("levels") ?: emptyArray()
+            for (f in names) {
+                val l = f.removeSuffix(".txt").toIntOrNull() ?: continue
+                val txt = context.assets.open("levels/$f").bufferedReader().use { it.readText() }
+                LevelData.parse(txt)?.let { Official.map[l] = it }
+            }
+        } catch (e: Exception) {
+            // sin niveles oficiales extra
+        }
         if (BuildConfig.DEV) {
-            for (l in 1..Levels.COUNT) {
-                val d = sp.getString("cl_$l", null) ?: continue
-                LevelData.parse(d)?.let { Custom.map[l] = it }
+            for (k in sp.all.keys.toList()) {
+                if (!k.startsWith("cl_")) continue
+                val l = k.substring(3).toIntOrNull() ?: continue
+                val d = LevelData.parse(sp.getString(k, "") ?: "") ?: continue
+                // si ya es idéntico al oficial, se descarta la copia propia
+                if (Official.map[l]?.serialize() == d.serialize()) setCustom(l, null) else Custom.map[l] = d
             }
         }
+        recountLevels()
     }
+
+    /** Recalcula cuántos niveles hay: los del diseño, los extra oficiales y (versión de desarrollador) los borradores. */
+    fun recountLevels() {
+        var m = Levels.BASE
+        for (k in Official.map.keys) if (k > m) m = k
+        if (BuildConfig.DEV) for (k in Custom.map.keys) if (k > m) m = k
+        Levels.setCount(m)
+    }
+
+    fun pubHash(level: Int): Int = sp.getInt("pub_$level", 0)
+    fun setPub(level: Int, h: Int) { sp.edit().putInt("pub_$level", h).apply() }
 
     var musicOn: Boolean
         get() = sp.getBoolean("musicOn", true)

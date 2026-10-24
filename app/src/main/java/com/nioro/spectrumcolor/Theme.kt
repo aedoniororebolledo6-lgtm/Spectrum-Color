@@ -7,6 +7,9 @@ object Worlds {
         "Galaxia", "Lava", "Bosque", "Hielo", "Cósmico", "Espectro"
     )
 
+    /** Nombre de la página de niveles (los mundos extra creados con el editor se llaman "Extra n"). */
+    fun name(i: Int): String = if (i in names.indices) names[i] else "Extra ${i - names.size + 1}"
+
     val colors: Array<IntArray> = arrayOf(
         intArrayOf(0xFF2BE4FF.toInt(), 0xFFFF4FB8.toInt(), 0xFFFFD84D.toInt(), 0xFF9A6BFF.toInt()),
         intArrayOf(0xFF2BFFB0.toInt(), 0xFF9A6BFF.toInt(), 0xFFFF5FA8.toInt(), 0xFF4DB8FF.toInt()),

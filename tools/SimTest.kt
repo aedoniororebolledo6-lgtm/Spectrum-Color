@@ -455,15 +455,27 @@ fun main(args: Array<String>) {
         val d = LevelData.parse(c.toData().serialize())
         if (d == null) { println("ERROR editor: no se pudo leer el nivel $lv"); failures++; continue }
         val c2 = Course.custom(lv, d)
+        fun near(a: Float, b: Float) = abs(a - b) < 0.011f
         val same = c.obs.size == c2.obs.size && c.sws.size == c2.sws.size && c.zones.size == c2.zones.size &&
-            c.startColor == c2.startColor && c.finishY == c2.finishY &&
-            c.obs.zip(c2.obs).all { (x, y) -> x.type == y.type && x.y == y.y && x.n == y.n && x.shift == y.shift && x.speed == y.speed &&
-                x.phase == y.phase && x.size == y.size && x.inner == y.inner && x.aux == y.aux && x.drift == y.drift && x.fade == y.fade && x.wob == y.wob } &&
-            c.sws.zip(c2.sws).all { (x, y) -> x.y == y.y && x.toColor == y.toColor }
+            c.startColor == c2.startColor && near(c.finishY, c2.finishY) &&
+            c.obs.zip(c2.obs).all { (x, y) -> x.type == y.type && near(x.y, y.y) && x.n == y.n && x.shift == y.shift && near(x.speed, y.speed) &&
+                near(x.phase, y.phase) && near(x.size, y.size) && near(x.inner, y.inner) && near(x.aux, y.aux) && near(x.drift, y.drift) && x.fade == y.fade && near(x.wob, y.wob) } &&
+            c.sws.zip(c2.sws).all { (x, y) -> near(x.y, y.y) && x.toColor == y.toColor }
+        // y guardar dos veces da exactamente el mismo texto (así se detecta que un nivel ya es oficial)
+        if (d.serialize() != LevelData.parse(d.serialize())!!.serialize()) { println("ERROR editor: el texto del nivel $lv no es estable"); failures++ }
         if (!same) { println("ERROR editor: el nivel $lv cambia al guardarlo"); failures++ }
         val e = validateCourse(c2, "editado $lv")
         e.forEach { println("ERROR $it") }
         failures += e.size
+    }
+    run {
+        val b = LevelData.blank(121)
+        val e = validateCourse(Course.custom(121, b), "nivel nuevo")
+        e.forEach { println("ERROR $it") }
+        failures += e.size
+        Levels.setCount(125)
+        if (Levels.COUNT != 125 || Levels.WORLDS != 13 || !Levels.isPlayable(125)) { println("ERROR niveles extra: cuenta mal"); failures++ }
+        Levels.setCount(120)
     }
     // y un nivel guardado reemplaza al generado
     run {

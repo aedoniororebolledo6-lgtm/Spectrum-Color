@@ -427,9 +427,22 @@ object Geo {
  * al subir PLAYABLE, la curva se estira sola.
  */
 object Levels {
-    const val COUNT = 120
-    const val PLAYABLE = 120
-    const val WORLDS = 12
+    /** Niveles del diseño original (curva de dificultad). Los niveles extra creados con el editor van después. */
+    const val BASE = 120
+    var COUNT = BASE
+        private set
+    var PLAYABLE = BASE
+        private set
+    var WORLDS = 12
+        private set
+
+    /** Ajusta la cantidad total de niveles (los extra oficiales y, en la versión de desarrollador, los borradores). */
+    fun setCount(n: Int) {
+        val c = n.coerceIn(BASE, 400)
+        COUNT = c
+        PLAYABLE = c
+        WORLDS = (c + PER_WORLD - 1) / PER_WORLD
+    }
     const val PER_WORLD = 10
 
     /** Los primeros EASY niveles usan la curva suave original; del 21 en adelante empieza la parte difícil. */
@@ -438,7 +451,7 @@ object Levels {
     fun isPlayable(level: Int): Boolean = level in 1..PLAYABLE
 
     /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
-    private val salts = IntArray(COUNT + 1).also {
+    private val salts = IntArray(BASE + 1).also {
         // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
         it[11] = 3
         it[12] = 2
@@ -448,13 +461,13 @@ object Levels {
         it[20] = 1
     }
 
-    fun salt(level: Int): Int = if (level in 1..COUNT) salts[level] else 0
+    fun salt(level: Int): Int = if (level in 1..BASE) salts[level] else 0
 
     /** Posición del nivel en la curva suave: 0 = primer nivel, 1 = nivel 20. */
     fun frac(level: Int): Float = ((level - 1).coerceAtLeast(0) / (EASY - 1).toFloat()).coerceIn(0f, 1f)
 
     /** Posición del nivel en la curva difícil: 0 = nivel 21, 1 = nivel 120. */
-    fun hf(level: Int): Float = ((level - EASY - 1).coerceAtLeast(0) / (COUNT - EASY - 1).toFloat()).coerceIn(0f, 1f)
+    fun hf(level: Int): Float = ((level - EASY - 1).coerceAtLeast(0) / (BASE - EASY - 1).toFloat()).coerceIn(0f, 1f)
 
     fun isHard(level: Int): Boolean = level > EASY
 
@@ -520,7 +533,7 @@ object Levels {
     }
 
     /** Dificultad propia de los bloques (0 = nivel 11, 1 = nivel 120). */
-    fun slideDiff(level: Int): Float = ((level - SLIDE_FROM).coerceAtLeast(0) / (COUNT - SLIDE_FROM).toFloat()).coerceIn(0f, 1f)
+    fun slideDiff(level: Int): Float = ((level - SLIDE_FROM).coerceAtLeast(0) / (BASE - SLIDE_FROM).toFloat()).coerceIn(0f, 1f)
 
     fun totalGates(level: Int): Int = gates(level) + slidePlan(level).sum()
 
@@ -540,7 +553,8 @@ class Course private constructor(
     companion object {
         /** [salt] cambia el recorrido de un nivel sin tocar los demás (ver Levels.salt). */
         fun level(level: Int, salt: Int = Levels.salt(level)): Course {
-            Custom.map[level]?.let { return custom(level, it) }
+            (Custom.map[level] ?: Official.map[level])?.let { return custom(level, it) }
+            if (level > Levels.BASE) return custom(level, LevelData.blank(level))
             val c = Course(level * 7919L + 13L + salt * 104729L, true, level, Levels.totalGates(level), 0)
             c.build()
             return c
@@ -951,23 +965,32 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
         zones.sortByDescending { it.bottom }
     }
 
+    private fun r(v: Float): Float = Math.round(v * 100f) / 100f
+
     fun serialize(): String {
         val sb = StringBuilder()
-        sb.append("S ").append(startColor).append(' ').append(finishY).append('\n')
+        sb.append("S ").append(startColor).append(' ').append(r(finishY)).append('\n')
         sb.append("P ").append(palette).append('\n')
         for (o in obs) {
-            sb.append("O ").append(o.type).append(' ').append(o.y).append(' ').append(o.n).append(' ').append(o.shift).append(' ')
-                .append(o.speed).append(' ').append(o.phase).append(' ').append(o.size).append(' ').append(o.inner).append(' ')
-                .append(o.aux).append(' ').append(o.drift).append(' ').append(if (o.fade) 1 else 0).append(' ').append(o.wob).append('\n')
+            sb.append("O ").append(o.type).append(' ').append(r(o.y)).append(' ').append(o.n).append(' ').append(o.shift).append(' ')
+                .append(r(o.speed)).append(' ').append(r(o.phase)).append(' ').append(r(o.size)).append(' ').append(r(o.inner)).append(' ')
+                .append(r(o.aux)).append(' ').append(r(o.drift)).append(' ').append(if (o.fade) 1 else 0).append(' ').append(r(o.wob)).append('\n')
         }
-        for (s in sws) sb.append("W ").append(s.y).append(' ').append(s.toColor).append('\n')
-        for (z in zones) sb.append("Z ").append(z.bottom).append(' ').append(z.top).append('\n')
+        for (s in sws) sb.append("W ").append(r(s.y)).append(' ').append(s.toColor).append('\n')
+        for (z in zones) sb.append("Z ").append(r(z.bottom)).append(' ').append(r(z.top)).append('\n')
         return sb.toString()
     }
 
     fun copy(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones), palette)
 
     companion object {
+        /** Nivel nuevo: un solo anillo y la meta; se completa en el editor. */
+        fun blank(level: Int): LevelData {
+            val o = ArrayList<Ob>()
+            o.add(Ob(T.RING, -1000f, 3, 0, 55f, 0f, 300f, 0f))
+            return LevelData(0, -1920f, o, ArrayList(), ArrayList(), ((level - 1) / Levels.PER_WORLD) % 12)
+        }
+
         fun parse(s: String): LevelData? {
             try {
                 var sc = 0
@@ -1004,5 +1027,10 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
 
 /** Niveles reemplazados por el editor (vacío en la versión normal). */
 object Custom {
+    val map = HashMap<Int, LevelData>()
+}
+
+/** Niveles oficiales añadidos desde el editor: viven en assets/levels/N.txt y se cargan al abrir la app. */
+object Official {
     val map = HashMap<Int, LevelData>()
 }
