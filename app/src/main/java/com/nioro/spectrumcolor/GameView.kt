@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -160,6 +161,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var touchY = -1000f
     private var touching = false
     private var sensorOn = false
+    private var skinVel = 0f
+    private var lastMoveT = 0L
+    private var levelOff = 0f
+    private var levelDrag = false
+    private var levelVel = 0f
     private var slidePtr = -1
     private var slideRefX = 0f
     private var slideRefBx = Cfg.W / 2f
@@ -433,8 +439,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 else checkUpdate()
             }
             id == "back" -> onBack()
-            id == "wprev" -> levelPage = max(0, levelPage - 1)
-            id == "wnext" -> levelPage = min(Levels.WORLDS - 1, levelPage + 1)
+            id == "wprev" -> if (levelPage > 0) {
+                levelPage--
+                levelOff -= Cfg.W
+            }
+            id == "wnext" -> if (levelPage < Levels.WORLDS - 1) {
+                levelPage++
+                levelOff += Cfg.W
+            }
             id.startsWith("lvl:") -> {
                 val l = id.substring(4).toIntOrNull() ?: return
                 startLevel(l)
@@ -526,6 +538,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 downY = y
                 lastY = y
                 dragged = false
+                skinVel = 0f
+                levelVel = 0f
+                levelDrag = false
+                lastMoveT = e.eventTime
                 val id = hitAt(x, y)
                 pressedId = id
                 if (id != null && id.startsWith("sl:")) {
@@ -552,14 +568,34 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             MotionEvent.ACTION_MOVE -> {
                 if (scr == Scr.PLAY) moveSlide(e)
                 if (dragSlider != null) setSlider(x)
+                val dtm = (e.eventTime - lastMoveT) / 1000f
                 if (scr == Scr.SKINS) {
                     if (!dragged && abs(y - downY) > 22f) {
                         dragged = true
                         pressedId = null
                     }
-                    if (dragged) skinScroll = (skinScroll - (y - lastY)).coerceIn(0f, skinMax)
+                    if (dragged) {
+                        // con tope elástico: más allá de los extremos cuesta más y al soltar vuelve
+                        var d = -(y - lastY)
+                        if ((skinScroll < 0f && d < 0f) || (skinScroll > skinMax && d > 0f)) d *= 0.4f
+                        skinScroll = (skinScroll + d).coerceIn(-170f, skinMax + 170f)
+                        if (dtm > 0.001f) skinVel = skinVel * 0.55f + (d / dtm) * 0.45f
+                    }
                     lastY = y
+                } else if (scr == Scr.LEVELS) {
+                    val dx = x - downX
+                    if (!levelDrag && abs(dx) > 26f && abs(dx) > abs(y - downY)) {
+                        levelDrag = true
+                        pressedId = null
+                    }
+                    if (levelDrag) {
+                        var o = dx
+                        if ((levelPage == 0 && o > 0f) || (levelPage == Levels.WORLDS - 1 && o < 0f)) o *= 0.35f
+                        if (dtm > 0.001f) levelVel = levelVel * 0.55f + ((o - levelOff) / dtm) * 0.45f
+                        levelOff = o
+                    }
                 }
+                lastMoveT = e.eventTime
             }
             MotionEvent.ACTION_UP -> {
                 val id = pressedId
@@ -569,15 +605,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     dragSlider = null
                     audio.play(Sfx.CLICK)
                 } else if (scr == Scr.SKINS && dragged) {
-                    // era un deslizamiento, no un toque
-                } else if (scr == Scr.LEVELS && abs(x - downX) > 160f) {
-                    levelPage = if (x < downX) min(Levels.WORLDS - 1, levelPage + 1) else max(0, levelPage - 1)
-                    audio.play(Sfx.CLICK)
+                    // era un deslizamiento, no un toque: sigue con inercia (ver update)
+                    if (abs(skinVel) < 120f) skinVel = 0f
+                } else if (scr == Scr.LEVELS && levelDrag) {
+                    levelDrag = false
+                    val fling = levelVel
+                    val want = if (levelOff < -150f || fling < -900f) 1 else if (levelOff > 150f || fling > 900f) -1 else 0
+                    val np = levelPage + want
+                    if (want != 0 && np in 0 until Levels.WORLDS) {
+                        levelPage = np
+                        levelOff += want * Cfg.W
+                        audio.play(Sfx.CLICK)
+                    }
                 } else if (id != null && hitAt(x, y) == id) {
                     activate(id)
                 }
             }
             MotionEvent.ACTION_CANCEL -> {
+                levelDrag = false
                 slidePtr = -1
                 pressedId = null
                 dragSlider = null
@@ -635,6 +680,27 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         } catch (e: Exception) {
         }
         sensorOn = false
+    }
+
+    /** Inercia y rebote del menú de apariencias y asentamiento de las páginas de niveles. */
+    private fun updateScroll(dt: Float) {
+        if (!levelDrag && levelOff != 0f) {
+            levelOff *= exp(-12f * dt)
+            if (abs(levelOff) < 0.5f) levelOff = 0f
+        }
+        val touchingSkins = touching && scr == Scr.SKINS && dragged
+        if (!touchingSkins) {
+            if (skinScroll < 0f || skinScroll > skinMax) {
+                skinVel = 0f
+                val bound = if (skinScroll < 0f) 0f else skinMax
+                skinScroll += (bound - skinScroll) * (1f - exp(-14f * dt))
+                if (abs(skinScroll - bound) < 0.5f) skinScroll = bound
+            } else if (skinVel != 0f) {
+                skinScroll += skinVel * dt
+                skinVel *= exp(-3.4f * dt)
+                if (abs(skinVel) < 12f) skinVel = 0f
+            }
+        }
     }
 
     private fun updateCats(dt: Float) {
@@ -696,6 +762,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun update(dt: Float) {
         time += dt
         updateCats(dt)
+        updateScroll(dt)
         pollNet()
         val m = match
         if (m != null) {
@@ -1475,10 +1542,37 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, prefs.totalStars().toString(), 950f, top + 126f, 46f, Gl.medium, Gl.white(240))
 
         val wp = levelPage
-        val avail = Levels.worldAvailable(wp)
         val ry = top + 300f
         if (wp > 0) iconButton(c, "wprev", 120f, ry, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         if (wp < Levels.WORLDS - 1) iconButton(c, "wnext", 960f, ry, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, 1) }
+
+        // la página actual y sus vecinas siguen al dedo; al soltar se asientan con suavidad
+        for (k in -1..1) {
+            val wq = wp + k
+            if (wq < 0 || wq >= Levels.WORLDS) continue
+            val off = levelOff + k * Cfg.W
+            if (abs(off) >= Cfg.W) continue
+            val h1 = hits.size
+            c.save()
+            c.translate(off, 0f)
+            drawWorldPage(c, wq, pal, ry)
+            c.restore()
+            if (k != 0 || abs(levelOff) > 4f) while (hits.size > h1) hits.removeAt(hits.size - 1)
+        }
+        val dots = Levels.WORLDS
+        val pos = wp - levelOff / Cfg.W
+        for (i in 0 until dots) {
+            val x = 540f + (i - (dots - 1) / 2f) * 38f
+            val near = (1f - abs(i - pos)).coerceIn(0f, 1f)
+            val pp = Gl.p()
+            pp.color = Gl.white((if (Levels.worldAvailable(i)) 110 else 50) + (130 * near).toInt())
+            c.drawCircle(x, vh - 100f, 6f + 3f * near, pp)
+        }
+    }
+
+    private fun drawWorldPage(c: Canvas, wp: Int, pal: IntArray, ry: Float) {
+        val top = topI
+        val avail = Levels.worldAvailable(wp)
         Gl.text(c, "MUNDO ${wp + 1}", 540f, ry - 34f, 34f, Gl.medium, Gl.white(150), 0.3f)
         val shader = LinearGradient(300f, 0f, 780f, 0f, pal[0], pal[1], Shader.TileMode.CLAMP)
         Gl.text(c, Worlds.names[wp], 540f, ry + 52f, 72f, Gl.light, Color.WHITE, 0.06f, shader)
@@ -1494,20 +1588,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             drawTile(c, lvl, cx, cy, 440f, tileH)
         }
         if (!avail) {
-            dim(c, 110)
+            val dp = Gl.p()
+            dp.color = Color.argb(110, 2, 4, 14)
+            c.drawRect(0f, gridTop - 10f, Cfg.W, vh - 160f, dp)
             val cy = gridTop + rowH * 2.5f
             Gl.panel(c, 130f, cy - 230f, 950f, cy + 230f, 80f, 1f, pal[1])
             drawLock(c, 540f, cy - 110f, 2.2f, 220)
             Gl.text(c, "PRÓXIMAMENTE", 540f, cy + 50f, 70f, Gl.medium, Gl.white(245), 0.12f, null, Gl.alpha(pal[0], 150))
             Gl.text(c, "Coming soon", 540f, cy + 118f, 44f, Gl.light, Gl.white(190), 0.1f)
             Gl.text(c, "Más niveles en próximas actualizaciones", 540f, cy + 176f, 32f, Gl.regular, Gl.white(150))
-        }
-        val dots = Levels.WORLDS
-        for (i in 0 until dots) {
-            val x = 540f + (i - (dots - 1) / 2f) * 38f
-            val pp = Gl.p()
-            pp.color = if (i == wp) Gl.white(240) else Gl.white(if (Levels.worldAvailable(i)) 110 else 50)
-            c.drawCircle(x, vh - 100f, if (i == wp) 9f else 6f, pp)
         }
     }
 
@@ -3438,7 +3527,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val count = if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
         val rows = (count + 3) / 4
         skinMax = max(0f, rows * (h + 18f) - 18f - (viewBot - gy))
-        skinScroll = skinScroll.coerceIn(0f, skinMax)
+        skinScroll = skinScroll.coerceIn(-170f, skinMax + 170f)
         c.save()
         c.clipRect(0f, gy - 12f, Cfg.W, viewBot)
         for (j in 0 until count) {
@@ -3493,7 +3582,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (skinMax > 0f) {
             val trackH = viewBot - gy
             val barH = max(60f, trackH * trackH / (trackH + skinMax))
-            val by0 = gy + (trackH - barH) * (skinScroll / skinMax)
+            val by0 = gy + (trackH - barH) * (skinScroll / skinMax).coerceIn(0f, 1f)
             Gl.rect.set(Cfg.W - 10f, by0, Cfg.W - 4f, by0 + barH)
             c.drawRoundRect(Gl.rect, 3f, 3f, pw(70))
         }
