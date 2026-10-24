@@ -417,9 +417,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val row = (effSkin() - (if (skinTab == 1) Skins.ANIM_FIRST else 0)) / 4
                 skinScroll = (row * 280f - 300f).coerceAtLeast(0f)
             }
-            id == "tab0" || id == "tab1" -> {
-                skinTab = if (id == "tab1") 1 else 0
+            id == "tab0" || id == "tab1" || id == "tab2" -> {
+                skinTab = id.substring(3).toInt()
                 skinScroll = 0f
+                skinVel = 0f
+            }
+            id.startsWith("trail:") -> {
+                val k = id.substring(6).toIntOrNull() ?: return
+                if (k in 0 until Trails.COUNT && trailOpen(k)) prefs.trail = k
             }
             id.startsWith("skin:") -> {
                 val k = id.substring(5).toIntOrNull() ?: return
@@ -907,7 +912,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         var k = trail.size - 1
         while (k >= 0) {
             trail[k][2] += dt
-            if (trail[k][2] > 0.35f) trail.removeAt(k)
+            if (trail[k][2] > Trails.MAX_LIFE) trail.removeAt(k)
             k--
         }
     }
@@ -2417,13 +2422,41 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun drawTrail(c: Canvas, col: Int) {
-        for (t in trail) {
-            val frac = 1f - t[2] / 0.35f
-            if (frac <= 0f) continue
-            val pp = Gl.p()
-            pp.color = Gl.alpha(col, (frac * 70f).toInt())
-            c.drawCircle(t[0], t[1], Cfg.BALL_R * (0.3f + 0.55f * frac), pp)
+        Trails.draw(c, effTrail(), trail, col, Worlds.colors[world], Cfg.BALL_R, time)
+    }
+
+    private fun trailOpen(k: Int): Boolean = prefs.allOpen || prefs.totalStars() >= Trails.need[k]
+
+    private fun effTrail(): Int {
+        val k = prefs.trail
+        return if (k in 0 until Trails.COUNT && trailOpen(k)) k else 0
+    }
+
+    private val prevTrail = ArrayList<FloatArray>().also { l -> for (i in 0 until 34) l.add(FloatArray(3)) }
+
+    /** Rastro de muestra: la bola recorre una onda hacia la derecha y deja su estela detrás. */
+    private fun drawTrailDemo(c: Canvas, st: Int, x0: Float, x1: Float, cy: Float, amp: Float, r: Float, col: Int, pal: IntArray, tm: Float, ballR: Float) {
+        val ph = (tm * 0.7f + st * 0.37f) % 1f
+        val span = x1 - x0
+        val n = prevTrail.size
+        val len = 0.42f // fracción del recorrido que ocupa el rastro
+        for (i in 0 until n) {
+            val u = i / (n - 1f)                 // 0 = más viejo
+            val age = (1f - u) * Trails.life[st] * 0.95f
+            val q = (ph - (1f - u) * len).let { it - floor(it) }
+            val t = prevTrail[i]
+            t[0] = x0 + span * q
+            t[1] = cy + sin(q * 6.2832f * 1.5f) * amp
+            t[2] = age
         }
+        val ph2 = ph
+        val bxx = x0 + span * ph2
+        val byy = cy + sin(ph2 * 6.2832f * 1.5f) * amp
+        // en el borde de la vuelta los puntos saltan: se recortan los que quedan más allá del inicio
+        val keep = ArrayList<FloatArray>(n)
+        for (i in 0 until n) { if (prevTrail[i][0] <= bxx + 0.5f) keep.add(prevTrail[i]) }
+        Trails.draw(c, st, keep, col, pal, r, tm)
+        drawBallAt(c, bxx, byy, ballR, col, effSkin(), tm, false)
     }
 
     private val ballClip = Path()
@@ -3511,20 +3544,29 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val k0 = effSkin()
         val colNow = pal[(time * 0.8f).toInt() % 4]
         Gl.glow(c, 540f, top + 340f, 300f, colNow, 80)
-        drawBallAt(c, 540f, top + 340f + sin(time * 2f) * 8f, 100f, colNow, k0, time, true)
-        Gl.text(c, Skins.names[k0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
-        Gl.text(c, "La bola conserva su color de juego", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
+        val t0 = effTrail()
+        if (skinTab == 2) {
+            drawTrailDemo(c, t0, 150f, 930f, top + 340f, 80f, 40f, colNow, pal, time, 46f)
+            Gl.text(c, Trails.names[t0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
+            Gl.text(c, "El rastro que deja la bola al subir", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
+        } else {
+            drawBallAt(c, 540f, top + 340f + sin(time * 2f) * 8f, 100f, colNow, k0, time, true)
+            Gl.text(c, Skins.names[k0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
+            Gl.text(c, "La bola conserva su color de juego", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
+        }
 
         // pestañas: clásicas / animadas
-        button(c, "tab0", "Clásicas", 300f, top + 690f, 380f, 84f, if (skinTab == 0) pal[0] else 0, 38f)
-        button(c, "tab1", "Animadas", 780f, top + 690f, 380f, 84f, if (skinTab == 1) pal[1] else 0, 38f)
+        button(c, "tab0", "Clásicas", 195f, top + 690f, 330f, 84f, if (skinTab == 0) pal[0] else 0, 36f)
+        button(c, "tab1", "Animadas", 540f, top + 690f, 330f, 84f, if (skinTab == 1) pal[1] else 0, 36f)
+        button(c, "tab2", "Estelas", 885f, top + 690f, 330f, 84f, if (skinTab == 2) pal[2] else 0, 36f)
 
         val w = 240f
         val h = 262f
         val gy = top + 770f
         val viewBot = vh - 150f
+        val tr = skinTab == 2
         val first = if (skinTab == 1) Skins.ANIM_FIRST else 0
-        val count = if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
+        val count = if (tr) Trails.COUNT else if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
         val rows = (count + 3) / 4
         skinMax = max(0f, rows * (h + 18f) - 18f - (viewBot - gy))
         skinScroll = skinScroll.coerceIn(-170f, skinMax + 170f)
@@ -3535,10 +3577,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val cx = 135f + (j % 4) * 270f
             val cy = gy + h / 2f + (j / 4) * (h + 18f) - skinScroll
             if (cy + h / 2f < gy - 12f || cy - h / 2f > viewBot) continue
-            val open = skinOpen(i)
-            val id = "skin:$i"
+            val open = if (tr) trailOpen(i) else skinOpen(i)
+            val id = if (tr) "trail:$i" else "skin:$i"
             val pressed = open && pressedId == id
-            val sel = i == k0
+            val sel = if (tr) i == t0 else i == k0
             val s = if (pressed) 0.96f else 1f
             Gl.panel(
                 c, cx - w / 2f * s, cy - h / 2f * s, cx + w / 2f * s, cy + h / 2f * s, 48f,
@@ -3553,7 +3595,25 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 c.drawRoundRect(Gl.rect, 48f, 48f, pb)
             }
             val bc = pal[(i + (time * 0.8f).toInt()) % 4]
-            if (open) {
+            if (tr) {
+                c.save()
+                c.clipRect(cx - w / 2f + 6f, cy - h / 2f + 6f, cx + w / 2f - 6f, cy + h / 2f - 6f)
+                drawTrailDemo(c, i, cx - 92f, cx + 92f, cy - 50f, 24f, 22f, bc, pal, time, 19f)
+                c.restore()
+                Gl.textFit(c, Trails.names[i], cx, cy + if (open) 62f else 32f, 32f, w - 24f, Gl.medium, Gl.white(240))
+                if (open) {
+                    val ht = max(gy, cy - h / 2f)
+                    val hb = min(viewBot, cy + h / 2f)
+                    if (hb > ht) hits.add(Hit(id, cx - w / 2f, ht, cx + w / 2f, hb))
+                } else {
+                    val gp = Gl.p()
+                    gp.color = Color.argb(150, 92, 98, 116)
+                    Gl.rect.set(cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f)
+                    c.drawRoundRect(Gl.rect, 48f, 48f, gp)
+                    drawLock(c, cx, cy + 74f, 0.95f, 235)
+                    Gl.text(c, "${Trails.need[i]} estrellas", cx, cy + 118f, 25f, Gl.regular, Gl.white(215))
+                }
+            } else if (open) {
                 drawBallAt(c, cx, cy - 32f, 56f, bc, i, time, false)
                 Gl.textFit(c, Skins.names[i], cx, cy + 82f, 34f, w - 24f, Gl.medium, Gl.white(240))
                 val ht = max(gy, cy - h / 2f)

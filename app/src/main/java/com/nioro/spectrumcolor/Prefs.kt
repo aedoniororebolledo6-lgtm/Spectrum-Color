@@ -46,6 +46,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("skin", 0)
         set(v) { sp.edit().putInt("skin", v).apply() }
 
+    /** Estela (rastro) de la bola (índice en Trails). */
+    var trail: Int
+        get() = sp.getInt("trail", 0)
+        set(v) { sp.edit().putInt("trail", v).apply() }
+
     /** Tema de fondo (0 = clásico, 1 = rojo, 2 = morado, 3 = rosa). */
     var theme: Int
         get() = sp.getInt("theme", 0).coerceIn(0, Themes.COUNT - 1)
