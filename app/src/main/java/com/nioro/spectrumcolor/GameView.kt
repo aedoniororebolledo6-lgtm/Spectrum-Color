@@ -783,7 +783,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun updateCats(dt: Float) {
-        val on = prefs.theme == Themes.CATS
+        val on = prefs.theme == Themes.CATS || prefs.theme == Themes.DOGS
         if (on && !sensorOn) startSensor() else if (!on && sensorOn) stopSensor()
         if (!on) return
         val n = min(bubbles.size, 32)
@@ -1325,12 +1325,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
         val hw = th == Themes.HALLOWEEN
         val cats = th == Themes.CATS
+        val dogs = th == Themes.DOGS
         for ((bi, b) in bubbles.withIndex()) {
             val s = b.size
             val span = vh + 2f * s
             val x = b.nx * Cfg.W + sin(time * 0.6f + b.sway) * 14f
             val y = ((b.ny * vh - camY * b.depth - time * 8f * (b.depth * 4f)) % span + span) % span - s
-            if (cats && bi < 32) {
+            if ((cats || dogs) && bi < 32) {
                 val kx = x + catOx[bi]
                 val ky = y + catOy[bi]
                 catPx[bi] = kx
@@ -1338,7 +1339,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val kr = s * 0.9f + 8f
                 val ex = kr * 1.7f
                 if (scr == Scr.PLAY) c.saveLayerAlpha(kx - ex, ky - ex, kx + ex, ky + ex, 120)
-                Cats.kitten(c, kx, ky, kr, bi % 4, time, tiltX.coerceIn(-1f, 1f), (tiltY - 0.7f).coerceIn(-1f, 1f))
+                if (dogs) Dogs.dog(c, kx, ky, kr, bi % Dogs.KINDS, time, tiltX.coerceIn(-1f, 1f), (tiltY - 0.7f).coerceIn(-1f, 1f))
+                else Cats.kitten(c, kx, ky, kr, bi % 4, time, tiltX.coerceIn(-1f, 1f), (tiltY - 0.7f).coerceIn(-1f, 1f))
                 if (scr == Scr.PLAY) c.restore()
                 continue
             }
@@ -1550,6 +1552,39 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 Cats.whiskers(c, 540f + sgn * (cw / 2f + 30f), ty + 92f, 190f, sgn, 5f, 210)
             }
             Cats.tri(c, 540f - 20f, ty + 188f, 540f + 20f, ty + 188f, 540f, ty + 214f, 0xFFFF7F9A.toInt())
+        }
+        if (prefs.theme == Themes.DOGS) {
+            // orejas caídas a los lados de "SPECTRUM", y hocico con lengua bajo "COLOR"
+            val tw = Gl.textWidth("SPECTRUM", 112f, Gl.thin, 0.14f)
+            val wig = sin(time * 1.6f) * 5f
+            for (sgn in intArrayOf(-1, 1)) {
+                val ex = 540f + sgn * (tw / 2f + 14f)
+                Gl.glow(c, ex, ty - 30f, 110f, pal[0], 50)
+                c.save()
+                c.rotate(sgn * (14f + wig), ex, ty - 96f)
+                val ep = Gl.p()
+                ep.color = 0xFF7A4A24.toInt()
+                Gl.rect.set(ex - 40f, ty - 100f, ex + 40f, ty + 70f)
+                c.drawOval(Gl.rect, ep)
+                val ei = Gl.p()
+                ei.color = 0xFF9A6234.toInt()
+                Gl.rect.set(ex - 26f, ty - 84f, ex + 26f, ty + 40f)
+                c.drawOval(Gl.rect, ei)
+                c.restore()
+            }
+            val np = Gl.p()
+            np.color = 0xFF16111A.toInt()
+            Gl.rect.set(540f - 34f, ty + 178f, 540f + 34f, ty + 222f)
+            c.drawOval(Gl.rect, np)
+            val nh = Gl.p()
+            nh.color = Gl.white(160)
+            Gl.rect.set(540f - 18f, ty + 186f, 540f + 4f, ty + 196f)
+            c.drawOval(Gl.rect, nh)
+            val tl = 46f + 8f * sin(time * 5f)
+            val tp = Gl.p()
+            tp.color = 0xFFFF7F9A.toInt()
+            Gl.rect.set(540f - 22f, ty + 226f, 540f + 22f, ty + 226f + tl)
+            c.drawRoundRect(Gl.rect, 22f, 22f, tp)
         }
         if (prefs.theme == Themes.HALLOWEEN) {
             Spooky.web(c, 0f, 0f, 470f, 130, 0f, 90f, 4)
@@ -1802,6 +1837,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 Spooky.web(c, pl, pt, 130f, 140, 0f, 90f, 3)
                 Spooky.web(c, pr, pt, 130f, 140, 90f, 90f, 3)
                 Spooky.pumpkin(c, cx, pt + 205f + sin(time * 2f) * 4f, 40f, true, time)
+            } else if (t == Themes.DOGS) {
+                Dogs.dog(c, cx, pt + 215f + sin(time * 2f) * 4f, 46f, ((time / 2f).toInt()) % Dogs.KINDS, time, 0f, 0f)
             } else if (t == Themes.CATS) {
                 Cats.kitten(c, cx, pt + 215f + sin(time * 2f) * 4f, 46f, ((time / 2f).toInt()) % 4, time, 0f, 0f)
             } else {

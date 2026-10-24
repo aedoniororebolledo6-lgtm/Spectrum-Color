@@ -44,10 +44,11 @@ object Worlds {
 
 /** Temas de fondo elegibles en Ajustes. El 0 usa el degradado propio de cada mundo. */
 object Themes {
-    const val COUNT = 7
+    const val COUNT = 8
     const val HALLOWEEN = 5
     const val CATS = 6
-    val names = arrayOf("Clásico", "Rojo", "Morado", "Rosa", "Verde", "Halloween", "Gatitos")
+    const val DOGS = 7
+    val names = arrayOf("Clásico", "Rojo", "Morado", "Rosa", "Verde", "Halloween", "Gatitos", "Perritos")
 
     /** Arriba, medio, abajo (el tema 0 no lo usa). */
     val bg: Array<IntArray> = arrayOf(
@@ -57,7 +58,8 @@ object Themes {
         intArrayOf(0xFF1F0615.toInt(), 0xFF45102F.toInt(), 0xFF7A1A53.toInt()),
         intArrayOf(0xFF021208.toInt(), 0xFF07301A.toInt(), 0xFF0C5230.toInt()),
         intArrayOf(0xFF0B0510.toInt(), 0xFF26100F.toInt(), 0xFF4A1C06.toInt()),
-        intArrayOf(0xFF2A1203.toInt(), 0xFF6B2F08.toInt(), 0xFFB65A12.toInt())
+        intArrayOf(0xFF2A1203.toInt(), 0xFF6B2F08.toInt(), 0xFFB65A12.toInt()),
+        intArrayOf(0xFF1A0F09.toInt(), 0xFF3D2314.toInt(), 0xFF6E4527.toInt())
     )
 
     /** Colores de los resplandores del fondo y de los paneles en los menús. */
@@ -68,6 +70,7 @@ object Themes {
         intArrayOf(0xFFFF4FB8.toInt(), 0xFFFF8AD0.toInt(), 0xFFFF5F8A.toInt(), 0xFFD84DFF.toInt()),
         intArrayOf(0xFF4DFF8E.toInt(), 0xFF2BE4B0.toInt(), 0xFFB6FF4D.toInt(), 0xFF4DD0FF.toInt()),
         intArrayOf(0xFFFF8A1E.toInt(), 0xFF9A4DFF.toInt(), 0xFF7CFF3D.toInt(), 0xFFFFB84D.toInt()),
-        intArrayOf(0xFFFFA040.toInt(), 0xFFFFC266.toInt(), 0xFFFF7A1A.toInt(), 0xFFFFD9A0.toInt())
+        intArrayOf(0xFFFFA040.toInt(), 0xFFFFC266.toInt(), 0xFFFF7A1A.toInt(), 0xFFFFD9A0.toInt()),
+        intArrayOf(0xFFC98B52.toInt(), 0xFFE6B988.toInt(), 0xFF9A5F2E.toInt(), 0xFFF2D3A6.toInt())
     )
 }
