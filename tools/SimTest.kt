@@ -449,6 +449,30 @@ fun main(args: Array<String>) {
         }
     }
     println("obstáculos por tipo en los niveles jugables: ${typeCount.toList()}")
+    // editor: guardar y volver a cargar un nivel lo deja idéntico (obstáculos, cambiadores, zonas)
+    for (lv in intArrayOf(1, 7, 25, 61, 99, 120)) {
+        val c = Course.level(lv)
+        val d = LevelData.parse(c.toData().serialize())
+        if (d == null) { println("ERROR editor: no se pudo leer el nivel $lv"); failures++; continue }
+        val c2 = Course.custom(lv, d)
+        val same = c.obs.size == c2.obs.size && c.sws.size == c2.sws.size && c.zones.size == c2.zones.size &&
+            c.startColor == c2.startColor && c.finishY == c2.finishY &&
+            c.obs.zip(c2.obs).all { (x, y) -> x.type == y.type && x.y == y.y && x.n == y.n && x.shift == y.shift && x.speed == y.speed &&
+                x.phase == y.phase && x.size == y.size && x.inner == y.inner && x.aux == y.aux && x.drift == y.drift && x.fade == y.fade && x.wob == y.wob } &&
+            c.sws.zip(c2.sws).all { (x, y) -> x.y == y.y && x.toColor == y.toColor }
+        if (!same) { println("ERROR editor: el nivel $lv cambia al guardarlo"); failures++ }
+        val e = validateCourse(c2, "editado $lv")
+        e.forEach { println("ERROR $it") }
+        failures += e.size
+    }
+    // y un nivel guardado reemplaza al generado
+    run {
+        val d = Course.level(3).toData()
+        Custom.map[3] = d
+        val same = Course.level(3).obs.size == d.obs.size
+        Custom.map.remove(3)
+        if (!same) { println("ERROR editor: el nivel guardado no se usa"); failures++ }
+    }
     for (seed in 1L..20L) {
         val c = Course.endless(seed, 0)
         c.ensure(-60000f)
