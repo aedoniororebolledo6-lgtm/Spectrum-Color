@@ -26,6 +26,8 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     private val ready = HashSet<Int>()
     private var mp: AudioTrack? = null
     private var track = -1
+    private val variant = intArrayOf(1, 1) // la próxima vez suena la otra canción
+    private var cur = 0
     private var paused = false
 
     init {
@@ -77,6 +79,10 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
         }
         releasePlayer()
         track = t
+        if (t in 0..1) {
+            variant[t] = 1 - variant[t]
+            cur = variant[t]
+        }
         if (prefs.musicOn) startPlayer()
     }
 
@@ -164,7 +170,8 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     /** Bucle sin corte: el WAV completo en memoria y AudioTrack repitiéndolo (MediaPlayer deja un hueco al reiniciar). */
     private fun startPlayer() {
         try {
-            val res = if (track == 0) R.raw.music_menu else R.raw.music_game
+            val res = if (track == 0) (if (cur == 0) R.raw.music_menu else R.raw.music_menu2)
+            else (if (cur == 0) R.raw.music_game else R.raw.music_game2)
             val (pcm, rate, ch) = readWav(res) ?: return
             val mask = if (ch == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
             val attrs = AudioAttributes.Builder()

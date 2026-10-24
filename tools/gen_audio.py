@@ -227,6 +227,32 @@ def music():
     )
 
 
+def music2():
+    """Dos temas extra: uno suave para menús y otro enérgico para partidas."""
+    c1 = {"pad": [55, 60, 64, 67], "bass": 36, "arp": [72, 76, 79, 83]}
+    e1 = {"pad": [55, 59, 64, 67], "bass": 40, "arp": [71, 76, 79, 83]}
+    a1 = {"pad": [57, 60, 64, 69], "bass": 33, "arp": [69, 72, 76, 81]}
+    f1 = {"pad": [53, 57, 60, 65], "bass": 29, "arp": [65, 69, 72, 77]}
+    track(
+        "music_menu2", 64, [c1, e1, a1, f1],
+        [0, None, None, 2, None, 1, None, None, 3, None, 2, None, 4, None, 1, None],
+        None, False, 0.6, 31,
+    )
+    dm = {"pad": [57, 62, 65, 69], "bass": 38, "arp": [62, 65, 69, 74]}
+    bb = {"pad": [58, 62, 65, 69], "bass": 34, "arp": [62, 65, 70, 74]}
+    f2 = {"pad": [57, 60, 65, 69], "bass": 29, "arp": [65, 69, 72, 77]}
+    c2 = {"pad": [55, 60, 64, 67], "bass": 36, "arp": [64, 67, 72, 76]}
+    track(
+        "music_game2", 128, [dm, bb, f2, c2],
+        [0, 1, 2, 3, 2, 1, 4, 3, 0, 2, 5, 4, 3, 2, 1, 2],
+        None, True, 0.5, 47,
+    )
+
+
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 2 and sys.argv[2] == "music2":
+        music2()
+        raise SystemExit
     sfx()
     music()
