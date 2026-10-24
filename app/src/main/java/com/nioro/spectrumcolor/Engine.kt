@@ -97,6 +97,12 @@ class Ob(
     val fade: Boolean = false,  // el obstáculo se ve solo una parte del tiempo
     val wob: Float = 0f         // vaivén extra del giro, en grados
 ) {
+    fun copy(
+        type: Int = this.type, y: Float = this.y, n: Int = this.n, shift: Int = this.shift, speed: Float = this.speed,
+        phase: Float = this.phase, size: Float = this.size, inner: Float = this.inner, aux: Float = this.aux,
+        drift: Float = this.drift, fade: Boolean = this.fade, wob: Float = this.wob
+    ): Ob = Ob(type, y, n, shift, speed, phase, size, inner, aux, drift, fade, wob)
+
     /** Distancia máxima desde el centro hasta cualquier parte del obstáculo. */
     val reach: Float = when (type) {
         T.BARS, T.PEND, T.GATE, T.PULSE, T.LASER, T.SGATE, T.CBAND -> Cfg.BAR_DY + Cfg.BAR_H + 6f
@@ -534,8 +540,20 @@ class Course private constructor(
     companion object {
         /** [salt] cambia el recorrido de un nivel sin tocar los demás (ver Levels.salt). */
         fun level(level: Int, salt: Int = Levels.salt(level)): Course {
+            Custom.map[level]?.let { return custom(level, it) }
             val c = Course(level * 7919L + 13L + salt * 104729L, true, level, Levels.totalGates(level), 0)
             c.build()
+            return c
+        }
+
+        /** Nivel editado a mano (solo la versión de desarrollador guarda estos datos). */
+        fun custom(level: Int, d: LevelData): Course {
+            val c = Course(level * 7919L + 13L, true, level, d.obs.size, 0)
+            c.obs.addAll(d.obs.sortedByDescending { it.y })
+            c.sws.addAll(d.sws.sortedByDescending { it.y })
+            c.zones.addAll(d.zones.sortedByDescending { it.bottom })
+            c.startColor = d.startColor
+            c.finishY = d.finishY
             return c
         }
 
@@ -565,6 +583,9 @@ class Course private constructor(
     private var lastType = -1
 
     val totalGates: Int get() = gateTotal
+
+    /** Copia editable del recorrido (para el editor de niveles). */
+    fun toData(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones))
 
     private fun build() {
         val plan = if (isLevel) Levels.slidePlan(level) else IntArray(0)
@@ -915,4 +936,66 @@ class Sim(val course: Course, val visH: Float) {
         // meta
         if (course.isLevel && by < course.finishY) finished = true
     }
+}
+
+
+/** Un nivel completo como datos: lo que edita el editor (solo versión de desarrollador). */
+class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>, val sws: ArrayList<Sw>, val zones: ArrayList<Zone>) {
+    fun sortAll() {
+        obs.sortByDescending { it.y }
+        sws.sortByDescending { it.y }
+        zones.sortByDescending { it.bottom }
+    }
+
+    fun serialize(): String {
+        val sb = StringBuilder()
+        sb.append("S ").append(startColor).append(' ').append(finishY).append('\n')
+        for (o in obs) {
+            sb.append("O ").append(o.type).append(' ').append(o.y).append(' ').append(o.n).append(' ').append(o.shift).append(' ')
+                .append(o.speed).append(' ').append(o.phase).append(' ').append(o.size).append(' ').append(o.inner).append(' ')
+                .append(o.aux).append(' ').append(o.drift).append(' ').append(if (o.fade) 1 else 0).append(' ').append(o.wob).append('\n')
+        }
+        for (s in sws) sb.append("W ").append(s.y).append(' ').append(s.toColor).append('\n')
+        for (z in zones) sb.append("Z ").append(z.bottom).append(' ').append(z.top).append('\n')
+        return sb.toString()
+    }
+
+    fun copy(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones))
+
+    companion object {
+        fun parse(s: String): LevelData? {
+            try {
+                var sc = 0
+                var fy = -3000f
+                val o = ArrayList<Ob>()
+                val w = ArrayList<Sw>()
+                val z = ArrayList<Zone>()
+                for (line in s.split('\n')) {
+                    val p = line.trim().split(' ')
+                    if (p.isEmpty() || p[0].isEmpty()) continue
+                    when (p[0]) {
+                        "S" -> { sc = p[1].toInt().coerceIn(0, 3); fy = p[2].toFloat() }
+                        "O" -> {
+                            val type = p[1].toInt()
+                            val n = p[3].toInt().coerceIn(2, 4)
+                            if (type !in 0 until T.COUNT) return null
+                            o.add(Ob(type, p[2].toFloat(), n, p[4].toInt().coerceIn(0, n - 1), p[5].toFloat(), p[6].toFloat(), p[7].toFloat(),
+                                p[8].toFloat(), p[9].toFloat(), p[10].toFloat(), p[11] == "1", p[12].toFloat()))
+                        }
+                        "W" -> w.add(Sw(p[1].toFloat(), p[2].toInt().coerceIn(0, 3)))
+                        "Z" -> z.add(Zone(p[1].toFloat(), p[2].toFloat()))
+                    }
+                }
+                if (o.isEmpty() || fy >= 0f) return null
+                return LevelData(sc, fy, o, w, z)
+            } catch (e: Exception) {
+                return null
+            }
+        }
+    }
+}
+
+/** Niveles reemplazados por el editor (vacío en la versión normal). */
+object Custom {
+    val map = HashMap<Int, LevelData>()
 }

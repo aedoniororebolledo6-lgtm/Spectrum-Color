@@ -16,6 +16,22 @@ class Prefs(context: Context) {
         }
     }
 
+    /** Niveles editados (solo versión de desarrollador). */
+    fun setCustom(level: Int, data: String?) {
+        val ed = sp.edit()
+        if (data == null) ed.remove("cl_$level") else ed.putString("cl_$level", data)
+        ed.apply()
+    }
+
+    init {
+        if (BuildConfig.DEV) {
+            for (l in 1..Levels.COUNT) {
+                val d = sp.getString("cl_$l", null) ?: continue
+                LevelData.parse(d)?.let { Custom.map[l] = it }
+            }
+        }
+    }
+
     var musicOn: Boolean
         get() = sp.getBoolean("musicOn", true)
         set(v) { sp.edit().putBoolean("musicOn", v).apply() }

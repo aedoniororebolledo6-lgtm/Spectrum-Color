@@ -44,7 +44,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -117,7 +117,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun depthOf(s: Scr): Int = when (s) {
         Scr.HOME -> 0
         Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> 1
-        Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN -> 2
+        Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
         Scr.PLAY -> 3
     }
     private var scr = Scr.HOME
@@ -162,6 +162,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var touching = false
     private var sensorOn = false
     private var skinVel = 0f
+    // ---- editor de niveles (solo versión de desarrollador) ----
+    private class EdRow(val label: String, val value: String, val minus: (() -> Unit)?, val plus: (() -> Unit)?)
+    private var edMode = false
+    private var edTesting = false
+    private var edLevel = 0
+    private var edData: LevelData? = null
+    private var edKind = -1
+    private var edIdx = -1
+    private var edCam = 0f
+    private var edDirty = false
+    private var edScroll = 0f
+    private var edStep = 1
+    private var edDrag = 0
+    private var edDragY0 = 0f
+    private var edMsg = ""
+    private var edMsgT = -10f
+    private var edConfirm = false
+    private val edRows = ArrayList<EdRow>()
     private var lastMoveT = 0L
     private var levelOff = 0f
     private var levelDrag = false
@@ -301,6 +319,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.HOME -> return false
             Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS -> goHome()
             Scr.THEMES -> scr = Scr.SETTINGS
+            Scr.EDITOR -> edBack()
             Scr.MP_HOST, Scr.MP_JOIN -> {
                 leaveMp()
                 scr = Scr.MP_MENU
@@ -327,6 +346,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun goHome() {
+        edTesting = false
         scr = Scr.HOME
         audio.setTrack(0)
     }
@@ -334,8 +354,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun exitToMenu() {
         when (mode) {
             Mode.LEVEL -> {
-                levelPage = Levels.world(level)
-                scr = Scr.LEVELS
+                if (edTesting) {
+                    edTesting = false
+                    scr = Scr.EDITOR
+                } else {
+                    levelPage = Levels.world(level)
+                    scr = Scr.LEVELS
+                }
             }
             Mode.ENDLESS -> scr = Scr.HOME
             Mode.MP -> {
@@ -350,12 +375,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun startLevel(l: Int) {
         if (!Levels.isPlayable(l) || l > prefs.unlocked()) return
+        edTesting = false
         level = l
         deaths = 0
         beginPlay(Course.level(l), Mode.LEVEL)
     }
 
     private fun startEndless() {
+        edTesting = false
         beginPlay(Course.endless(rnd.nextLong() and 0x7fffffffffffL), Mode.ENDLESS)
     }
 
@@ -452,6 +479,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 levelPage++
                 levelOff += Cfg.W
             }
+            id == "edtoggle" -> if (BuildConfig.DEV) edMode = !edMode
+            id.startsWith("lvl:") && BuildConfig.DEV && edMode -> openEditor(id.substring(4).toIntOrNull() ?: return)
+            id.startsWith("ed") && scr == Scr.EDITOR -> edActivate(id)
             id.startsWith("lvl:") -> {
                 val l = id.substring(4).toIntOrNull() ?: return
                 startLevel(l)
@@ -484,7 +514,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "retry" -> restartRun()
             id == "exit" -> exitToMenu()
             id == "next" -> {
-                if (level < Levels.PLAYABLE) {
+                if (edTesting) {
+                    exitToMenu()
+                } else if (level < Levels.PLAYABLE) {
                     deaths = 0
                     startLevel(level + 1)
                 } else {
@@ -549,6 +581,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 lastMoveT = e.eventTime
                 val id = hitAt(x, y)
                 pressedId = id
+                if (scr == Scr.EDITOR) edTouchDown(x, y, id)
                 if (id != null && id.startsWith("sl:")) {
                     dragSlider = id.substring(3)
                     setSlider(x)
@@ -587,6 +620,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                         if (dtm > 0.001f) skinVel = skinVel * 0.55f + (d / dtm) * 0.45f
                     }
                     lastY = y
+                } else if (scr == Scr.EDITOR) {
+                    if (!dragged && abs(y - downY) > 22f) {
+                        dragged = true
+                        pressedId = null
+                    }
+                    if (dragged) edTouchDrag(y)
+                    lastY = y
                 } else if (scr == Scr.LEVELS) {
                     val dx = x - downX
                     if (!levelDrag && abs(dx) > 26f && abs(dx) > abs(y - downY)) {
@@ -612,6 +652,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 } else if (scr == Scr.SKINS && dragged) {
                     // era un deslizamiento, no un toque: sigue con inercia (ver update)
                     if (abs(skinVel) < 120f) skinVel = 0f
+                } else if (scr == Scr.EDITOR && (dragged || (id == null && edDrag in 1..2))) {
+                    if (!dragged && id == null) edPick(edCam + (y - edViewTop()))
+                    edDrag = 0
                 } else if (scr == Scr.LEVELS && levelDrag) {
                     levelDrag = false
                     val fling = levelVel
@@ -874,7 +917,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun onFinish(sm: Sim) {
         earnedStars = if (deaths == 0) 3 else if (deaths <= 2) 2 else 1
-        prefs.setStars(level, earnedStars)
+        if (!edTesting) prefs.setStars(level, earnedStars)
         audio.play(Sfx.WIN)
         haptic(HapticFeedbackConstants.LONG_PRESS)
         val pal = Worlds.colors[world]
@@ -1221,6 +1264,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.MP_MENU -> drawMpMenu(c)
             Scr.MP_HOST -> drawMpHost(c)
             Scr.MP_JOIN -> drawMpJoin(c)
+            Scr.EDITOR -> drawEditor(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -1512,7 +1556,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun drawTile(c: Canvas, lvl: Int, cx: Float, cy: Float, w: Float, h: Float) {
         val pal = cur()
         val playable = Levels.isPlayable(lvl)
-        val unlocked = playable && lvl <= prefs.unlocked()
+        val unlocked = playable && (lvl <= prefs.unlocked() || (BuildConfig.DEV && edMode))
         val st = prefs.stars(lvl)
         val id = "lvl:$lvl"
         val pressed = unlocked && pressedId == id
@@ -1531,6 +1575,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val on = k < st
                 starShape(c, sx, cy + 2f, 26f, 11f, 0f, if (on) gold else Gl.white(28), if (on) Gl.white(210) else Gl.white(70))
             }
+            if (BuildConfig.DEV && Custom.map.containsKey(lvl)) Gl.text(c, "EDIT", cx + w / 2f - 60f, cy - h / 2f + 36f, 24f, Gl.medium, Gl.white(200), 0.1f)
             hits.add(Hit(id, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f))
         } else {
             Gl.text(c, lvl.toString(), nx, cy + 26f, 74f, Gl.medium, Gl.white(95))
@@ -1546,6 +1591,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         starShape(c, 880f, top + 108f, 30f, 13f, 0f, gold, Gl.white(210))
         Gl.text(c, prefs.totalStars().toString(), 950f, top + 126f, 46f, Gl.medium, Gl.white(240))
 
+        if (BuildConfig.DEV) button(c, "edtoggle", if (edMode) "EDITOR: SÍ" else "EDITOR: NO", 540f, top + 210f, 440f, 76f, if (edMode) pal[1] else 0, 34f)
         val wp = levelPage
         val ry = top + 300f
         if (wp > 0) iconButton(c, "wprev", 120f, ry, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
@@ -2388,10 +2434,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         c.drawPath(path, q)
     }
 
-    private fun drawSwitcher(c: Canvas, s: Sw, cr: Course, pal: IntArray) {
+    private fun drawSwitcher(c: Canvas, s: Sw, cr: Course, pal: IntArray) =
+        drawSwitcherN(c, s, if (cr.isLevel) Levels.colors(cr.level) else 4, pal)
+
+    private fun drawSwitcherN(c: Canvas, s: Sw, n: Int, pal: IntArray) {
         val x = Cfg.W / 2f
         val r = Cfg.SW_R
-        val n = if (cr.isLevel) Levels.colors(cr.level) else 4
         Gl.glow(c, x, s.y, r * 2.8f, Color.WHITE, 45)
         Gl.rect.set(x - r, s.y - r, x + r, s.y + r)
         val rot = time * 90f
@@ -3652,6 +3700,428 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             540f, vh - 90f,
             34f, Gl.regular, Gl.white(150)
         )
+    }
+
+
+    // ======================================================================
+    // Editor de niveles (solo versión de desarrollador)
+    // ======================================================================
+
+    private val edTypeNames = arrayOf(
+        "Anillo", "Doble", "Barras", "Cuadrado", "Triángulo", "Pinchos", "Péndulo", "Cruz", "Compuerta", "Órbita",
+        "Contrabarras", "Arco", "Pulso", "Hexágono", "Láser", "Puerta lateral", "Franja", "Sierras", "Pilar"
+    )
+    // etiquetas de tamaño / interior / auxiliar según el tipo (null = no se usa)
+    private val edLbl: Array<Array<String?>> = arrayOf(
+        arrayOf("Radio", null, null), arrayOf("Radio ext.", "Radio int.", null), arrayOf(null, null, null),
+        arrayOf("Tamaño", null, null), arrayOf("Tamaño", null, null), arrayOf("Radio", null, "Pinchos"),
+        arrayOf("Amplitud", null, "Largo"), arrayOf("Radio", null, "Radio centro"), arrayOf("Amplitud", null, "Hueco"),
+        arrayOf("Radio ext.", "Radio int.", null), arrayOf(null, null, "Separación"), arrayOf("Radio", null, "Hueco °"),
+        arrayOf(null, null, null), arrayOf("Tamaño", null, null), arrayOf(null, null, "Encendido"),
+        arrayOf("Amplitud", "Centro", "Hueco"), arrayOf("Largo", null, null), arrayOf("Recorrido", "Cantidad", "Radio"),
+        arrayOf("Amplitud", null, "Ancho")
+    )
+
+    private fun edViewTop(): Float = topI + 150f
+    private fun edPanelTop(): Float = vh - 800f
+    private fun edMaxCam(): Float = 300f - (edPanelTop() - edViewTop())
+    private fun edMinCam(): Float = min(edMaxCam(), (edData?.finishY ?: -3000f) - 400f)
+
+    private fun edToast(s: String) {
+        edMsg = s
+        edMsgT = time
+    }
+
+    /** Valores iniciales razonables para cada tipo de obstáculo. */
+    private fun edDefault(type: Int, y: Float, n0: Int): Ob {
+        var n = n0
+        var speed = 55f
+        var size = 300f
+        var inner = 0f
+        var aux = 0f
+        when (type) {
+            T.RING -> { size = 300f }
+            T.DOUBLE -> { size = 345f; inner = 195f }
+            T.BARS -> { speed = 200f; size = 0f }
+            T.SQUARE -> { size = 240f }
+            T.TRI -> { size = 370f }
+            T.SPIKES -> { size = 330f; aux = 6f }
+            T.PEND -> { speed = 95f; size = 330f; aux = 225f }
+            T.CROSS -> { size = 290f; aux = 95f }
+            T.GATE -> { speed = 90f; size = 330f; aux = 155f }
+            T.ORBIT -> { size = 270f; inner = 130f }
+            T.COUNTER -> { speed = 200f; size = 0f; aux = 120f }
+            T.ARC -> { size = 300f; aux = 110f }
+            T.PULSE -> { speed = 0.7f; size = 0f }
+            T.HEX -> { size = 295f }
+            T.LASER -> { speed = 0.4f; size = 0f; aux = 0.47f }
+            T.SGATE -> { speed = 60f; size = 100f; aux = 155f; inner = 290f; n = 4 }
+            T.CBAND -> { speed = 170f; size = 320f; n = 4 }
+            T.SAW -> { speed = 100f; size = 360f; aux = 60f; inner = 2f; n = 4 }
+            T.PILLAR -> { speed = 60f; size = 100f; aux = 145f; n = 4 }
+        }
+        return Ob(type, y, n, 0, speed, 0f, size, inner, aux)
+    }
+
+    private fun openEditor(l: Int) {
+        if (!BuildConfig.DEV || !Levels.isPlayable(l)) return
+        edLevel = l
+        level = l
+        world = Levels.world(l)
+        edData = Course.level(l).toData()
+        edKind = -1
+        edIdx = -1
+        edDirty = false
+        edConfirm = false
+        edScroll = 0f
+        edCam = edMaxCam()
+        scr = Scr.EDITOR
+    }
+
+    private fun edBack() {
+        if (edDirty && !edConfirm) {
+            edConfirm = true
+            edToast("Cambios sin guardar. Pulsa atrás otra vez para salir")
+            return
+        }
+        edConfirm = false
+        levelPage = Levels.world(edLevel)
+        scr = Scr.LEVELS
+    }
+
+    private fun edSetOb(n: Ob) {
+        val d = edData ?: return
+        if (edKind != 0 || edIdx !in d.obs.indices) return
+        d.obs[edIdx] = n
+        d.obs.sortByDescending { it.y }
+        edIdx = d.obs.indexOfFirst { it === n }
+        edDirty = true
+        edConfirm = false
+    }
+
+    private fun edSetSw(n: Sw) {
+        val d = edData ?: return
+        if (edKind != 1 || edIdx !in d.sws.indices) return
+        d.sws[edIdx] = n
+        d.sws.sortByDescending { it.y }
+        edIdx = d.sws.indexOfFirst { it === n }
+        edDirty = true
+        edConfirm = false
+    }
+
+    private fun edSnap(v: Float): Float = Math.round(v / 10f) * 10f
+
+    private fun edPick(wy: Float) {
+        val d = edData ?: return
+        edKind = -1
+        edIdx = -1
+        var bd = 1e9f
+        for (i in d.sws.indices) {
+            val dd = abs(wy - d.sws[i].y)
+            if (dd <= 50f && dd < bd) { bd = dd; edKind = 1; edIdx = i }
+        }
+        if (edKind == 1) return
+        for (i in d.obs.indices) {
+            val o = d.obs[i]
+            val dd = abs(wy - o.y)
+            if (dd <= max(o.reach, 60f) && dd < bd) { bd = dd; edKind = 0; edIdx = i }
+        }
+    }
+
+    private fun edTouchDown(x: Float, y: Float, id: String?) {
+        edDrag = 0
+        val vt = edViewTop()
+        val pt = edPanelTop()
+        if (y in vt..pt) {
+            edDrag = 1
+            val d = edData ?: return
+            if (edKind == 0 && edIdx in d.obs.indices) {
+                val o = d.obs[edIdx]
+                if (abs(edCam + (y - vt) - o.y) <= max(o.reach, 50f)) {
+                    edDrag = 2
+                    edDragY0 = o.y
+                }
+            }
+        } else if (y >= pt + 120f && y <= vh - 175f) {
+            edDrag = 3
+        }
+    }
+
+    private fun edTouchDrag(y: Float) {
+        when (edDrag) {
+            1 -> edCam -= (y - lastY)
+            2 -> {
+                val d = edData ?: return
+                if (edKind == 0 && edIdx in d.obs.indices) edSetOb(d.obs[edIdx].copy(y = edSnap(edDragY0 + (y - downY))))
+            }
+            3 -> edScroll -= (y - lastY)
+        }
+    }
+
+    private fun edActivate(id: String) {
+        val d = edData ?: return
+        when {
+            id == "edstart" -> edCam = edMaxCam()
+            id == "edgoal" -> edCam = d.finishY - 300f
+            id == "edaddo" -> {
+                val y = edSnap(edCam + (edPanelTop() - edViewTop()) / 2f)
+                val o = edDefault(T.RING, y, 3)
+                d.obs.add(o)
+                d.obs.sortByDescending { it.y }
+                edKind = 0
+                edIdx = d.obs.indexOfFirst { it === o }
+                edDirty = true
+                edScroll = 0f
+            }
+            id == "edadds" -> {
+                val y = edSnap(edCam + (edPanelTop() - edViewTop()) / 2f)
+                val s = Sw(y, (d.startColor + 1) % 4)
+                d.sws.add(s)
+                d.sws.sortByDescending { it.y }
+                edKind = 1
+                edIdx = d.sws.indexOfFirst { it === s }
+                edDirty = true
+                edScroll = 0f
+            }
+            id == "eddup" -> {
+                if (edKind == 0 && edIdx in d.obs.indices) {
+                    val o = d.obs[edIdx]
+                    val n = o.copy(y = edSnap(o.y - o.reach * 2f - 80f))
+                    d.obs.add(n)
+                    d.obs.sortByDescending { it.y }
+                    edIdx = d.obs.indexOfFirst { it === n }
+                    edDirty = true
+                } else if (edKind == 1 && edIdx in d.sws.indices) {
+                    val s = d.sws[edIdx]
+                    val n = Sw(edSnap(s.y - 160f), (s.toColor + 1) % 4)
+                    d.sws.add(n)
+                    d.sws.sortByDescending { it.y }
+                    edIdx = d.sws.indexOfFirst { it === n }
+                    edDirty = true
+                }
+            }
+            id == "eddel" -> {
+                if (edKind == 0 && edIdx in d.obs.indices) {
+                    if (d.obs.size <= 1) { edToast("Debe quedar al menos un obstáculo"); return }
+                    d.obs.removeAt(edIdx)
+                    edDirty = true
+                } else if (edKind == 1 && edIdx in d.sws.indices) {
+                    d.sws.removeAt(edIdx)
+                    edDirty = true
+                }
+                edKind = -1
+                edIdx = -1
+            }
+            id == "edsave" -> {
+                d.sortAll()
+                val s = d.serialize()
+                prefs.setCustom(edLevel, s)
+                LevelData.parse(s)?.let { Custom.map[edLevel] = it }
+                edDirty = false
+                edConfirm = false
+                edToast("Nivel $edLevel guardado")
+            }
+            id == "edorig" -> {
+                prefs.setCustom(edLevel, null)
+                Custom.map.remove(edLevel)
+                edData = Course.level(edLevel).toData()
+                edKind = -1
+                edIdx = -1
+                edDirty = false
+                edCam = edMaxCam()
+                edToast("Nivel original restaurado")
+            }
+            id == "edtest" -> {
+                d.sortAll()
+                if (d.obs.isEmpty()) return
+                level = edLevel
+                deaths = 0
+                beginPlay(Course.custom(edLevel, d), Mode.LEVEL)
+                edTesting = true
+            }
+            id.startsWith("edm:") || id.startsWith("edp:") -> {
+                val k = id.substring(4).toIntOrNull() ?: return
+                if (k !in edRows.indices) return
+                val r = edRows[k]
+                if (id[2] == 'm') r.minus?.invoke() else r.plus?.invoke()
+                edDirty = edDirty || k > 0
+            }
+        }
+    }
+
+    private fun edFmt(v: Float): String = if (abs(v) < 10f && v != Math.floor(v.toDouble()).toFloat()) String.format(java.util.Locale.US, "%.2f", v) else v.toInt().toString()
+
+    private fun edBuildRows() {
+        edRows.clear()
+        val d = edData ?: return
+        val st = edStep.toFloat()
+        edRows.add(EdRow("Paso", "×$edStep", { edStep = if (edStep == 1) 5 else 1 }, { edStep = if (edStep == 1) 5 else 1 }))
+        if (edKind == 0 && edIdx in d.obs.indices) {
+            val o = d.obs[edIdx]
+            val allowed = (0 until T.COUNT).filter { it != T.DOUBLE }
+            fun cycle(dir: Int) {
+                val i = allowed.indexOf(o.type).let { if (it < 0) 0 else it }
+                val t = allowed[(i + dir + allowed.size) % allowed.size]
+                edSetOb(edDefault(t, o.y, o.n))
+            }
+            edRows.add(EdRow("Tipo", edTypeNames[o.type], { cycle(-1) }, { cycle(1) }))
+            edRows.add(EdRow("Altura", edFmt(-o.y), { edSetOb(o.copy(y = o.y + 10f * st)) }, { edSetOb(o.copy(y = o.y - 10f * st)) }))
+            edRows.add(EdRow("Colores", o.n.toString(),
+                { val n = max(2, o.n - 1); edSetOb(o.copy(n = n, shift = o.shift % n)) },
+                { val n = min(4, o.n + 1); edSetOb(o.copy(n = n, shift = o.shift % n)) }))
+            edRows.add(EdRow("Desfase color", o.shift.toString(),
+                { edSetOb(o.copy(shift = (o.shift + o.n - 1) % o.n)) }, { edSetOb(o.copy(shift = (o.shift + 1) % o.n)) }))
+            val small = o.type == T.PULSE || o.type == T.LASER
+            val sp = if (small) 0.02f * st else 5f * st
+            edRows.add(EdRow("Velocidad", edFmt(o.speed), { edSetOb(o.copy(speed = o.speed - sp)) }, { edSetOb(o.copy(speed = o.speed + sp)) }))
+            edRows.add(EdRow("Fase °", edFmt(o.phase), { edSetOb(o.copy(phase = (o.phase - 15f * st + 360f * 10) % 360f)) }, { edSetOb(o.copy(phase = (o.phase + 15f * st) % 360f)) }))
+            val lb = edLbl[o.type]
+            lb[0]?.let { l -> edRows.add(EdRow(l, edFmt(o.size), { edSetOb(o.copy(size = max(0f, o.size - 10f * st))) }, { edSetOb(o.copy(size = o.size + 10f * st)) })) }
+            lb[1]?.let { l ->
+                val s2 = if (o.type == T.SAW) 1f else 10f
+                edRows.add(EdRow(l, edFmt(o.inner), { edSetOb(o.copy(inner = o.inner - s2 * st)) }, { edSetOb(o.copy(inner = o.inner + s2 * st)) }))
+            }
+            lb[2]?.let { l ->
+                val s3 = if (o.type == T.LASER) 0.02f else if (o.type == T.SPIKES) 1f else 5f
+                edRows.add(EdRow(l, edFmt(o.aux), { edSetOb(o.copy(aux = max(0f, o.aux - s3 * st))) }, { edSetOb(o.copy(aux = o.aux + s3 * st)) }))
+            }
+            edRows.add(EdRow("Corriente aire", edFmt(o.drift), { edSetOb(o.copy(drift = o.drift - 100f * st)) }, { edSetOb(o.copy(drift = o.drift + 100f * st)) }))
+            edRows.add(EdRow("Desvanece", if (o.fade) "Sí" else "No", { edSetOb(o.copy(fade = !o.fade)) }, { edSetOb(o.copy(fade = !o.fade)) }))
+            edRows.add(EdRow("Vaivén °", edFmt(o.wob), { edSetOb(o.copy(wob = max(0f, o.wob - 5f * st))) }, { edSetOb(o.copy(wob = o.wob + 5f * st)) }))
+            val hasZone = d.zones.any { o.y <= it.bottom && o.y >= it.top }
+            fun zoneToggle() {
+                if (hasZone) d.zones.removeAll { o.y <= it.bottom && o.y >= it.top }
+                else d.zones.add(Zone(o.y + o.reach + 130f, o.y - o.reach - 130f))
+                d.zones.sortByDescending { it.bottom }
+                edDirty = true
+            }
+            edRows.add(EdRow("Zona deslizar", if (hasZone) "Sí" else "No", { zoneToggle() }, { zoneToggle() }))
+        } else if (edKind == 1 && edIdx in d.sws.indices) {
+            val s = d.sws[edIdx]
+            edRows.add(EdRow("Cambiador", "Color ${s.toColor + 1}", { edSetSw(Sw(s.y, (s.toColor + 3) % 4)) }, { edSetSw(Sw(s.y, (s.toColor + 1) % 4)) }))
+            edRows.add(EdRow("Altura", edFmt(-s.y), { edSetSw(Sw(s.y + 10f * st, s.toColor)) }, { edSetSw(Sw(s.y - 10f * st, s.toColor)) }))
+        } else {
+            edRows.add(EdRow("Toca un obstáculo", "", null, null))
+        }
+        edRows.add(EdRow("Color inicial", "Color ${d.startColor + 1}", { d.startColor = (d.startColor + 3) % 4 }, { d.startColor = (d.startColor + 1) % 4 }))
+        edRows.add(EdRow("Largo (meta)", edFmt(-d.finishY), { d.finishY += 40f * st }, { d.finishY -= 40f * st; }))
+    }
+
+    private fun drawEditor(c: Canvas) {
+        val d = edData ?: return
+        val pal = Worlds.colors[Levels.world(edLevel).coerceIn(0, Worlds.colors.size - 1)]
+        val vt = edViewTop()
+        val pt = edPanelTop()
+        if (d.finishY > -400f) d.finishY = -400f
+        edCam = edCam.coerceIn(edMinCam(), edMaxCam())
+
+        // ---- mundo ----
+        c.save()
+        c.clipRect(0f, vt, Cfg.W, pt)
+        val bgp = Gl.p()
+        bgp.color = Color.argb(110, 0, 0, 0)
+        c.drawRect(0f, vt, Cfg.W, pt, bgp)
+        c.translate(0f, vt - edCam)
+        drawFinish(c, d.finishY, pal)
+        // inicio
+        Gl.line(c, 140f, 0f, 940f, 0f, 3f, Gl.white(120))
+        Gl.text(c, "INICIO", 540f, 40f, 30f, Gl.medium, Gl.white(150), 0.2f)
+        edDot(c, Cfg.W / 2f, 0f, Cfg.BALL_R, pal[d.startColor % 4])
+        for (z in d.zones) {
+            if (z.bottom < edCam - 40f || z.top > edCam + (pt - vt) + 40f) continue
+            drawZone(c, z, pal)
+        }
+        val nColors = Levels.colors(edLevel)
+        for (s in d.sws) {
+            if (s.y < edCam - 100f || s.y > edCam + (pt - vt) + 100f) continue
+            drawSwitcherN(c, s, nColors, pal)
+        }
+        for ((i, o) in d.obs.withIndex()) {
+            val vis = !(o.y + o.reach < edCam - 40f || o.y - o.reach > edCam + (pt - vt) + 40f)
+            if (!vis) continue
+            drawObstacle(c, o, time, pal)
+            if (!T.isSlide(o.type)) drawStar(c, Cfg.W / 2f, o.y)
+            Gl.text(c, "${i + 1}", 36f, o.y + 10f, 30f, Gl.medium, Gl.white(150))
+        }
+        // selección
+        if (edKind == 0 && edIdx in d.obs.indices) {
+            val o = d.obs[edIdx]
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 4f
+            pp.color = Gl.white(210)
+            pp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(22f, 14f), (time * 40f) % 36f)
+            c.drawRect(8f, o.y - o.reach, Cfg.W - 8f, o.y + o.reach, pp)
+            Gl.text(c, "${edIdx + 1} · ${edTypeNames[o.type]}", 24f, o.y - o.reach - 14f, 32f, Gl.medium, Color.WHITE, 0f, null, 0, Paint.Align.LEFT)
+        } else if (edKind == 1 && edIdx in d.sws.indices) {
+            val s = d.sws[edIdx]
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 5f
+            pp.color = Gl.white(230)
+            c.drawCircle(Cfg.W / 2f, s.y, Cfg.SW_R + 18f, pp)
+        }
+        c.restore()
+
+        // ---- cabecera ----
+        iconButton(c, "back", 110f, topI + 90f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        Gl.textFit(c, "EDITOR · NIVEL $edLevel" + if (edDirty) " *" else "", 420f, topI + 108f, 40f, 440f, Gl.medium, Gl.white(240), 0.1f)
+        button(c, "edstart", "Inicio", 770f, topI + 90f, 170f, 76f, 0, 32f)
+        button(c, "edgoal", "Meta", 960f, topI + 90f, 170f, 76f, 0, 32f)
+        if (time - edMsgT < 2.2f) {
+            val a = (255 * (1f - ((time - edMsgT - 1.6f) / 0.6f).coerceIn(0f, 1f))).toInt()
+            Gl.panel(c, 90f, vt + 14f, 990f, vt + 100f, 40f, 1f, pal[1])
+            Gl.textFit(c, edMsg, 540f, vt + 70f, 34f, 840f, Gl.medium, Gl.white(a))
+        }
+
+        // ---- panel ----
+        Gl.panel(c, 24f, pt, Cfg.W - 24f, vh - 24f, 56f, 0.9f, pal[0])
+        val hasSel = edKind >= 0
+        button(c, "edaddo", "+ Obstáculo", 169f, pt + 62f, 235f, 80f, 0, 28f)
+        button(c, "edadds", "+ Cambiador", 416f, pt + 62f, 235f, 80f, 0, 28f)
+        button(c, "eddup", "Duplicar", 663f, pt + 62f, 235f, 80f, 0, 28f, hasSel)
+        button(c, "eddel", "Borrar", 910f, pt + 62f, 235f, 80f, 0, 28f, hasSel)
+
+        edBuildRows()
+        val lt = pt + 120f
+        val lb = vh - 175f
+        val rh = 86f
+        val maxScroll = max(0f, edRows.size * rh - (lb - lt))
+        edScroll = edScroll.coerceIn(0f, maxScroll)
+        c.save()
+        c.clipRect(40f, lt, Cfg.W - 40f, lb)
+        for ((i, r) in edRows.withIndex()) {
+            val ry = lt + i * rh + rh / 2f - edScroll
+            if (ry - rh / 2f < lt - 1f || ry + rh / 2f > lb + 1f) continue
+            Gl.textFit(c, r.label, 70f, ry + 12f, 34f, 330f, Gl.regular, Gl.white(215), 0f, Paint.Align.LEFT)
+            if (r.minus != null || r.plus != null) {
+                Gl.textFit(c, r.value, 600f, ry + 12f, 36f, 250f, Gl.medium, Gl.white(245))
+                button(c, "edm:$i", "−", 790f, ry, 120f, 70f, 0, 44f)
+                button(c, "edp:$i", "+", 940f, ry, 120f, 70f, 0, 44f)
+            }
+        }
+        c.restore()
+        if (maxScroll > 0f) {
+            val th = lb - lt
+            val bh = max(50f, th * th / (th + maxScroll))
+            val by0 = lt + (th - bh) * (edScroll / maxScroll)
+            Gl.rect.set(Cfg.W - 38f, by0, Cfg.W - 32f, by0 + bh)
+            c.drawRoundRect(Gl.rect, 3f, 3f, pw(80))
+        }
+        button(c, "edtest", "Probar", 215f, vh - 105f, 300f, 84f, pal[2], 34f)
+        button(c, "edsave", "Guardar", 540f, vh - 105f, 300f, 84f, pal[1], 34f)
+        button(c, "edorig", "Original", 865f, vh - 105f, 300f, 84f, 0, 34f)
+    }
+
+    private fun edDot(c: Canvas, x: Float, y: Float, r: Float, col: Int) {
+        val pp = Gl.p()
+        pp.color = Gl.alpha(col, 230)
+        c.drawCircle(x, y, r, pp)
+        val p2 = Gl.p()
+        p2.style = Paint.Style.STROKE
+        p2.strokeWidth = 3f
+        p2.color = Gl.white(190)
+        c.drawCircle(x, y, r, p2)
     }
 
     private fun drawParts(c: Canvas) {
