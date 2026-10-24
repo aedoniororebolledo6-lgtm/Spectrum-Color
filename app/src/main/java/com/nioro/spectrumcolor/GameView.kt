@@ -179,6 +179,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var edMsg = ""
     private var edMsgT = -10f
     private var edConfirm = false
+    private var edPanelOpen = true
+    private var edOverview = false
+    private var edMenu = 0
+    private var edDragPushed = false
+    private var edOvS = 0.2f
+    private var edOvY0 = 0f
+    private var edSpeedAcc = 1f
+    private val edUndo = ArrayList<String>()
+    private val edRedo = ArrayList<String>()
     private val edRows = ArrayList<EdRow>()
     private var lastMoveT = 0L
     private var levelOff = 0f
@@ -347,6 +356,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun goHome() {
         edTesting = false
+        edMode = false
         scr = Scr.HOME
         audio.setTrack(0)
     }
@@ -389,7 +399,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun beginPlay(c: Course, m: Mode) {
         mode = m
         course = c
-        world = if (c.isLevel) Levels.world(c.level) else (((c.seed % 12L) + 12L) % 12L).toInt()
+        world = if (c.isLevel) (if (c.palette >= 0) c.palette.coerceIn(0, Worlds.colors.size - 1) else Levels.world(c.level)) else (((c.seed % 12L) + 12L) % 12L).toInt()
         resetSim()
         scr = Scr.PLAY
         ov = Ov.NONE
@@ -428,7 +438,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun activate(id: String) {
         audio.play(Sfx.CLICK)
         when {
+            id == "edit" -> if (BuildConfig.DEV) {
+                edMode = true
+                levelPage = Levels.world(prefs.unlocked())
+                scr = Scr.LEVELS
+            }
             id == "play" -> {
+                edMode = false
                 levelPage = Levels.world(prefs.unlocked())
                 scr = Scr.LEVELS
             }
@@ -479,7 +495,6 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 levelPage++
                 levelOff += Cfg.W
             }
-            id == "edtoggle" -> if (BuildConfig.DEV) edMode = !edMode
             id.startsWith("lvl:") && BuildConfig.DEV && edMode -> openEditor(id.substring(4).toIntOrNull() ?: return)
             id.startsWith("ed") && scr == Scr.EDITOR -> edActivate(id)
             id.startsWith("lvl:") -> {
@@ -581,7 +596,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 lastMoveT = e.eventTime
                 val id = hitAt(x, y)
                 pressedId = id
-                if (scr == Scr.EDITOR) edTouchDown(x, y, id)
+                if (scr == Scr.EDITOR) edTouchDown(y)
                 if (id != null && id.startsWith("sl:")) {
                     dragSlider = id.substring(3)
                     setSlider(x)
@@ -652,8 +667,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 } else if (scr == Scr.SKINS && dragged) {
                     // era un deslizamiento, no un toque: sigue con inercia (ver update)
                     if (abs(skinVel) < 120f) skinVel = 0f
-                } else if (scr == Scr.EDITOR && (dragged || (id == null && edDrag in 1..2))) {
-                    if (!dragged && id == null) edPick(edCam + (y - edViewTop()))
+                } else if (scr == Scr.EDITOR && (dragged || (id == null && edDrag in 1..2) || (id == null && edDrag == 4))) {
+                    if (!dragged && id == null) {
+                        if (edDrag == 4) {
+                            val wy = edOvY0 + (y - edViewTop()) / edOvS
+                            edPick(wy, edOvS)
+                            edCam = wy - 600f
+                        } else {
+                            edPick(edCam + (y - edViewTop()))
+                        }
+                    }
                     edDrag = 0
                 } else if (scr == Scr.LEVELS && levelDrag) {
                     levelDrag = false
@@ -1546,6 +1569,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
         button(c, "endless", "Modo infinito", 540f, b0 + 175f, 760f, 130f, 0, 50f)
         button(c, "mp", "Multijugador local", 540f, b0 + 350f, 760f, 130f, pal[1], 50f)
+        if (BuildConfig.DEV) button(c, "edit", "Editar", 540f, b0 + 515f, 440f, 100f, pal[2], 44f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -1587,11 +1611,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val pal = cur()
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
-        Gl.text(c, "NIVELES", 540f, top + 128f, 54f, Gl.medium, Gl.white(240), 0.2f)
+        Gl.text(c, if (BuildConfig.DEV && edMode) "EDITAR" else "NIVELES", 540f, top + 128f, 54f, Gl.medium, Gl.white(240), 0.2f)
         starShape(c, 880f, top + 108f, 30f, 13f, 0f, gold, Gl.white(210))
         Gl.text(c, prefs.totalStars().toString(), 950f, top + 126f, 46f, Gl.medium, Gl.white(240))
 
-        if (BuildConfig.DEV) button(c, "edtoggle", if (edMode) "EDITOR: SÍ" else "EDITOR: NO", 540f, top + 210f, 440f, 76f, if (edMode) pal[1] else 0, 34f)
+        if (BuildConfig.DEV && edMode) Gl.text(c, "Toca un nivel para editarlo", 540f, top + 226f, 34f, Gl.regular, Gl.white(190))
         val wp = levelPage
         val ry = top + 300f
         if (wp > 0) iconButton(c, "wprev", 120f, ry, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
@@ -3721,15 +3745,36 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         arrayOf("Amplitud", "Centro", "Hueco"), arrayOf("Largo", null, null), arrayOf("Recorrido", "Cantidad", "Radio"),
         arrayOf("Amplitud", null, "Ancho")
     )
+    private val edTplNames = arrayOf(
+        "Tres anillos", "Barras", "Pinchos y cruz", "Formas", "Órbitas y arco", "Rayos", "Compuertas", "Zona de deslizar", "Viento y sombras"
+    )
 
+    private fun edPanelOpenEff(): Boolean = edPanelOpen && !edOverview
     private fun edViewTop(): Float = topI + 150f
-    private fun edPanelTop(): Float = vh - 800f
-    private fun edMaxCam(): Float = 300f - (edPanelTop() - edViewTop())
+    private fun edPanelTop(): Float = if (edPanelOpenEff()) vh - 860f else vh - 190f
+    private fun edViewH(): Float = edPanelTop() - edViewTop()
+    private fun edMaxCam(): Float = 300f - edViewH()
     private fun edMinCam(): Float = min(edMaxCam(), (edData?.finishY ?: -3000f) - 400f)
+    private fun edListTop(): Float = edPanelTop() + 205f
+    private fun edListBot(): Float = vh - 190f
 
     private fun edToast(s: String) {
         edMsg = s
         edMsgT = time
+    }
+
+    private fun edPush() {
+        val d = edData ?: return
+        edUndo.add(d.serialize())
+        if (edUndo.size > 60) edUndo.removeAt(0)
+        edRedo.clear()
+    }
+
+    private fun edRestore(s: String) {
+        LevelData.parse(s)?.let { edData = it }
+        edKind = -1
+        edIdx = -1
+        edDirty = true
     }
 
     /** Valores iniciales razonables para cada tipo de obstáculo. */
@@ -3774,11 +3819,18 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         edDirty = false
         edConfirm = false
         edScroll = 0f
+        edMenu = 0
+        edOverview = false
+        edUndo.clear()
+        edRedo.clear()
+        edSpeedAcc = 1f
         edCam = edMaxCam()
         scr = Scr.EDITOR
     }
 
     private fun edBack() {
+        if (edMenu != 0) { edMenu = 0; return }
+        if (edOverview) { edOverview = false; return }
         if (edDirty && !edConfirm) {
             edConfirm = true
             edToast("Cambios sin guardar. Pulsa atrás otra vez para salir")
@@ -3809,30 +3861,49 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         edConfirm = false
     }
 
+    private fun edSetZone(n: Zone) {
+        val d = edData ?: return
+        if (edKind != 2 || edIdx !in d.zones.indices) return
+        val nz = if (n.top > n.bottom - 100f) Zone(n.bottom, n.bottom - 100f) else n
+        d.zones[edIdx] = nz
+        d.zones.sortByDescending { it.bottom }
+        edIdx = d.zones.indexOfFirst { it === nz }
+        edDirty = true
+        edConfirm = false
+    }
+
     private fun edSnap(v: Float): Float = Math.round(v / 10f) * 10f
 
-    private fun edPick(wy: Float) {
+    private fun edPick(wy: Float, scale: Float = 1f) {
         val d = edData ?: return
         edKind = -1
         edIdx = -1
         var bd = 1e9f
         for (i in d.sws.indices) {
             val dd = abs(wy - d.sws[i].y)
-            if (dd <= 50f && dd < bd) { bd = dd; edKind = 1; edIdx = i }
+            if (dd <= 50f / scale && dd < bd) { bd = dd; edKind = 1; edIdx = i }
         }
         if (edKind == 1) return
         for (i in d.obs.indices) {
             val o = d.obs[i]
             val dd = abs(wy - o.y)
-            if (dd <= max(o.reach, 60f) && dd < bd) { bd = dd; edKind = 0; edIdx = i }
+            if (dd <= max(o.reach, 60f / scale) && dd < bd) { bd = dd; edKind = 0; edIdx = i }
+        }
+        if (edKind == 0) return
+        for (i in d.zones.indices) {
+            val z = d.zones[i]
+            if (wy <= z.bottom && wy >= z.top) { edKind = 2; edIdx = i; return }
         }
     }
 
-    private fun edTouchDown(x: Float, y: Float, id: String?) {
+    private fun edTouchDown(y: Float) {
         edDrag = 0
+        edDragPushed = false
+        if (edMenu != 0) return
         val vt = edViewTop()
         val pt = edPanelTop()
         if (y in vt..pt) {
+            if (edOverview) { edDrag = 4; return }
             edDrag = 1
             val d = edData ?: return
             if (edKind == 0 && edIdx in d.obs.indices) {
@@ -3842,7 +3913,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     edDragY0 = o.y
                 }
             }
-        } else if (y >= pt + 120f && y <= vh - 175f) {
+        } else if (edPanelOpenEff() && y >= edListTop() && y <= edListBot()) {
             edDrag = 3
         }
     }
@@ -3852,19 +3923,138 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             1 -> edCam -= (y - lastY)
             2 -> {
                 val d = edData ?: return
-                if (edKind == 0 && edIdx in d.obs.indices) edSetOb(d.obs[edIdx].copy(y = edSnap(edDragY0 + (y - downY))))
+                if (edKind == 0 && edIdx in d.obs.indices) {
+                    if (!edDragPushed) {
+                        // el estado anterior al arrastre (la posición original) queda en el historial
+                        val old = d.obs[edIdx].copy(y = edDragY0)
+                        val tmp = d.copy()
+                        tmp.obs[edIdx] = old
+                        edUndo.add(tmp.serialize())
+                        if (edUndo.size > 60) edUndo.removeAt(0)
+                        edRedo.clear()
+                        edDragPushed = true
+                    }
+                    edSetOb(d.obs[edIdx].copy(y = edSnap(edDragY0 + (y - downY))))
+                }
             }
             3 -> edScroll -= (y - lastY)
+            4 -> edCam = edOvY0 + (y - edViewTop()) / edOvS - 600f
         }
+    }
+
+    /** Pone en `d` el primer color presente en la máscara. */
+    private fun edFirstBit(mask: Int): Int {
+        for (k in 0 until 4) if ((mask and (1 shl k)) != 0) return k
+        return 0
+    }
+
+    /** Recalcula los cambiadores de color para que cada obstáculo tenga siempre un color cruzable. */
+    private fun edAutoColors() {
+        val d = edData ?: return
+        d.sortAll()
+        d.sws.clear()
+        if (d.obs.isEmpty()) return
+        var cur = d.startColor
+        if ((d.obs[0].present and (1 shl cur)) == 0) cur = edFirstBit(d.obs[0].present)
+        d.startColor = cur
+        var prevTop = -Cfg.BALL_R
+        for ((i, o) in d.obs.withIndex()) {
+            val bottom = o.y + o.reach
+            if (i > 0 && (o.present and (1 shl cur)) == 0) {
+                val target = edFirstBit(o.present)
+                d.sws.add(Sw((prevTop + bottom) / 2f, target))
+                cur = target
+            }
+            prevTop = o.y - o.reach
+        }
+        d.sws.sortByDescending { it.y }
+        edDirty = true
+    }
+
+    private fun edTemplate(k: Int): List<Ob> {
+        fun o(t: Int, n: Int = 3, f: (Ob) -> Ob = { it }): Ob = f(edDefault(t, 0f, n))
+        return when (k) {
+            0 -> listOf(o(T.RING), o(T.RING) { it.copy(speed = -it.speed) }, o(T.RING, 4))
+            1 -> listOf(o(T.BARS), o(T.COUNTER), o(T.BARS) { it.copy(speed = -it.speed * 1.1f) })
+            2 -> listOf(o(T.SPIKES), o(T.CROSS), o(T.PEND))
+            3 -> listOf(o(T.SQUARE), o(T.TRI), o(T.HEX))
+            4 -> listOf(o(T.ORBIT), o(T.ARC), o(T.RING) { it.copy(wob = 30f) })
+            5 -> listOf(o(T.LASER), o(T.PULSE), o(T.LASER) { it.copy(speed = 0.45f) })
+            6 -> listOf(o(T.GATE), o(T.PEND), o(T.GATE) { it.copy(speed = -it.speed) })
+            7 -> listOf(o(T.SGATE), o(T.CBAND), o(T.SAW), o(T.PILLAR))
+            else -> listOf(o(T.RING) { it.copy(drift = 1400f) }, o(T.SQUARE) { it.copy(drift = -1400f) }, o(T.HEX) { it.copy(fade = true) })
+        }
+    }
+
+    /** Inserta una plantilla en el centro de la vista; empuja hacia arriba lo que haya encima para hacerle espacio. */
+    private fun edInsertTemplate(k: Int) {
+        val d = edData ?: return
+        edPush()
+        val y0 = edSnap(edCam + edViewH() / 2f)
+        val specs = edTemplate(k)
+        val slide = specs.any { T.isSlide(it.type) }
+        val placed = ArrayList<Ob>()
+        val newSw = ArrayList<Sw>()
+        var prevTop = y0 + 120f
+        for (s in specs) {
+            val oy = edSnap(prevTop - 420f - s.reach)
+            val ob = s.copy(y = oy)
+            if (!slide) newSw.add(Sw(edSnap((prevTop + oy + ob.reach) / 2f), edFirstBit(ob.present)))
+            placed.add(ob)
+            prevTop = oy - ob.reach
+        }
+        var zone: Zone? = null
+        if (slide) zone = Zone(placed.first().y + placed.first().reach + 130f, placed.last().y - placed.last().reach - 140f)
+        val topEdge = if (zone != null) zone.top else prevTop
+        val shift = (y0 - topEdge) + 450f
+        // lo que estaba por encima del punto de inserción sube para hacer espacio
+        for (i in d.obs.indices) if (d.obs[i].y < y0 - 5f) d.obs[i] = d.obs[i].copy(y = d.obs[i].y - shift)
+        for (i in d.sws.indices) if (d.sws[i].y < y0 - 5f) d.sws[i] = Sw(d.sws[i].y - shift, d.sws[i].toColor)
+        for (i in d.zones.indices) if (d.zones[i].bottom < y0 - 5f) d.zones[i] = Zone(d.zones[i].bottom - shift, d.zones[i].top - shift)
+        d.finishY -= shift
+        d.obs.addAll(placed)
+        d.sws.addAll(newSw)
+        if (zone != null) d.zones.add(zone)
+        d.sortAll()
+        edKind = 0
+        edIdx = d.obs.indexOfFirst { it === placed.last() }
+        edDirty = true
+        edCam = edSnap(y0 - edViewH() * 0.6f)
+        edToast("Plantilla añadida: ${edTplNames[k]}")
     }
 
     private fun edActivate(id: String) {
         val d = edData ?: return
         when {
-            id == "edstart" -> edCam = edMaxCam()
-            id == "edgoal" -> edCam = d.finishY - 300f
+            id == "edmenu" -> edMenu = if (edMenu == 0) 1 else 0
+            id == "edmenux" -> edMenu = 0
+            id == "edcont" -> { edMenu = 0; edOverview = false }
+            id == "edmap" -> { edMenu = 0; edOverview = !edOverview }
+            id == "edtpl" || id == "edtplb" -> edMenu = 2
+            id == "edtpb" -> edMenu = 1
+            id.startsWith("edtp:") -> { edMenu = 0; edInsertTemplate(id.substring(5).toIntOrNull() ?: return) }
+            id == "edpanel" -> edPanelOpen = !edPanelOpen
+            id == "edstart" -> { edMenu = 0; edOverview = false; edCam = edMaxCam() }
+            id == "edgoal" -> { edMenu = 0; edOverview = false; edCam = d.finishY - 300f }
+            id == "edundo" -> {
+                edMenu = 0
+                if (edUndo.isEmpty()) { edToast("Nada que deshacer"); return }
+                edRedo.add(d.serialize())
+                edRestore(edUndo.removeAt(edUndo.size - 1))
+                edToast("Deshecho")
+            }
+            id == "edredo" -> {
+                edMenu = 0
+                if (edRedo.isEmpty()) { edToast("Nada que rehacer"); return }
+                edUndo.add(d.serialize())
+                edRestore(edRedo.removeAt(edRedo.size - 1))
+                edToast("Rehecho")
+            }
+            id == "edauto" -> { edMenu = 0; edPush(); edAutoColors(); edToast("Cambiadores de color recalculados") }
+            id == "edexit" -> { edMenu = 0; edBack() }
             id == "edaddo" -> {
-                val y = edSnap(edCam + (edPanelTop() - edViewTop()) / 2f)
+                edPush()
+                val y = edSnap(edCam + edViewH() / 2f)
                 val o = edDefault(T.RING, y, 3)
                 d.obs.add(o)
                 d.obs.sortByDescending { it.y }
@@ -3874,7 +4064,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 edScroll = 0f
             }
             id == "edadds" -> {
-                val y = edSnap(edCam + (edPanelTop() - edViewTop()) / 2f)
+                edPush()
+                val y = edSnap(edCam + edViewH() / 2f)
                 val s = Sw(y, (d.startColor + 1) % 4)
                 d.sws.add(s)
                 d.sws.sortByDescending { it.y }
@@ -3883,36 +4074,54 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 edDirty = true
                 edScroll = 0f
             }
+            id == "edaddz" -> {
+                edPush()
+                val y = edSnap(edCam + edViewH() / 2f)
+                val z = Zone(y + 300f, y - 300f)
+                d.zones.add(z)
+                d.zones.sortByDescending { it.bottom }
+                edKind = 2
+                edIdx = d.zones.indexOfFirst { it === z }
+                edDirty = true
+                edScroll = 0f
+            }
             id == "eddup" -> {
+                if (edKind < 0) return
+                edPush()
                 if (edKind == 0 && edIdx in d.obs.indices) {
                     val o = d.obs[edIdx]
                     val n = o.copy(y = edSnap(o.y - o.reach * 2f - 80f))
                     d.obs.add(n)
                     d.obs.sortByDescending { it.y }
                     edIdx = d.obs.indexOfFirst { it === n }
-                    edDirty = true
                 } else if (edKind == 1 && edIdx in d.sws.indices) {
                     val s = d.sws[edIdx]
                     val n = Sw(edSnap(s.y - 160f), (s.toColor + 1) % 4)
                     d.sws.add(n)
                     d.sws.sortByDescending { it.y }
                     edIdx = d.sws.indexOfFirst { it === n }
-                    edDirty = true
+                } else if (edKind == 2 && edIdx in d.zones.indices) {
+                    val z = d.zones[edIdx]
+                    val n = Zone(z.top - 100f, z.top - 100f - (z.bottom - z.top))
+                    d.zones.add(n)
+                    d.zones.sortByDescending { it.bottom }
+                    edIdx = d.zones.indexOfFirst { it === n }
                 }
+                edDirty = true
             }
             id == "eddel" -> {
-                if (edKind == 0 && edIdx in d.obs.indices) {
-                    if (d.obs.size <= 1) { edToast("Debe quedar al menos un obstáculo"); return }
-                    d.obs.removeAt(edIdx)
-                    edDirty = true
-                } else if (edKind == 1 && edIdx in d.sws.indices) {
-                    d.sws.removeAt(edIdx)
-                    edDirty = true
-                }
+                if (edKind < 0) return
+                if (edKind == 0 && d.obs.size <= 1) { edToast("Debe quedar al menos un obstáculo"); return }
+                edPush()
+                if (edKind == 0 && edIdx in d.obs.indices) d.obs.removeAt(edIdx)
+                else if (edKind == 1 && edIdx in d.sws.indices) d.sws.removeAt(edIdx)
+                else if (edKind == 2 && edIdx in d.zones.indices) d.zones.removeAt(edIdx)
+                edDirty = true
                 edKind = -1
                 edIdx = -1
             }
             id == "edsave" -> {
+                edMenu = 0
                 d.sortAll()
                 val s = d.serialize()
                 prefs.setCustom(edLevel, s)
@@ -3922,16 +4131,20 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 edToast("Nivel $edLevel guardado")
             }
             id == "edorig" -> {
+                edMenu = 0
+                edPush()
                 prefs.setCustom(edLevel, null)
                 Custom.map.remove(edLevel)
                 edData = Course.level(edLevel).toData()
                 edKind = -1
                 edIdx = -1
                 edDirty = false
+                edOverview = false
                 edCam = edMaxCam()
                 edToast("Nivel original restaurado")
             }
             id == "edtest" -> {
+                edMenu = 0
                 d.sortAll()
                 if (d.obs.isEmpty()) return
                 level = edLevel
@@ -3943,8 +4156,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val k = id.substring(4).toIntOrNull() ?: return
                 if (k !in edRows.indices) return
                 val r = edRows[k]
+                if (k > 0) edPush()
                 if (id[2] == 'm') r.minus?.invoke() else r.plus?.invoke()
-                edDirty = edDirty || k > 0
+                if (k > 0) edDirty = true
             }
         }
     }
@@ -3974,7 +4188,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val small = o.type == T.PULSE || o.type == T.LASER
             val sp = if (small) 0.02f * st else 5f * st
             edRows.add(EdRow("Velocidad", edFmt(o.speed), { edSetOb(o.copy(speed = o.speed - sp)) }, { edSetOb(o.copy(speed = o.speed + sp)) }))
-            edRows.add(EdRow("Fase °", edFmt(o.phase), { edSetOb(o.copy(phase = (o.phase - 15f * st + 360f * 10) % 360f)) }, { edSetOb(o.copy(phase = (o.phase + 15f * st) % 360f)) }))
+            edRows.add(EdRow("Fase °", edFmt(o.phase), { edSetOb(o.copy(phase = (o.phase - 15f * st + 3600f) % 360f)) }, { edSetOb(o.copy(phase = (o.phase + 15f * st) % 360f)) }))
             val lb = edLbl[o.type]
             lb[0]?.let { l -> edRows.add(EdRow(l, edFmt(o.size), { edSetOb(o.copy(size = max(0f, o.size - 10f * st))) }, { edSetOb(o.copy(size = o.size + 10f * st)) })) }
             lb[1]?.let { l ->
@@ -3993,25 +4207,87 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (hasZone) d.zones.removeAll { o.y <= it.bottom && o.y >= it.top }
                 else d.zones.add(Zone(o.y + o.reach + 130f, o.y - o.reach - 130f))
                 d.zones.sortByDescending { it.bottom }
-                edDirty = true
             }
             edRows.add(EdRow("Zona deslizar", if (hasZone) "Sí" else "No", { zoneToggle() }, { zoneToggle() }))
         } else if (edKind == 1 && edIdx in d.sws.indices) {
             val s = d.sws[edIdx]
             edRows.add(EdRow("Cambiador", "Color ${s.toColor + 1}", { edSetSw(Sw(s.y, (s.toColor + 3) % 4)) }, { edSetSw(Sw(s.y, (s.toColor + 1) % 4)) }))
             edRows.add(EdRow("Altura", edFmt(-s.y), { edSetSw(Sw(s.y + 10f * st, s.toColor)) }, { edSetSw(Sw(s.y - 10f * st, s.toColor)) }))
+        } else if (edKind == 2 && edIdx in d.zones.indices) {
+            val z = d.zones[edIdx]
+            edRows.add(EdRow("Zona: abajo", edFmt(-z.bottom), { edSetZone(Zone(z.bottom + 10f * st, z.top)) }, { edSetZone(Zone(z.bottom - 10f * st, z.top)) }))
+            edRows.add(EdRow("Zona: arriba", edFmt(-z.top), { edSetZone(Zone(z.bottom, z.top + 10f * st)) }, { edSetZone(Zone(z.bottom, z.top - 10f * st)) }))
         } else {
-            edRows.add(EdRow("Toca un obstáculo", "", null, null))
+            edRows.add(EdRow("Toca un elemento", "", null, null))
         }
+        edRows.add(EdRow("— Nivel —", "", null, null))
         edRows.add(EdRow("Color inicial", "Color ${d.startColor + 1}", { d.startColor = (d.startColor + 3) % 4 }, { d.startColor = (d.startColor + 1) % 4 }))
-        edRows.add(EdRow("Largo (meta)", edFmt(-d.finishY), { d.finishY += 40f * st }, { d.finishY -= 40f * st; }))
+        edRows.add(EdRow("Largo (meta)", edFmt(-d.finishY), { d.finishY += 40f * st }, { d.finishY -= 40f * st }))
+        val nPal = Worlds.colors.size
+        edRows.add(EdRow("Colores mundo", if (d.palette < 0) "Auto" else "${d.palette + 1}",
+            { d.palette = if (d.palette < 0) nPal - 1 else d.palette - 1 }, { d.palette = if (d.palette >= nPal - 1) -1 else d.palette + 1 }))
+        fun scaleSpeed(f: Float) {
+            for (i in d.obs.indices) d.obs[i] = d.obs[i].copy(speed = d.obs[i].speed * f)
+            edSpeedAcc *= f
+        }
+        edRows.add(EdRow("Velocidad global", "×" + String.format(java.util.Locale.US, "%.2f", edSpeedAcc), { scaleSpeed(1f / 1.1f) }, { scaleSpeed(1.1f) }))
+        edRows.add(EdRow("Auto cambiadores", "Aplicar", { edAutoColors() }, { edAutoColors() }))
+    }
+
+    private fun drawEdWorld(c: Canvas, d: LevelData, pal: IntArray, y0: Float, y1: Float, detail: Boolean) {
+        drawFinish(c, d.finishY, pal)
+        Gl.line(c, 140f, 0f, 940f, 0f, 3f, Gl.white(120))
+        if (detail) Gl.text(c, "INICIO", 540f, 40f, 30f, Gl.medium, Gl.white(150), 0.2f)
+        edDot(c, Cfg.W / 2f, 0f, Cfg.BALL_R, pal[d.startColor % 4])
+        for ((i, z) in d.zones.withIndex()) {
+            if (z.bottom < y0 - 40f || z.top > y1 + 40f) continue
+            drawZone(c, z, pal)
+            if (edKind == 2 && edIdx == i) {
+                val pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeWidth = 5f
+                pp.color = Gl.white(220)
+                pp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(26f, 16f), (time * 40f) % 42f)
+                c.drawRect(8f, z.top, Cfg.W - 8f, z.bottom, pp)
+            }
+        }
+        val nColors = if (d.palette >= 0 || true) Levels.colors(edLevel) else 4
+        for (s in d.sws) {
+            if (s.y < y0 - 100f || s.y > y1 + 100f) continue
+            drawSwitcherN(c, s, nColors, pal)
+        }
+        for ((i, o) in d.obs.withIndex()) {
+            if (o.y + o.reach < y0 - 40f || o.y - o.reach > y1 + 40f) continue
+            drawObstacle(c, o, time, pal)
+            if (!T.isSlide(o.type)) drawStar(c, Cfg.W / 2f, o.y)
+            if (detail) Gl.text(c, "${i + 1}", 36f, o.y + 10f, 30f, Gl.medium, Gl.white(150))
+        }
+        if (edKind == 0 && edIdx in d.obs.indices) {
+            val o = d.obs[edIdx]
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 4f
+            pp.color = Gl.white(210)
+            pp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(22f, 14f), (time * 40f) % 36f)
+            c.drawRect(8f, o.y - o.reach, Cfg.W - 8f, o.y + o.reach, pp)
+            if (detail) Gl.text(c, "${edIdx + 1} · ${edTypeNames[o.type]}", 24f, o.y - o.reach - 14f, 32f, Gl.medium, Color.WHITE, 0f, null, 0, Paint.Align.LEFT)
+        } else if (edKind == 1 && edIdx in d.sws.indices) {
+            val s = d.sws[edIdx]
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 5f
+            pp.color = Gl.white(230)
+            c.drawCircle(Cfg.W / 2f, s.y, Cfg.SW_R + 18f, pp)
+        }
     }
 
     private fun drawEditor(c: Canvas) {
         val d = edData ?: return
-        val pal = Worlds.colors[Levels.world(edLevel).coerceIn(0, Worlds.colors.size - 1)]
+        val wIdx = if (d.palette >= 0) d.palette else Levels.world(edLevel)
+        val pal = Worlds.colors[wIdx.coerceIn(0, Worlds.colors.size - 1)]
         val vt = edViewTop()
         val pt = edPanelTop()
+        val vH = pt - vt
         if (d.finishY > -400f) d.finishY = -400f
         edCam = edCam.coerceIn(edMinCam(), edMaxCam())
 
@@ -4021,96 +4297,129 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val bgp = Gl.p()
         bgp.color = Color.argb(110, 0, 0, 0)
         c.drawRect(0f, vt, Cfg.W, pt, bgp)
-        c.translate(0f, vt - edCam)
-        drawFinish(c, d.finishY, pal)
-        // inicio
-        Gl.line(c, 140f, 0f, 940f, 0f, 3f, Gl.white(120))
-        Gl.text(c, "INICIO", 540f, 40f, 30f, Gl.medium, Gl.white(150), 0.2f)
-        edDot(c, Cfg.W / 2f, 0f, Cfg.BALL_R, pal[d.startColor % 4])
-        for (z in d.zones) {
-            if (z.bottom < edCam - 40f || z.top > edCam + (pt - vt) + 40f) continue
-            drawZone(c, z, pal)
-        }
-        val nColors = Levels.colors(edLevel)
-        for (s in d.sws) {
-            if (s.y < edCam - 100f || s.y > edCam + (pt - vt) + 100f) continue
-            drawSwitcherN(c, s, nColors, pal)
-        }
-        for ((i, o) in d.obs.withIndex()) {
-            val vis = !(o.y + o.reach < edCam - 40f || o.y - o.reach > edCam + (pt - vt) + 40f)
-            if (!vis) continue
-            drawObstacle(c, o, time, pal)
-            if (!T.isSlide(o.type)) drawStar(c, Cfg.W / 2f, o.y)
-            Gl.text(c, "${i + 1}", 36f, o.y + 10f, 30f, Gl.medium, Gl.white(150))
-        }
-        // selección
-        if (edKind == 0 && edIdx in d.obs.indices) {
-            val o = d.obs[edIdx]
+        if (edOverview) {
+            val y0 = d.finishY - 300f
+            val y1 = 260f
+            val s = min(0.5f, vH / (y1 - y0))
+            edOvS = s
+            edOvY0 = y0
+            c.translate(Cfg.W / 2f, vt)
+            c.scale(s, s)
+            c.translate(-Cfg.W / 2f, -y0)
+            drawEdWorld(c, d, pal, y0, y1, false)
+            // ventana que se ve al volver a editar
+            val normalH = (vh - 860f) - vt
             val pp = Gl.p()
             pp.style = Paint.Style.STROKE
-            pp.strokeWidth = 4f
-            pp.color = Gl.white(210)
-            pp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(22f, 14f), (time * 40f) % 36f)
-            c.drawRect(8f, o.y - o.reach, Cfg.W - 8f, o.y + o.reach, pp)
-            Gl.text(c, "${edIdx + 1} · ${edTypeNames[o.type]}", 24f, o.y - o.reach - 14f, 32f, Gl.medium, Color.WHITE, 0f, null, 0, Paint.Align.LEFT)
-        } else if (edKind == 1 && edIdx in d.sws.indices) {
-            val s = d.sws[edIdx]
-            val pp = Gl.p()
-            pp.style = Paint.Style.STROKE
-            pp.strokeWidth = 5f
+            pp.strokeWidth = 6f / s
             pp.color = Gl.white(230)
-            c.drawCircle(Cfg.W / 2f, s.y, Cfg.SW_R + 18f, pp)
+            c.drawRect(4f, edCam, Cfg.W - 4f, edCam + normalH, pp)
+            val fp = Gl.p()
+            fp.color = Gl.white(28)
+            c.drawRect(4f, edCam, Cfg.W - 4f, edCam + normalH, fp)
+        } else {
+            c.translate(0f, vt - edCam)
+            drawEdWorld(c, d, pal, edCam, edCam + vH, true)
         }
         c.restore()
 
         // ---- cabecera ----
         iconButton(c, "back", 110f, topI + 90f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
-        Gl.textFit(c, "EDITOR · NIVEL $edLevel" + if (edDirty) " *" else "", 420f, topI + 108f, 40f, 440f, Gl.medium, Gl.white(240), 0.1f)
-        button(c, "edstart", "Inicio", 770f, topI + 90f, 170f, 76f, 0, 32f)
-        button(c, "edgoal", "Meta", 960f, topI + 90f, 170f, 76f, 0, 32f)
+        Gl.textFit(c, "EDITOR · NIVEL $edLevel" + if (edDirty) " *" else "", 400f, topI + 108f, 40f, 400f, Gl.medium, Gl.white(240), 0.08f)
+        button(c, "edmenu", if (edMenu != 0) "Menú ▴" else "Menú ▾", 870f, topI + 90f, 300f, 76f, pal[1], 34f)
+        if (edOverview) {
+            Gl.text(c, "Mapa completo: toca o arrastra para elegir", 540f, vt + 50f, 30f, Gl.medium, Gl.white(200))
+            button(c, "edcont", "Seguir editando aquí", 540f, pt - 70f, 560f, 84f, pal[0], 36f)
+        }
         if (time - edMsgT < 2.2f) {
             val a = (255 * (1f - ((time - edMsgT - 1.6f) / 0.6f).coerceIn(0f, 1f))).toInt()
-            Gl.panel(c, 90f, vt + 14f, 990f, vt + 100f, 40f, 1f, pal[1])
-            Gl.textFit(c, edMsg, 540f, vt + 70f, 34f, 840f, Gl.medium, Gl.white(a))
+            Gl.panel(c, 90f, vt + 70f, 990f, vt + 156f, 40f, 1f, pal[1])
+            Gl.textFit(c, edMsg, 540f, vt + 126f, 34f, 840f, Gl.medium, Gl.white(a))
         }
 
         // ---- panel ----
         Gl.panel(c, 24f, pt, Cfg.W - 24f, vh - 24f, 56f, 0.9f, pal[0])
-        val hasSel = edKind >= 0
-        button(c, "edaddo", "+ Obstáculo", 169f, pt + 62f, 235f, 80f, 0, 28f)
-        button(c, "edadds", "+ Cambiador", 416f, pt + 62f, 235f, 80f, 0, 28f)
-        button(c, "eddup", "Duplicar", 663f, pt + 62f, 235f, 80f, 0, 28f, hasSel)
-        button(c, "eddel", "Borrar", 910f, pt + 62f, 235f, 80f, 0, 28f, hasSel)
+        if (edPanelOpenEff()) {
+            val hasSel = edKind >= 0
+            button(c, "edaddo", "+ Obstáculo", 169f, pt + 58f, 235f, 80f, 0, 28f)
+            button(c, "edadds", "+ Cambiador", 416f, pt + 58f, 235f, 80f, 0, 28f)
+            button(c, "edaddz", "+ Zona", 663f, pt + 58f, 235f, 80f, 0, 28f)
+            button(c, "edtplb", "Plantillas", 910f, pt + 58f, 235f, 80f, pal[2], 28f)
+            button(c, "eddup", "Duplicar", 169f, pt + 146f, 235f, 80f, 0, 28f, hasSel)
+            button(c, "eddel", "Borrar", 416f, pt + 146f, 235f, 80f, 0, 28f, hasSel)
+            button(c, "edundo", "Deshacer", 663f, pt + 146f, 235f, 80f, 0, 28f, edUndo.isNotEmpty())
+            button(c, "edredo", "Rehacer", 910f, pt + 146f, 235f, 80f, 0, 28f, edRedo.isNotEmpty())
 
-        edBuildRows()
-        val lt = pt + 120f
-        val lb = vh - 175f
-        val rh = 86f
-        val maxScroll = max(0f, edRows.size * rh - (lb - lt))
-        edScroll = edScroll.coerceIn(0f, maxScroll)
-        c.save()
-        c.clipRect(40f, lt, Cfg.W - 40f, lb)
-        for ((i, r) in edRows.withIndex()) {
-            val ry = lt + i * rh + rh / 2f - edScroll
-            if (ry - rh / 2f < lt - 1f || ry + rh / 2f > lb + 1f) continue
-            Gl.textFit(c, r.label, 70f, ry + 12f, 34f, 330f, Gl.regular, Gl.white(215), 0f, Paint.Align.LEFT)
-            if (r.minus != null || r.plus != null) {
+            edBuildRows()
+            val lt = edListTop()
+            val lb = edListBot()
+            val rh = 86f
+            val maxScroll = max(0f, edRows.size * rh - (lb - lt))
+            edScroll = edScroll.coerceIn(0f, maxScroll)
+            c.save()
+            c.clipRect(40f, lt, Cfg.W - 40f, lb)
+            for ((i, r) in edRows.withIndex()) {
+                val ry = lt + i * rh + rh / 2f - edScroll
+                if (ry - rh / 2f < lt - 1f || ry + rh / 2f > lb + 1f) continue
+                if (r.minus == null && r.plus == null) {
+                    Gl.textFit(c, r.label, 540f, ry + 12f, 32f, 700f, Gl.medium, Gl.white(170), 0.05f)
+                    continue
+                }
+                Gl.textFit(c, r.label, 70f, ry + 12f, 34f, 330f, Gl.regular, Gl.white(215), 0f, Paint.Align.LEFT)
                 Gl.textFit(c, r.value, 600f, ry + 12f, 36f, 250f, Gl.medium, Gl.white(245))
                 button(c, "edm:$i", "−", 790f, ry, 120f, 70f, 0, 44f)
                 button(c, "edp:$i", "+", 940f, ry, 120f, 70f, 0, 44f)
             }
+            c.restore()
+            if (maxScroll > 0f) {
+                val th = lb - lt
+                val bh = max(50f, th * th / (th + maxScroll))
+                val by0 = lt + (th - bh) * (edScroll / maxScroll)
+                Gl.rect.set(Cfg.W - 38f, by0, Cfg.W - 32f, by0 + bh)
+                c.drawRoundRect(Gl.rect, 3f, 3f, pw(80))
+            }
         }
-        c.restore()
-        if (maxScroll > 0f) {
-            val th = lb - lt
-            val bh = max(50f, th * th / (th + maxScroll))
-            val by0 = lt + (th - bh) * (edScroll / maxScroll)
-            Gl.rect.set(Cfg.W - 38f, by0, Cfg.W - 32f, by0 + bh)
-            c.drawRoundRect(Gl.rect, 3f, 3f, pw(80))
+        button(c, "edpanel", if (edPanelOpenEff()) "Ocultar" else "Herramientas", 190f, vh - 105f, 300f, 84f, 0, 32f, !edOverview)
+        button(c, "edtest", "Probar", 540f, vh - 105f, 300f, 84f, pal[2], 34f)
+        button(c, "edsave", "Guardar", 890f, vh - 105f, 300f, 84f, pal[1], 34f)
+
+        if (edMenu != 0) drawEdMenu(c, pal)
+    }
+
+    private fun drawEdMenu(c: Canvas, pal: IntArray) {
+        val dim = Gl.p()
+        dim.color = Color.argb(150, 0, 0, 0)
+        c.drawRect(0f, 0f, Cfg.W, vh, dim)
+        hits.add(Hit("edmenux", 0f, 0f, Cfg.W, vh))
+        val items = ArrayList<Pair<String, String>>()
+        if (edMenu == 1) {
+            items.add("edcont" to "Seguir editando")
+            items.add("edmap" to (if (edOverview) "Vista normal" else "Ver mapa completo"))
+            items.add("edtpl" to "Plantillas")
+            items.add("edauto" to "Auto cambiadores de color")
+            items.add("edstart" to "Ir al inicio")
+            items.add("edgoal" to "Ir a la meta")
+            items.add("edundo" to "Deshacer")
+            items.add("edredo" to "Rehacer")
+            items.add("edtest" to "Probar nivel")
+            items.add("edsave" to "Guardar")
+            items.add("edorig" to "Restaurar original")
+            items.add("edexit" to "Salir del editor")
+        } else {
+            for (i in edTplNames.indices) items.add("edtp:$i" to edTplNames[i])
+            items.add("edtpb" to "Volver")
         }
-        button(c, "edtest", "Probar", 215f, vh - 105f, 300f, 84f, pal[2], 34f)
-        button(c, "edsave", "Guardar", 540f, vh - 105f, 300f, 84f, pal[1], 34f)
-        button(c, "edorig", "Original", 865f, vh - 105f, 300f, 84f, 0, 34f)
+        val y0 = topI + 200f
+        val step = 92f
+        Gl.panel(c, 320f, y0 - 40f, 1040f, y0 + items.size * step + 4f, 56f, 1f, pal[1])
+        for ((i, it) in items.withIndex()) {
+            val enabled = when (it.first) {
+                "edundo" -> edUndo.isNotEmpty()
+                "edredo" -> edRedo.isNotEmpty()
+                else -> true
+            }
+            button(c, it.first, it.second, 680f, y0 + i * step + 30f, 660f, 80f, 0, 34f, enabled)
+        }
     }
 
     private fun edDot(c: Canvas, x: Float, y: Float, r: Float, col: Int) {

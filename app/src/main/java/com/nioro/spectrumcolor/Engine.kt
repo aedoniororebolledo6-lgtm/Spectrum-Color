@@ -554,6 +554,7 @@ class Course private constructor(
             c.zones.addAll(d.zones.sortedByDescending { it.bottom })
             c.startColor = d.startColor
             c.finishY = d.finishY
+            c.palette = d.palette
             return c
         }
 
@@ -574,6 +575,9 @@ class Course private constructor(
     }
     var startColor = 0
         private set
+    /** Colores del mundo elegidos a mano en el editor (-1 = los del mundo del nivel). */
+    var palette = -1
+        private set
     var finishY = Float.NEGATIVE_INFINITY
         private set
 
@@ -585,7 +589,7 @@ class Course private constructor(
     val totalGates: Int get() = gateTotal
 
     /** Copia editable del recorrido (para el editor de niveles). */
-    fun toData(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones))
+    fun toData(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones), palette)
 
     private fun build() {
         val plan = if (isLevel) Levels.slidePlan(level) else IntArray(0)
@@ -940,7 +944,7 @@ class Sim(val course: Course, val visH: Float) {
 
 
 /** Un nivel completo como datos: lo que edita el editor (solo versión de desarrollador). */
-class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>, val sws: ArrayList<Sw>, val zones: ArrayList<Zone>) {
+class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>, val sws: ArrayList<Sw>, val zones: ArrayList<Zone>, var palette: Int = -1) {
     fun sortAll() {
         obs.sortByDescending { it.y }
         sws.sortByDescending { it.y }
@@ -950,6 +954,7 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
     fun serialize(): String {
         val sb = StringBuilder()
         sb.append("S ").append(startColor).append(' ').append(finishY).append('\n')
+        sb.append("P ").append(palette).append('\n')
         for (o in obs) {
             sb.append("O ").append(o.type).append(' ').append(o.y).append(' ').append(o.n).append(' ').append(o.shift).append(' ')
                 .append(o.speed).append(' ').append(o.phase).append(' ').append(o.size).append(' ').append(o.inner).append(' ')
@@ -960,13 +965,14 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
         return sb.toString()
     }
 
-    fun copy(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones))
+    fun copy(): LevelData = LevelData(startColor, finishY, ArrayList(obs), ArrayList(sws), ArrayList(zones), palette)
 
     companion object {
         fun parse(s: String): LevelData? {
             try {
                 var sc = 0
                 var fy = -3000f
+                var pal = -1
                 val o = ArrayList<Ob>()
                 val w = ArrayList<Sw>()
                 val z = ArrayList<Zone>()
@@ -974,6 +980,7 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
                     val p = line.trim().split(' ')
                     if (p.isEmpty() || p[0].isEmpty()) continue
                     when (p[0]) {
+                        "P" -> pal = p[1].toInt().coerceIn(-1, 40)
                         "S" -> { sc = p[1].toInt().coerceIn(0, 3); fy = p[2].toFloat() }
                         "O" -> {
                             val type = p[1].toInt()
@@ -987,7 +994,7 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
                     }
                 }
                 if (o.isEmpty() || fy >= 0f) return null
-                return LevelData(sc, fy, o, w, z)
+                return LevelData(sc, fy, o, w, z, pal)
             } catch (e: Exception) {
                 return null
             }
