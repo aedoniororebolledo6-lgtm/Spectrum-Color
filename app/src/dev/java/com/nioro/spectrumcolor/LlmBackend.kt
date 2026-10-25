@@ -14,9 +14,6 @@ object LlmBackend {
         val o = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(path)
             .setMaxTokens(1024)
-            .setTopK(40)
-            .setTemperature(0.7f)
-            .setRandomSeed(7)
             .build()
         llm = LlmInference.createFromOptions(ctx, o)
     }
