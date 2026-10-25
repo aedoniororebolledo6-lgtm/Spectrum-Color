@@ -6,10 +6,10 @@ import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** IA de texto 100 % local (solo desarrollador): descarga una vez Qwen2.5-0.5B y luego genera esferas sin internet. */
+/** IA de texto 100 % local (solo desarrollador): descarga una vez Qwen2.5-1.5B y luego genera esferas sin internet. */
 object OrbLlm {
-    const val URL = "https://huggingface.co/litert-community/Qwen2.5-0.5B-Instruct/resolve/main/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
-    const val MIN_BYTES = 500_000_000L
+    const val URL = "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
+    const val MIN_BYTES = 1_500_000_000L
 
     /** 0 libre, 1 descargando, 2 cargando el modelo, 3 pensando */
     @Volatile var status = 0
@@ -18,7 +18,7 @@ object OrbLlm {
     @Volatile var result: Orb? = null
     @Volatile var noteFresh = false
 
-    fun file(ctx: Context): File = File(File(ctx.filesDir, "llm"), "qwen2.5-0.5b-q8.task")
+    fun file(ctx: Context): File = File(File(ctx.filesDir, "llm"), "qwen2.5-1.5b-q8.task")
     fun ready(ctx: Context): Boolean = file(ctx).let { it.exists() && it.length() > MIN_BYTES }
 
     private fun say(s: String) { note = s; noteFresh = true }
@@ -31,6 +31,7 @@ object OrbLlm {
             try {
                 val dest = file(ctx)
                 dest.parentFile?.mkdirs()
+                File(dest.parentFile, "qwen2.5-0.5b-q8.task").delete()
                 val part = File(dest.path + ".part")
                 var have = if (part.exists()) part.length() else 0L
                 val con = URL(URL).openConnection() as HttpURLConnection

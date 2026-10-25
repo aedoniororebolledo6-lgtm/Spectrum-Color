@@ -3044,7 +3044,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "orbv+" -> o.sp = (o.sp + 1).coerceIn(1, 5)
             id == "orbllm" -> {
                 if (OrbLlm.status != 0) orbToast("La IA está ocupada…")
-                else if (!OrbLlm.ready(context)) api.prompt("Descargar IA local (~550 MB)", "", "escribe SI (usa wifi)") { v ->
+                else if (!OrbLlm.ready(context)) api.prompt("Descargar IA local (~1,6 GB)", "", "escribe SI (usa wifi)") { v ->
                     if (v.trim().lowercase().startsWith("s")) OrbLlm.download(context.applicationContext)
                 }
                 else api.prompt("Describe tu esfera", "", "ej: remolino de fuego azul") { v ->
@@ -3118,7 +3118,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             1 -> "Descargando ${(OrbLlm.progress * 100).toInt()} %"
             2 -> "Cargando el modelo…"
             3 -> "Pensando…"
-            else -> if (OrbLlm.ready(context)) "Qwen local listo" else "Modelo: ~550 MB"
+            else -> if (OrbLlm.ready(context)) "Qwen local listo" else "Modelo: ~1,6 GB"
         }
         Gl.text(c, stat, 880f, top + 178f, 22f, Gl.regular, Gl.white(150))
         // mini IA local
