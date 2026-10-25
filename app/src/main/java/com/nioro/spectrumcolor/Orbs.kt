@@ -142,6 +142,30 @@ object OrbAI {
 }
 
 /** Texto ↔ esfera: arma el pedido para el modelo de lenguaje, lee su respuesta y tiene reglas de respaldo. */
+/** Formato de conversación de cada modelo: 0 = ChatML (Qwen), 1 = Gemma. */
+object Chat {
+    fun build(tpl: Int, system: String, shots: List<Pair<String, String>>, user: String): String {
+        val u = user.trim().take(120)
+        val sb = StringBuilder()
+        if (tpl == 1) {
+            var first = true
+            for ((q, a) in shots) {
+                sb.append("<start_of_turn>user\n")
+                if (first) { sb.append(system).append("\n\n"); first = false }
+                sb.append(q).append("<end_of_turn>\n<start_of_turn>model\n").append(a).append("<end_of_turn>\n")
+            }
+            sb.append("<start_of_turn>user\n")
+            if (first) sb.append(system).append("\n\n")
+            sb.append(u).append("<end_of_turn>\n<start_of_turn>model\n")
+        } else {
+            sb.append("<|im_start|>system\n").append(system).append("<|im_end|>\n")
+            for ((q, a) in shots) sb.append("<|im_start|>user\n").append(q).append("<|im_end|>\n<|im_start|>assistant\n").append(a).append("<|im_end|>\n")
+            sb.append("<|im_start|>user\n").append(u).append("<|im_end|>\n<|im_start|>assistant\n")
+        }
+        return sb.toString()
+    }
+}
+
 object OrbText {
     private val system = "Eres un diseñador de esferas para un videojuego. Responde SOLO con 8 números separados por comas, sin texto: " +
         "tipo,patron,color1,color2,cantidad,tamano,velocidad,borde.\n" +
@@ -153,6 +177,7 @@ object OrbText {
         "colores (0-11): 0 rojo,1 naranja,2 amarillo,3 verde,4 celeste,5 azul,6 violeta,7 rosa,8 blanco,9 plata,10 cafe,11 azul oscuro.\n" +
         "cantidad 1-8, tamano 1-5, velocidad 1-5, borde: 0 normal,1 color,2 dorado,3 arcoiris."
 
+    private val extraShots = arrayOf("pelota clasica con rayas azules" to "0,1,5,8,5,3,1,0")
     private val shots = arrayOf(
         "remolino de fuego" to "2,0,0,1,4,3,4,2",
         "galaxia morada con estrellas" to "1,2,6,5,4,3,2,0",
@@ -164,13 +189,8 @@ object OrbText {
         "un leon" to "4,0,2,10,5,3,3,0"
     )
 
-    fun prompt(text: String): String {
-        val sb = StringBuilder()
-        sb.append("<|im_start|>system\n").append(system).append("<|im_end|>\n")
-        for ((q, a) in shots) sb.append("<|im_start|>user\n").append(q).append("<|im_end|>\n<|im_start|>assistant\n").append(a).append("<|im_end|>\n")
-        sb.append("<|im_start|>user\n").append(text.trim().take(120)).append("<|im_end|>\n<|im_start|>assistant\n")
-        return sb.toString()
-    }
+    fun prompt(text: String, tpl: Int = 0, rich: Boolean = false): String =
+        Chat.build(tpl, system, (if (rich) shots + extraShots else shots).toList(), text)
 
     /** Los 8 primeros números de la respuesta, o null si no hay 8. */
     fun parse(reply: String): Orb? {
@@ -439,19 +459,18 @@ object OrbDraw {
         "color: 0 rojo,1 naranja,2 amarillo,3 verde,4 celeste,5 azul,6 violeta,7 rosa,8 blanco,9 plata,10 cafe,11 azul oscuro. " +
         "Dibuja primero el fondo y el cuerpo, luego los detalles. Usa entre 8 y 20 formas."
 
+    private val extraShots = arrayOf(
+        "casa roja" to "p 0 -70 -5 0 -65 70 -5\no -60 -5 60 80 8\no -15 25 15 80 10\no -48 8 -25 30 4\no 25 8 48 30 4\nl 0 -65 0 -75 4 8",
+        "luna con estrellas" to "c 0 0 60 2\nc 28 -12 52 11\nc -60 -55 6 8\nc 62 55 5 8\nc -50 50 4 8"
+    )
     private val shots = arrayOf(
         "gato naranja" to "c 0 10 55 1\np 1 -50 -10 -45 -80 -10 -40\np 1 50 -10 45 -80 10 -40\np 7 -42 -20 -40 -60 -20 -38\np 7 42 -20 40 -60 20 -38\nc -22 5 10 8\nc 22 5 10 8\nc -22 5 5 11\nc 22 5 5 11\np 7 -7 26 7 26 0 34\nl 20 34 80 24 3 8\nl 20 42 80 46 3 8\nl -20 34 -80 24 3 8\nl -20 42 -80 46 3 8",
         "pez azul" to "p 4 30 0 78 -32 78 32\no -75 -38 40 38 5\np 4 -10 -34 20 -62 22 -22\nc -45 -8 10 8\nc -47 -8 5 11\nl -62 10 -50 16 3 11",
         "arbol" to "l 0 95 0 5 16 10\nc 0 -25 52 3\nc -35 8 32 3\nc 35 8 32 3\nc -15 -40 10 2\nc 25 -10 9 0"
     )
 
-    fun prompt(text: String): String {
-        val sb = StringBuilder()
-        sb.append("<|im_start|>system\n").append(system).append("<|im_end|>\n")
-        for ((q, a) in shots) sb.append("<|im_start|>user\n").append(q).append("<|im_end|>\n<|im_start|>assistant\n").append(a).append("<|im_end|>\n")
-        sb.append("<|im_start|>user\n").append(text.trim().take(120)).append("<|im_end|>\n<|im_start|>assistant\n")
-        return sb.toString()
-    }
+    fun prompt(text: String, tpl: Int = 0, rich: Boolean = false): String =
+        Chat.build(tpl, system, (if (rich) shots + extraShots else shots).toList(), text)
 
     /** Valida la respuesta y la devuelve limpia («forma;forma;…») o null si no hay al menos 3 formas. */
     fun parse(reply: String): String? {

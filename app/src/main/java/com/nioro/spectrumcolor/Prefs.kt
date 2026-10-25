@@ -17,6 +17,13 @@ class Prefs(context: Context) {
     }
 
     /** Esferas creadas en el editor (solo versión de desarrollador). */
+    /** Modelo de IA local elegido (0 Qwen, 1 Gemma) y token de Hugging Face (Gemma exige aceptar su licencia). */
+    var llmModel: Int
+        get() = sp.getInt("llm_model", 0)
+        set(v) { sp.edit().putInt("llm_model", v).apply() }
+    var hfToken: String
+        get() = sp.getString("hf_token", "") ?: ""
+        set(v) { sp.edit().putString("hf_token", v.trim()).apply() }
     var orbAi: String?
         get() = sp.getString("orb_ai", null)
         set(v) { sp.edit().putString("orb_ai", v).apply() }

@@ -3046,13 +3046,26 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "orbs+" -> o.sz = (o.sz + 1).coerceIn(1, 5)
             id == "orbv-" -> o.sp = (o.sp - 1).coerceIn(1, 5)
             id == "orbv+" -> o.sp = (o.sp + 1).coerceIn(1, 5)
-            id == "orbllm" -> {
+            id == "orbmodel" -> {
                 if (OrbLlm.status != 0) orbToast("La IA está ocupada…")
-                else if (!OrbLlm.ready(context)) api.prompt("Descargar IA local (~1,6 GB)", "", "escribe SI (usa wifi)") { v ->
-                    if (v.trim().lowercase().startsWith("s")) OrbLlm.download(context.applicationContext)
+                else { prefs.llmModel = (prefs.llmModel + 1) % OrbLlm.models.size; orbToast("Modelo: " + OrbLlm.models[prefs.llmModel].name) }
+            }
+            id == "orbllm" -> {
+                val m = OrbLlm.models[prefs.llmModel.coerceIn(0, OrbLlm.models.size - 1)]
+                val app = context.applicationContext
+                if (OrbLlm.status != 0) orbToast("La IA está ocupada…")
+                else if (!OrbLlm.ready(app, m)) {
+                    val startDl = {
+                        api.prompt("Descargar ${m.name} (${m.sizeLabel})", "", "escribe SI (usa wifi)") { v ->
+                            if (v.trim().lowercase().startsWith("s")) OrbLlm.download(app, m, prefs.hfToken)
+                        }
+                    }
+                    if (m.gated && prefs.hfToken.isEmpty()) api.prompt("Token de Hugging Face", "", "hf_… (acepta antes la licencia de Gemma)") { v ->
+                        if (v.isNotBlank()) { prefs.hfToken = v; startDl() }
+                    } else startDl()
                 }
-                else api.prompt("Describe tu esfera", "", "ej: remolino de fuego azul") { v ->
-                    if (v.isNotBlank()) OrbLlm.generate(context.applicationContext, v)
+                else api.prompt("Describe tu esfera", "", "ej: un dragón verde") { v ->
+                    if (v.isNotBlank()) OrbLlm.generate(app, m, v)
                 }
             }
             id == "orbgen" -> {
@@ -3117,14 +3130,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             OrbLlm.noteFresh = false
             orbToast(OrbLlm.note)
         }
-        button(c, "orbllm", if (!LlmBackend.AVAILABLE) "IA texto" else if (st != 0) "…" else if (OrbLlm.ready(context)) "IA: describir" else "Bajar IA", 880f, top + 110f, 300f, 76f, pal[0], 28f, LlmBackend.AVAILABLE && st == 0)
+        val lm = OrbLlm.models[prefs.llmModel.coerceIn(0, OrbLlm.models.size - 1)]
+        val lmReady = OrbLlm.ready(context, lm)
+        button(c, "orbllm", if (!LlmBackend.AVAILABLE) "IA texto" else if (st != 0) "…" else if (lmReady) "IA: describir" else "Bajar IA", 880f, top + 110f, 300f, 76f, pal[0], 28f, LlmBackend.AVAILABLE && st == 0)
         val stat = when (st) {
-            1 -> "Descargando ${(OrbLlm.progress * 100).toInt()} %"
-            2 -> "Cargando el modelo…"
+            1 -> "${lm.name} · bajando ${(OrbLlm.progress * 100).toInt()} %"
+            2 -> "Cargando ${lm.name}…"
             3 -> "Pensando…"
-            else -> if (OrbLlm.ready(context)) "Qwen local listo" else "Modelo: ~1,6 GB"
+            else -> lm.name + (if (lmReady) " · listo" else " · " + lm.sizeLabel)
         }
-        Gl.text(c, stat, 880f, top + 178f, 22f, Gl.regular, Gl.white(150))
+        button(c, "orbmodel", stat, 880f, top + 178f, 300f, 50f, 0, 20f, LlmBackend.AVAILABLE && st == 0)
         // mini IA local
         button(c, "orbgen", "IA: nueva", 880f, top + 250f, 300f, 76f, pal[2], 30f)
         button(c, "orbmut", "Variar", 880f, top + 340f, 300f, 76f, 0, 30f)

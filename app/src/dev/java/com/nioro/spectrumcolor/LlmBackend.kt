@@ -7,15 +7,19 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
 object LlmBackend {
     const val AVAILABLE = true
     private var llm: LlmInference? = null
+    private var loadedPath = ""
 
     @Synchronized
-    fun load(ctx: Context, path: String) {
-        if (llm != null) return
+    fun load(ctx: Context, path: String, maxTokens: Int) {
+        if (llm != null && loadedPath == path) return
+        llm?.close()
+        llm = null
         val o = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(path)
-            .setMaxTokens(1280)
+            .setMaxTokens(maxTokens)
             .build()
         llm = LlmInference.createFromOptions(ctx, o)
+        loadedPath = path
     }
 
     @Synchronized
@@ -25,5 +29,6 @@ object LlmBackend {
     fun close() {
         llm?.close()
         llm = null
+        loadedPath = ""
     }
 }
