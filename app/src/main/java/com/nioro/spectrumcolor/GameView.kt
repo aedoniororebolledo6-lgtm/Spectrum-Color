@@ -153,6 +153,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var orbEd = Orb()
     private var orbMsg = ""
     private var orbMsgT = -10f
+    private val orbRnd = java.util.Random()
+    private val orbW: FloatArray = if (BuildConfig.DEV) OrbAI.decode(prefs.orbAi) else FloatArray(OrbAI.DIM)
+    private var orbVotes = if (BuildConfig.DEV) OrbAI.decodeVotes(prefs.orbAi) else 0
+    private fun orbLearn(o: Orb, label: Float) {
+        OrbAI.train(orbW, o, label)
+        orbVotes++
+        prefs.orbAi = OrbAI.encode(orbW, orbVotes)
+    }
     private var skinMax = 0f
     // ---- tema Gatitos: los gatitos se mueven al inclinar el celular y se apartan del dedo ----
     private val catOx = FloatArray(32)
@@ -3034,7 +3042,26 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "orbs+" -> o.sz = (o.sz + 1).coerceIn(1, 5)
             id == "orbv-" -> o.sp = (o.sp - 1).coerceIn(1, 5)
             id == "orbv+" -> o.sp = (o.sp + 1).coerceIn(1, 5)
+            id == "orbgen" -> {
+                orbEd = OrbAI.generate(orbW, orbRnd, orbs.filterNotNull(), o)
+                orbToast("La IA propuso una esfera nueva")
+            }
+            id == "orbmut" -> {
+                orbEd = OrbAI.mutate(o, orbRnd)
+                orbToast("Variación de tu esfera")
+            }
+            id == "orbyes" -> {
+                orbLearn(o, 1f)
+                orbEd = OrbAI.generate(orbW, orbRnd, orbs.filterNotNull() + o.copy(), o)
+                orbToast("Aprendido: te gusta. Otra propuesta")
+            }
+            id == "orbno" -> {
+                orbLearn(o, 0f)
+                orbEd = OrbAI.generate(orbW, orbRnd, orbs.filterNotNull(), o)
+                orbToast("Aprendido: no te gusta. Otra propuesta")
+            }
             id == "orbsave" -> {
+                orbLearn(o, 1f)
                 orbs[orbSlot] = o.copy()
                 prefs.setOrb(orbSlot, o.copy())
                 orbToast("Esfera ${orbSlot + 1} guardada")
@@ -3067,6 +3094,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.glow(c, 540f, top + 330f, 260f, colNow, 70)
         drawBallAt(c, 540f, top + 330f + sin(time * 2f) * 6f, 110f, colNow, Orb.PREVIEW_ID, time, true)
         Gl.text(c, "Esfera ${orbSlot + 1}" + (if (orbs[orbSlot] == null) " (nueva)" else ""), 540f, top + 500f, 40f, Gl.medium, Gl.white(235))
+        // mini IA local
+        button(c, "orbgen", "IA: nueva", 880f, top + 250f, 300f, 76f, pal[2], 30f)
+        button(c, "orbmut", "Variar", 880f, top + 340f, 300f, 76f, 0, 30f)
+        button(c, "orbyes", "Me gusta", 200f, top + 250f, 300f, 76f, pal[3], 30f)
+        button(c, "orbno", "No me gusta", 200f, top + 340f, 300f, 76f, 0, 28f)
+        Gl.text(c, "IA local · $orbVotes votos", 540f, top + 462f, 24f, Gl.regular, Gl.white(130))
 
         // casillas guardadas
         for (k in 0 until Orb.SLOTS) {

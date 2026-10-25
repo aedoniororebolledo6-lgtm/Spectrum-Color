@@ -17,6 +17,9 @@ class Prefs(context: Context) {
     }
 
     /** Esferas creadas en el editor (solo versión de desarrollador). */
+    var orbAi: String?
+        get() = sp.getString("orb_ai", null)
+        set(v) { sp.edit().putString("orb_ai", v).apply() }
     fun getOrb(slot: Int): Orb? = Orb.parse(sp.getString("orb_$slot", null))
     fun setOrb(slot: Int, o: Orb?) {
         val ed = sp.edit()
