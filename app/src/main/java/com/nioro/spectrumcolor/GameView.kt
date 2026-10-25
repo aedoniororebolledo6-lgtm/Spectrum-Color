@@ -3031,8 +3031,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 orbSlot = k
                 orbEd = orbs[k]?.copy() ?: Orb()
             }
-            id.startsWith("orbkind:") -> { o.kind = (id.substring(8).toIntOrNull() ?: return).coerceIn(0, 2); o.pat = 0 }
-            id.startsWith("orbpat:") -> o.pat = (id.substring(7).toIntOrNull() ?: return).coerceIn(0, 5)
+            id.startsWith("orbkind:") -> { o.kind = (id.substring(8).toIntOrNull() ?: return).coerceIn(0, 3); o.pat = 0 }
+            id == "orbpp" -> o.pat = (o.pat + 15) % 16
+            id == "orbpn" -> o.pat = (o.pat + 1) % 16
+            id.startsWith("orbpat:") -> o.pat = (id.substring(7).toIntOrNull() ?: return).coerceIn(0, 15)
             id.startsWith("orbc1:") -> o.c1 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
             id.startsWith("orbc2:") -> o.c2 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
             id.startsWith("orbbd:") -> o.bd = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, 3)
@@ -3150,9 +3152,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
 
         // tipo
-        for (k in 0 until 3) button(c, "orbkind:$k", Orb.kindNames[k], 190f + k * 350f, top + 810f, 320f, 78f, if (o.kind == k) pal[k] else 0, 32f)
+        for (k in 0 until 4) button(c, "orbkind:$k", Orb.kindNames[k], 155f + k * 257f, top + 810f, 245f, 78f, if (o.kind == k) pal[k] else 0, 30f)
         // patrón
-        for (k in 0 until 6) {
+        if (o.kind == 3) {
+            button(c, "orbpp", "◀", 190f, top + 945f, 200f, 80f, 0, 36f)
+            Gl.text(c, Orb.patNames[3][o.pat] + "  (${o.pat + 1}/16)", 540f, top + 957f, 38f, Gl.medium, Gl.white(240))
+            button(c, "orbpn", "▶", 890f, top + 945f, 200f, 80f, 0, 36f)
+        } else for (k in 0 until 6) {
             val cx = 190f + (k % 3) * 350f
             val cy = top + 905f + (k / 3) * 80f
             button(c, "orbpat:$k", Orb.patNames[o.kind][k], cx, cy, 320f, 68f, if (o.pat == k) pal[(k + 1) % 4] else 0, 28f)
@@ -3211,6 +3217,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val n = o.n
         val sz = o.sz
         fun alt(i: Int) = if (i % 2 == 0) a else b
+        if (o.kind == 3) { drawFigure(c, x, y, r, o, tm); return }
         when (o.kind * 10 + o.pat) {
             // ---- clásicas ----
             0 -> {
@@ -3402,6 +3409,174 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val rr = r * (0.07f + 0.035f * sz) * (0.6f + 0.6f * oh(k, 16))
                 c.drawCircle(px, py, rr, Gl.p().also { it.color = Gl.alpha(alt(k), 120) })
                 c.drawCircle(px, py, rr, ps(210, 2f))
+            }
+        }
+    }
+
+    /** Figuras de la esfera propia (gato, perro, corazón…): siluetas dibujadas con formas simples. */
+    private fun drawFigure(c: Canvas, x: Float, y: Float, r: Float, o: Orb, tm: Float) {
+        val A = Orb.pal[o.c1]
+        val B = Orb.pal[o.c2]
+        val t = tm * (0.35f + 0.35f * o.sp)
+        val s = r * (0.62f + 0.1f * o.sz) * (1f + 0.04f * sin(t * 3f))
+        val dark = Color.argb(255, 18, 20, 36)
+        fun px(u: Float) = x + u * s
+        fun py(v: Float) = y + v * s
+        fun circ(u: Float, v: Float, rr: Float, col: Int) = c.drawCircle(px(u), py(v), rr * s, Gl.p().also { it.color = col })
+        fun oval(u0: Float, v0: Float, u1: Float, v1: Float, col: Int) {
+            Gl.rect.set(px(u0), py(v0), px(u1), py(v1))
+            c.drawOval(Gl.rect, Gl.p().also { it.color = col })
+        }
+        fun poly(col: Int, vararg q: Float) {
+            Gl.path.reset()
+            Gl.path.moveTo(px(q[0]), py(q[1]))
+            var i = 2
+            while (i < q.size) { Gl.path.lineTo(px(q[i]), py(q[i + 1])); i += 2 }
+            Gl.path.close()
+            c.drawPath(Gl.path, Gl.p().also { it.color = col })
+        }
+        fun ln(u0: Float, v0: Float, u1: Float, v1: Float, w: Float, col: Int) = Gl.line(c, px(u0), py(v0), px(u1), py(v1), w * s, col)
+        // fondo suave con el segundo color
+        Gl.glow(c, x, y, r * 1.1f, B, 90)
+        val blink = if (sin(t * 1.3f) > 0.96f) 0.15f else 1f
+        when (o.pat) {
+            0 -> { // gato
+                poly(A, -0.52f, -0.1f, -0.46f, -0.82f, -0.08f, -0.42f)
+                poly(A, 0.52f, -0.1f, 0.46f, -0.82f, 0.08f, -0.42f)
+                poly(B, -0.42f, -0.2f, -0.4f, -0.6f, -0.17f, -0.38f)
+                poly(B, 0.42f, -0.2f, 0.4f, -0.6f, 0.17f, -0.38f)
+                circ(0f, 0.1f, 0.58f, A)
+                oval(-0.32f, 0.05f - 0.14f * blink, -0.1f, 0.05f + 0.14f * blink, dark)
+                oval(0.1f, 0.05f - 0.14f * blink, 0.32f, 0.05f + 0.14f * blink, dark)
+                oval(-0.28f, -0.02f, -0.2f, 0.06f, Gl.white(230))
+                oval(0.14f, -0.02f, 0.22f, 0.06f, Gl.white(230))
+                poly(B, -0.07f, 0.26f, 0.07f, 0.26f, 0f, 0.34f)
+                for (sg in intArrayOf(-1, 1)) {
+                    ln(sg * 0.2f, 0.33f, sg * 0.75f, 0.24f, 0.025f, Gl.white(210))
+                    ln(sg * 0.2f, 0.4f, sg * 0.75f, 0.45f, 0.025f, Gl.white(210))
+                }
+            }
+            1 -> { // perro
+                oval(-0.68f, -0.28f, -0.34f, 0.42f, B)
+                oval(0.34f, -0.28f, 0.68f, 0.42f, B)
+                circ(0f, 0.02f, 0.54f, A)
+                oval(-0.26f, 0.12f, 0.26f, 0.5f, Gl.white(225))
+                circ(0f, 0.18f, 0.1f, dark)
+                circ(-0.22f, -0.12f, 0.075f * blink + 0.01f, dark)
+                circ(0.22f, -0.12f, 0.075f * blink + 0.01f, dark)
+                oval(-0.08f, 0.38f, 0.1f, 0.38f + 0.2f * (0.6f + 0.4f * sin(t * 4f)), 0xFFFF7A9A.toInt())
+            }
+            2 -> { // corazón latiendo
+                circ(-0.3f, -0.22f, 0.36f, A)
+                circ(0.3f, -0.22f, 0.36f, A)
+                poly(A, -0.63f, -0.06f, 0.63f, -0.06f, 0f, 0.72f)
+                oval(-0.5f, -0.45f, -0.3f, -0.25f, Gl.white(170))
+            }
+            3 -> { // estrella
+                Gl.path.reset()
+                for (i in 0 until 10) {
+                    val rr = if (i % 2 == 0) 0.78f else 0.34f
+                    val a = (-90.0 + i * 36.0 + sin(t) * 6.0) * Math.PI / 180.0
+                    val qx = px((rr * cos(a)).toFloat()); val qy = py((rr * sin(a)).toFloat())
+                    if (i == 0) Gl.path.moveTo(qx, qy) else Gl.path.lineTo(qx, qy)
+                }
+                Gl.path.close()
+                c.drawPath(Gl.path, Gl.p().also { it.color = A })
+                circ(0f, 0f, 0.2f, B)
+            }
+            4 -> { // luna
+                val p1 = Path(); val p2 = Path()
+                p1.addCircle(px(0f), py(0f), 0.72f * s, Path.Direction.CW)
+                p2.addCircle(px(0.3f), py(-0.14f), 0.6f * s, Path.Direction.CW)
+                p1.op(p2, Path.Op.DIFFERENCE)
+                c.drawPath(p1, Gl.p().also { it.color = A })
+                for (i in 0 until 3) circ(0.35f + i * 0.14f, 0.25f + i * 0.22f - 0.3f, 0.05f * (0.6f + 0.4f * sin(t * 3f + i)), B)
+            }
+            5 -> { // flor
+                for (i in 0 until 6) {
+                    val a = t * 0.6f + i * 1.0472f
+                    circ(cos(a) * 0.42f, sin(a) * 0.42f, 0.27f, A)
+                }
+                circ(0f, 0f, 0.24f, B)
+            }
+            6 -> { // calavera
+                circ(0f, -0.1f, 0.52f, A)
+                c.drawRoundRect(px(-0.3f), py(0.2f), px(0.3f), py(0.62f), 0.1f * s, 0.1f * s, Gl.p().also { it.color = A })
+                circ(-0.2f, -0.1f, 0.15f, dark)
+                circ(0.2f, -0.1f, 0.15f, dark)
+                poly(dark, 0f, 0.05f, -0.07f, 0.17f, 0.07f, 0.17f)
+                for (i in -1..1) ln(i * 0.14f, 0.4f, i * 0.14f, 0.62f, 0.03f, dark)
+            }
+            7 -> { // fantasma
+                Gl.path.reset()
+                Gl.path.moveTo(px(-0.5f), py(0.65f))
+                Gl.path.lineTo(px(-0.5f), py(-0.1f))
+                Gl.rect.set(px(-0.5f), py(-0.7f), px(0.5f), py(0.3f))
+                Gl.path.arcTo(Gl.rect, 180f, 180f)
+                Gl.path.lineTo(px(0.5f), py(0.65f))
+                val w = sin(t * 3f) * 0.06f
+                Gl.path.quadTo(px(0.33f), py(0.45f + w), px(0.17f), py(0.65f))
+                Gl.path.quadTo(px(0f), py(0.85f - w), px(-0.17f), py(0.65f))
+                Gl.path.quadTo(px(-0.33f), py(0.45f + w), px(-0.5f), py(0.65f))
+                Gl.path.close()
+                c.drawPath(Gl.path, Gl.p().also { it.color = A })
+                circ(-0.2f, -0.15f, 0.1f * blink + 0.01f, dark)
+                circ(0.2f, -0.15f, 0.1f * blink + 0.01f, dark)
+                oval(-0.1f, 0.05f, 0.1f, 0.25f, B)
+            }
+            8 -> { // pez
+                val wag = sin(t * 5f) * 0.12f
+                poly(A, 0.3f, 0f, 0.78f, -0.32f + wag, 0.78f, 0.32f + wag)
+                oval(-0.7f, -0.34f, 0.42f, 0.34f, A)
+                poly(B, -0.1f, -0.3f, 0.2f, -0.6f, 0.2f, -0.2f)
+                circ(-0.4f, -0.08f, 0.1f, Gl.white(245))
+                circ(-0.42f, -0.08f, 0.05f, dark)
+            }
+            9 -> { // mariposa
+                val fl = 0.72f + 0.28f * cos(t * 5f)
+                for (sg in intArrayOf(-1, 1)) {
+                    oval(if (sg < 0) -0.78f * fl else 0.02f, -0.62f, if (sg < 0) -0.02f else 0.78f * fl, 0.05f, A)
+                    oval(if (sg < 0) -0.6f * fl else 0.02f, 0.0f, if (sg < 0) -0.02f else 0.6f * fl, 0.55f, B)
+                }
+                oval(-0.07f, -0.5f, 0.07f, 0.55f, dark)
+                ln(-0.03f, -0.5f, -0.2f, -0.78f, 0.025f, dark)
+                ln(0.03f, -0.5f, 0.2f, -0.78f, 0.025f, dark)
+            }
+            10 -> { // rayo
+                poly(A, 0.12f, -0.85f, -0.42f, 0.1f, -0.06f, 0.1f, -0.2f, 0.85f, 0.46f, -0.18f, 0.08f, -0.18f)
+                Gl.glow(c, x, y, r * 0.9f, A, 70)
+            }
+            11 -> { // corona
+                poly(A, -0.62f, 0.45f, -0.68f, -0.38f, -0.3f, 0f, 0f, -0.58f, 0.3f, 0f, 0.68f, -0.38f, 0.62f, 0.45f)
+                c.drawRoundRect(px(-0.62f), py(0.3f), px(0.62f), py(0.52f), 0.05f * s, 0.05f * s, Gl.p().also { it.color = B })
+                circ(-0.68f, -0.4f, 0.07f, Gl.white(245)); circ(0f, -0.6f, 0.07f, Gl.white(245)); circ(0.68f, -0.4f, 0.07f, Gl.white(245))
+            }
+            12 -> { // hoja
+                Gl.path.reset()
+                Gl.path.moveTo(px(-0.55f), py(0.55f))
+                Gl.path.quadTo(px(-0.75f), py(-0.6f), px(0.55f), py(-0.6f))
+                Gl.path.quadTo(px(0.75f), py(0.45f), px(-0.55f), py(0.55f))
+                Gl.path.close()
+                c.drawPath(Gl.path, Gl.p().also { it.color = A })
+                ln(-0.6f, 0.6f, 0.45f, -0.5f, 0.04f, B)
+                for (i in 0 until 3) { ln(-0.3f + i * 0.2f, 0.3f - i * 0.2f, -0.3f + i * 0.2f + 0.18f, 0.3f - i * 0.2f - 0.02f, 0.025f, B) }
+            }
+            13 -> { // gota
+                val bob = sin(t * 3f) * 0.04f
+                circ(0f, 0.22f + bob, 0.46f, A)
+                poly(A, -0.42f, 0.05f + bob, 0.42f, 0.05f + bob, 0f, -0.78f + bob)
+                oval(-0.28f, 0.05f + bob, -0.12f, 0.35f + bob, Gl.white(170))
+            }
+            14 -> { // huella
+                oval(-0.34f, 0.0f, 0.34f, 0.6f, A)
+                circ(-0.5f, -0.1f, 0.15f, A); circ(-0.18f, -0.42f, 0.16f, A); circ(0.18f, -0.42f, 0.16f, A); circ(0.5f, -0.1f, 0.15f, A)
+            }
+            else -> { // sol
+                circ(0f, 0f, 0.38f, A)
+                for (i in 0 until 10) {
+                    val a = t * 0.8f + i * 0.6283f
+                    ln(cos(a) * 0.55f, sin(a) * 0.55f, cos(a) * 0.85f, sin(a) * 0.85f, 0.07f, B)
+                }
             }
         }
     }

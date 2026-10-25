@@ -2,7 +2,7 @@ package com.nioro.spectrumcolor
 
 /** Esfera creada por el usuario en el editor (solo versión de desarrollador). */
 class Orb(
-    var kind: Int = 1,   // 0 clásica, 1 estelar, 2 animada
+    var kind: Int = 1,   // 0 clásica, 1 estelar, 2 animada, 3 figura
     var pat: Int = 0,    // patrón dentro del tipo
     var c1: Int = 0,     // color principal (índice de Orbs.pal)
     var c2: Int = 3,     // color secundario
@@ -25,11 +25,14 @@ class Orb(
             0xFF4FE6FF.toInt(), 0xFF4F8BFF.toInt(), 0xFFB04FFF.toInt(), 0xFFFF6FD8.toInt(),
             0xFFFFFFFF.toInt(), 0xFFB8C4D6.toInt(), 0xFF8A5A3C.toInt(), 0xFF1B1F3B.toInt()
         )
-        val kindNames = arrayOf("Clásica", "Estelar", "Animada")
+        val kindNames = arrayOf("Clásica", "Estelar", "Animada", "Figura")
+        fun patCount(kind: Int): Int = if (kind == 3) 16 else 6
         val patNames = arrayOf(
             arrayOf("Liso", "Rayas", "Lunares", "Cuadros", "Anillos", "Rombos"),
             arrayOf("Estrellas", "Constelación", "Nebulosa", "Órbitas", "Eclipse", "Supernova"),
-            arrayOf("Remolino", "Pulso", "Ondas", "Destellos", "Ruleta", "Burbujas")
+            arrayOf("Remolino", "Pulso", "Ondas", "Destellos", "Ruleta", "Burbujas"),
+            arrayOf("Gato", "Perro", "Corazón", "Estrella", "Luna", "Flor", "Calavera", "Fantasma",
+                "Pez", "Mariposa", "Rayo", "Corona", "Hoja", "Gota", "Huella", "Sol")
         )
         val borderNames = arrayOf("Normal", "Color", "Dorado", "Arcoíris")
 
@@ -38,7 +41,7 @@ class Orb(
             val p = s.split(",").mapNotNull { it.trim().toIntOrNull() }
             if (p.size < 8) return null
             return Orb(
-                p[0].coerceIn(0, 2), p[1].coerceIn(0, 5), p[2].coerceIn(0, pal.size - 1), p[3].coerceIn(0, pal.size - 1),
+                p[0].coerceIn(0, 3), p[1].coerceIn(0, 15), p[2].coerceIn(0, pal.size - 1), p[3].coerceIn(0, pal.size - 1),
                 p[4].coerceIn(1, 8), p[5].coerceIn(1, 5), p[6].coerceIn(1, 5), p[7].coerceIn(0, 3)
             )
         }
@@ -52,20 +55,20 @@ class Orb(
  * No usa internet ni archivos de modelo: todo ocurre en el procesador del celular.
  */
 object OrbAI {
-    const val DIM = 3 + 18 + 12 + 12 + 3 + 4 + 1 + 1
+    const val DIM = 4 + 34 + 12 + 12 + 3 + 4 + 1 + 1
 
     fun feat(o: Orb): FloatArray {
         val x = FloatArray(DIM)
         x[o.kind] = 1f
-        x[3 + o.kind * 6 + o.pat] = 1f
-        x[21 + o.c1] = 1f
-        x[33 + o.c2] = 1f
-        x[45] = (o.n - 1) / 7f
-        x[46] = (o.sz - 1) / 4f
-        x[47] = (o.sp - 1) / 4f
-        x[48 + o.bd] = 1f
-        x[52] = if (o.c1 != o.c2) 1f else 0f
-        x[53] = 1f
+        x[4 + (if (o.kind < 3) o.kind * 6 + o.pat else 18 + o.pat)] = 1f
+        x[38 + o.c1] = 1f
+        x[50 + o.c2] = 1f
+        x[62] = (o.n - 1) / 7f
+        x[63] = (o.sz - 1) / 4f
+        x[64] = (o.sp - 1) / 4f
+        x[65 + o.bd] = 1f
+        x[69] = if (o.c1 != o.c2) 1f else 0f
+        x[70] = 1f
         return x
     }
 
@@ -87,8 +90,8 @@ object OrbAI {
     }
 
     fun random(rnd: java.util.Random): Orb {
-        val k = rnd.nextInt(3)
-        return Orb(k, rnd.nextInt(6), rnd.nextInt(Orb.pal.size), rnd.nextInt(Orb.pal.size), 1 + rnd.nextInt(8), 1 + rnd.nextInt(5), 1 + rnd.nextInt(5), rnd.nextInt(4))
+        val k = rnd.nextInt(4)
+        return Orb(k, rnd.nextInt(Orb.patCount(k)), rnd.nextInt(Orb.pal.size), rnd.nextInt(Orb.pal.size), 1 + rnd.nextInt(8), 1 + rnd.nextInt(5), 1 + rnd.nextInt(5), rnd.nextInt(4))
     }
 
     /** Cambia 1 a 3 rasgos de la esfera. */
@@ -96,8 +99,8 @@ object OrbAI {
         val m = o.copy()
         repeat(genes) {
             when (rnd.nextInt(8)) {
-                0 -> { m.kind = rnd.nextInt(3); m.pat = rnd.nextInt(6) }
-                1 -> m.pat = rnd.nextInt(6)
+                0 -> { m.kind = rnd.nextInt(4); m.pat = rnd.nextInt(Orb.patCount(m.kind)) }
+                1 -> m.pat = rnd.nextInt(Orb.patCount(m.kind))
                 2 -> m.c1 = rnd.nextInt(Orb.pal.size)
                 3 -> m.c2 = rnd.nextInt(Orb.pal.size)
                 4 -> m.n = (m.n + rnd.nextInt(3) - 1).coerceIn(1, 8)
@@ -129,7 +132,8 @@ object OrbAI {
     fun decode(s: String?): FloatArray {
         val w = FloatArray(DIM)
         val parts = s?.substringAfter(';', "")?.split(",") ?: return w
-        for (i in 0 until minOf(DIM, parts.size)) w[i] = parts[i].toFloatOrNull() ?: 0f
+        if (parts.size != DIM) return w   // pesos de una versión anterior: se empieza de cero
+        for (i in 0 until DIM) w[i] = parts[i].toFloatOrNull() ?: 0f
         return w
     }
 }
@@ -138,10 +142,11 @@ object OrbAI {
 object OrbText {
     private val system = "Eres un diseñador de esferas para un videojuego. Responde SOLO con 8 números separados por comas, sin texto: " +
         "tipo,patron,color1,color2,cantidad,tamano,velocidad,borde.\n" +
-        "tipo: 0=clasica 1=estelar 2=animada.\n" +
+        "tipo: 0=clasica 1=estelar 2=animada 3=figura.\n" +
         "patron (0-5): clasica 0 liso,1 rayas,2 lunares,3 cuadros,4 anillos,5 rombos; " +
         "estelar 0 estrellas,1 constelacion,2 nebulosa,3 orbitas,4 eclipse,5 supernova; " +
-        "animada 0 remolino,1 pulso,2 ondas,3 destellos,4 ruleta,5 burbujas.\n" +
+        "animada 0 remolino,1 pulso,2 ondas,3 destellos,4 ruleta,5 burbujas; " +
+        "figura (0-15) 0 gato,1 perro,2 corazon,3 estrella,4 luna,5 flor,6 calavera,7 fantasma,8 pez,9 mariposa,10 rayo,11 corona,12 hoja,13 gota,14 huella,15 sol.\n" +
         "colores (0-11): 0 rojo,1 naranja,2 amarillo,3 verde,4 celeste,5 azul,6 violeta,7 rosa,8 blanco,9 plata,10 cafe,11 azul oscuro.\n" +
         "cantidad 1-8, tamano 1-5, velocidad 1-5, borde: 0 normal,1 color,2 dorado,3 arcoiris."
 
@@ -150,7 +155,9 @@ object OrbText {
         "galaxia morada con estrellas" to "1,2,6,5,4,3,2,0",
         "pelota clasica con rayas azules" to "0,1,5,8,5,3,1,0",
         "burbujas de agua" to "2,5,4,8,6,3,3,1",
-        "sol brillante" to "1,5,2,1,8,4,3,2"
+        "sol brillante" to "1,5,2,1,8,4,3,2",
+        "un gato naranja" to "3,0,1,2,5,3,2,0",
+        "corazon rosa" to "3,2,7,0,5,3,3,1"
     )
 
     fun prompt(text: String): String {
@@ -166,7 +173,7 @@ object OrbText {
         val nums = Regex("-?\\d+").findAll(reply).map { it.value.toInt() }.toList()
         if (nums.size < 8) return null
         val n = nums.take(8)
-        return Orb(n[0].coerceIn(0, 2), n[1].coerceIn(0, 5), n[2].coerceIn(0, 11), n[3].coerceIn(0, 11),
+        return Orb(n[0].coerceIn(0, 3), n[1].coerceIn(0, 15), n[2].coerceIn(0, 11), n[3].coerceIn(0, 11),
             n[4].coerceIn(1, 8), n[5].coerceIn(1, 5), n[6].coerceIn(1, 5), n[7].coerceIn(0, 3))
     }
 
@@ -192,6 +199,21 @@ object OrbText {
         fun has(vararg ws: String) = ws.any { t.contains(it) }
         val o = Orb()
         when {
+            has("gato", "gatito", "minino", "felino") -> { o.kind = 3; o.pat = 0 }
+            has("perro", "perrito", "cachorro", "husky") -> { o.kind = 3; o.pat = 1 }
+            has("corazon", "amor") -> { o.kind = 3; o.pat = 2 }
+            has("forma de estrella", "estrella de") -> { o.kind = 3; o.pat = 3 }
+            has("luna") -> { o.kind = 3; o.pat = 4 }
+            has("flor", "rosa ") -> { o.kind = 3; o.pat = 5 }
+            has("calavera", "craneo") -> { o.kind = 3; o.pat = 6 }
+            has("fantasma") -> { o.kind = 3; o.pat = 7 }
+            has("pez", "pescado") -> { o.kind = 3; o.pat = 8 }
+            has("mariposa") -> { o.kind = 3; o.pat = 9 }
+            has("rayo", "relampago") -> { o.kind = 3; o.pat = 10 }
+            has("corona", "rey") -> { o.kind = 3; o.pat = 11 }
+            has("hoja", "planta") -> { o.kind = 3; o.pat = 12 }
+            has("gota") -> { o.kind = 3; o.pat = 13 }
+            has("huella", "pata") -> { o.kind = 3; o.pat = 14 }
             has("remolino", "espiral", "tornado", "torbellino") -> { o.kind = 2; o.pat = 0 }
             has("pulso", "latido", "sonar") -> { o.kind = 2; o.pat = 1 }
             has("onda", "agua", "mar", "oceano") -> { o.kind = 2; o.pat = 2 }
@@ -201,7 +223,7 @@ object OrbText {
             has("constelacion") -> { o.kind = 1; o.pat = 1 }
             has("nebulosa", "galaxia") -> { o.kind = 1; o.pat = 2 }
             has("orbita", "planeta", "sistema solar") -> { o.kind = 1; o.pat = 3 }
-            has("eclipse", "luna", "agujero") -> { o.kind = 1; o.pat = 4 }
+            has("eclipse", "agujero") -> { o.kind = 1; o.pat = 4 }
             has("supernova", "sol", "explosion") -> { o.kind = 1; o.pat = 5 }
             has("estrella", "espacio", "cosmos", "noche") -> { o.kind = 1; o.pat = 0 }
             has("raya") -> { o.kind = 0; o.pat = 1 }
@@ -214,7 +236,7 @@ object OrbText {
             else -> { o.kind = 1; o.pat = 0 }
         }
         val cs = colorsIn(text)
-        o.c1 = cs.getOrElse(0) { if (has("fuego", "llama", "lava")) 0 else if (o.kind == 1) 6 else 4 }
+        o.c1 = cs.getOrElse(0) { if (has("fuego", "llama", "lava")) 0 else if (o.kind == 3) intArrayOf(1, 10, 0, 2, 2, 7, 8, 8, 4, 6, 2, 2, 3, 4, 10, 2)[o.pat] else if (o.kind == 1) 6 else 4 }
         o.c2 = cs.getOrElse(1) { if (has("fuego", "llama", "lava")) 1 else if (o.c1 == 8) 4 else 8 }
         o.bd = if (has("arcoiris")) 3 else if (has("dorad", "oro")) 2 else 0
         o.sp = if (has("rapid")) 5 else if (has("lent")) 1 else 3
