@@ -59,7 +59,12 @@ jobs:
           gradle-version: "8.9"
 
       - name: Compilar APK firmado
-        run: gradle :app:assembleNormalRelease :app:assembleDevRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle :app:assembleNormalRelease :app:assembleDevRelease --no-daemon --stacktrace 2>&1 | tee build.log || {
+            grep -aE "^e: |error:|What went wrong|Could not|Caused by|> " build.log | head -15 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+            exit 1
+          }
 
       - name: Preparar APK y código QR
         run: |
