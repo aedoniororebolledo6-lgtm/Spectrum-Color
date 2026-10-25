@@ -13,7 +13,7 @@ object LlmBackend {
         if (llm != null) return
         val o = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(path)
-            .setMaxTokens(1024)
+            .setMaxTokens(1280)
             .build()
         llm = LlmInference.createFromOptions(ctx, o)
     }

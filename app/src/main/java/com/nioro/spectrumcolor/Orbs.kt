@@ -437,7 +437,7 @@ object OrbDraw {
         "p color x1 y1 x2 y2 x3 y3 ...  (polígono)\n" +
         "l x1 y1 x2 y2 grosor color  (línea)\n" +
         "color: 0 rojo,1 naranja,2 amarillo,3 verde,4 celeste,5 azul,6 violeta,7 rosa,8 blanco,9 plata,10 cafe,11 azul oscuro. " +
-        "Dibuja primero el fondo y el cuerpo, luego los detalles. Usa entre 8 y 30 formas."
+        "Dibuja primero el fondo y el cuerpo, luego los detalles. Usa entre 8 y 20 formas."
 
     private val shots = arrayOf(
         "gato naranja" to "c 0 10 55 1\np 1 -50 -10 -45 -80 -10 -40\np 1 50 -10 45 -80 10 -40\np 7 -42 -20 -40 -60 -20 -38\np 7 42 -20 40 -60 20 -38\nc -22 5 10 8\nc 22 5 10 8\nc -22 5 5 11\nc 22 5 5 11\np 7 -7 26 7 26 0 34\nl 20 34 80 24 3 8\nl 20 42 80 46 3 8\nl -20 34 -80 24 3 8\nl -20 42 -80 46 3 8",
