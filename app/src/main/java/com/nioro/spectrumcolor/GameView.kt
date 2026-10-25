@@ -44,7 +44,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ORB }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -117,7 +117,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun depthOf(s: Scr): Int = when (s) {
         Scr.HOME -> 0
         Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> 1
-        Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
+        Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR, Scr.ORB -> 2
         Scr.PLAY -> 3
     }
     private var scr = Scr.HOME
@@ -147,6 +147,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var dragged = false
     private var skinScroll = 0f
     private var skinTab = 0
+    /** Esferas propias (solo desarrollador) y la que se está editando. */
+    private val orbs: Array<Orb?> = Array(Orb.SLOTS) { if (BuildConfig.DEV) prefs.getOrb(it) else null }
+    private var orbSlot = 0
+    private var orbEd = Orb()
+    private var orbMsg = ""
+    private var orbMsgT = -10f
     private var skinMax = 0f
     // ---- tema Gatitos: los gatitos se mueven al inclinar el celular y se apartan del dedo ----
     private val catOx = FloatArray(32)
@@ -329,6 +335,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
             Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> goHome()
             Scr.THEMES -> scr = Scr.SETTINGS
+            Scr.ORB -> scr = Scr.EDIT_HOME
             Scr.EDITOR -> edBack()
             Scr.MP_HOST, Scr.MP_JOIN -> {
                 leaveMp()
@@ -439,6 +446,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun activate(id: String) {
         audio.play(Sfx.CLICK)
         when {
+            id == "ehs" -> if (BuildConfig.DEV) {
+                orbSlot = orbs.indexOfFirst { it != null }.let { if (it < 0) 0 else it }
+                orbEd = orbs[orbSlot]?.copy() ?: Orb()
+                scr = Scr.ORB
+            }
+            id.startsWith("orb") && scr == Scr.ORB -> orbActivate(id)
             id == "edit" -> if (BuildConfig.DEV) {
                 edMode = false
                 edRefreshPending()
@@ -464,11 +477,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "settings" -> scr = Scr.SETTINGS
             id == "skins" -> {
                 scr = Scr.SKINS
-                skinTab = if (Skins.isAnim(effSkin())) 1 else 0
-                val row = (effSkin() - (if (skinTab == 1) Skins.ANIM_FIRST else 0)) / 4
+                skinTab = if (effSkin() >= Orb.FIRST_ID) 3 else if (Skins.isAnim(effSkin())) 1 else 0
+                val row = if (skinTab == 3) 0 else (effSkin() - (if (skinTab == 1) Skins.ANIM_FIRST else 0)) / 4
                 skinScroll = (row * 280f - 300f).coerceAtLeast(0f)
             }
-            id == "tab0" || id == "tab1" || id == "tab2" -> {
+            id == "tab0" || id == "tab1" || id == "tab2" || (id == "tab3" && BuildConfig.DEV) -> {
                 skinTab = id.substring(3).toInt()
                 skinScroll = 0f
                 skinVel = 0f
@@ -480,6 +493,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id.startsWith("skin:") -> {
                 val k = id.substring(5).toIntOrNull() ?: return
                 if (k in Skins.names.indices && skinOpen(k)) prefs.skin = k
+                else if (BuildConfig.DEV && k >= Orb.FIRST_ID && skinOpen(k)) prefs.skin = k
             }
             id == "ttheme" -> scr = Scr.THEMES
             id.startsWith("theme:") -> {
@@ -1297,6 +1311,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.MP_JOIN -> drawMpJoin(c)
             Scr.EDITOR -> drawEditor(c)
             Scr.EDIT_HOME -> drawEditHome(c)
+            Scr.ORB -> drawOrbEditor(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -2695,6 +2710,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val ballClip = Path()
 
     private fun skinOpen(k: Int): Boolean {
+        if (k >= Orb.FIRST_ID) return BuildConfig.DEV && k - Orb.FIRST_ID < Orb.SLOTS && orbs[k - Orb.FIRST_ID] != null
         if (prefs.allOpen) return true
         if (Skins.special(k)) return prefs.endlessBest >= Skins.endNeed(k) || prefs.worldsDone() >= Skins.worldNeed(k)
         return prefs.totalStars() >= Skins.need[k]
@@ -2702,7 +2718,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun effSkin(): Int {
         val k = prefs.skin
-        return if (k in Skins.names.indices && skinOpen(k)) k else 0
+        return if ((k in Skins.names.indices || k >= Orb.FIRST_ID) && skinOpen(k)) k else 0
     }
 
     private fun drawBall(c: Canvas, sm: Sim, col: Int) {
@@ -2725,6 +2741,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     /** La bola siempre conserva el color de juego; la apariencia solo cambia el diseño. */
+    private fun skinName(k: Int): String = if (k >= Orb.FIRST_ID) "Esfera ${k - Orb.FIRST_ID + 1}" else Skins.names[k]
+
     private fun drawBallAt(c: Canvas, x: Float, y: Float, r: Float, col: Int, skin: Int, tm: Float, glow: Boolean) {
         if (glow) Gl.glow(c, x, y, r * 2.8f, col, 110)
         var pp = Gl.p()
@@ -2887,6 +2905,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
             in 60..77 -> drawAnimIcon2(c, x, y, r, skin, tm)
+            in Orb.FIRST_ID..Orb.PREVIEW_ID -> orbOf(skin)?.let { drawCustomOrb(c, x, y, r, col, it, tm) }
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -2929,6 +2948,26 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 pp.strokeWidth = r * 0.16f
                 pp.color = 0xFFFFD25E.toInt()
             }
+            in Orb.FIRST_ID..Orb.PREVIEW_ID -> {
+                val o = orbOf(skin)
+                val bd = o?.bd ?: 0
+                if (bd == 0) {
+                    pp.strokeWidth = 2.4f
+                    pp.color = Gl.white(160)
+                } else if (bd == 3) {
+                    val cols = intArrayOf(0xFFFF4F6B.toInt(), 0xFFFFB84F.toInt(), 0xFFFFF04F.toInt(), 0xFF4FFF8A.toInt(),
+                        0xFF4FB8FF.toInt(), 0xFFB04FFF.toInt(), 0xFFFF4F6B.toInt())
+                    val sh = android.graphics.SweepGradient(x, y, cols, null)
+                    val m = android.graphics.Matrix()
+                    m.postRotate(tm * 90f, x, y)
+                    sh.setLocalMatrix(m)
+                    pp.shader = sh
+                    pp.strokeWidth = r * 0.15f
+                } else {
+                    pp.strokeWidth = r * 0.16f
+                    pp.color = if (bd == 2) 0xFFFFD25E.toInt() else Orb.pal[o!!.c1]
+                }
+            }
             9 -> {
                 val acc = 0xFFFF4FD8.toInt()
                 val g = Gl.p()
@@ -2961,6 +3000,350 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         pp.color = Gl.white(215)
         Gl.rect.set(x - r * 0.64f, y - r * 0.74f, x - r * 0.06f, y - r * 0.3f)
         c.drawOval(Gl.rect, pp)
+    }
+
+    // ======================================================================
+    // Creador de esferas (solo versión de desarrollador)
+    // ======================================================================
+
+    private fun orbOf(skin: Int): Orb? =
+        if (skin == Orb.PREVIEW_ID) orbEd else orbs.getOrNull(skin - Orb.FIRST_ID)
+
+    private fun orbToast(msg: String) {
+        orbMsg = msg
+        orbMsgT = time
+    }
+
+    private fun orbActivate(id: String) {
+        val o = orbEd
+        when {
+            id.startsWith("orbslot:") -> {
+                val k = id.substring(8).toIntOrNull() ?: return
+                if (k !in 0 until Orb.SLOTS) return
+                orbSlot = k
+                orbEd = orbs[k]?.copy() ?: Orb()
+            }
+            id.startsWith("orbkind:") -> { o.kind = (id.substring(8).toIntOrNull() ?: return).coerceIn(0, 2); o.pat = 0 }
+            id.startsWith("orbpat:") -> o.pat = (id.substring(7).toIntOrNull() ?: return).coerceIn(0, 5)
+            id.startsWith("orbc1:") -> o.c1 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
+            id.startsWith("orbc2:") -> o.c2 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
+            id.startsWith("orbbd:") -> o.bd = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, 3)
+            id == "orbn-" -> o.n = (o.n - 1).coerceIn(1, 8)
+            id == "orbn+" -> o.n = (o.n + 1).coerceIn(1, 8)
+            id == "orbs-" -> o.sz = (o.sz - 1).coerceIn(1, 5)
+            id == "orbs+" -> o.sz = (o.sz + 1).coerceIn(1, 5)
+            id == "orbv-" -> o.sp = (o.sp - 1).coerceIn(1, 5)
+            id == "orbv+" -> o.sp = (o.sp + 1).coerceIn(1, 5)
+            id == "orbsave" -> {
+                orbs[orbSlot] = o.copy()
+                prefs.setOrb(orbSlot, o.copy())
+                orbToast("Esfera ${orbSlot + 1} guardada")
+            }
+            id == "orbuse" -> {
+                orbs[orbSlot] = o.copy()
+                prefs.setOrb(orbSlot, o.copy())
+                prefs.skin = Orb.FIRST_ID + orbSlot
+                orbToast("Usando la esfera ${orbSlot + 1}")
+            }
+            id == "orbdel" -> {
+                if (orbs[orbSlot] != null) {
+                    if (prefs.skin == Orb.FIRST_ID + orbSlot) prefs.skin = 0
+                    orbs[orbSlot] = null
+                    prefs.setOrb(orbSlot, null)
+                    orbToast("Esfera ${orbSlot + 1} eliminada")
+                }
+                orbEd = Orb()
+            }
+        }
+    }
+
+    private fun drawOrbEditor(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        val o = orbEd
+        iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        title(c, "ESFERAS", top + 130f, 56f)
+        val colNow = pal[(time * 0.8f).toInt() % 4]
+        Gl.glow(c, 540f, top + 330f, 260f, colNow, 70)
+        drawBallAt(c, 540f, top + 330f + sin(time * 2f) * 6f, 110f, colNow, Orb.PREVIEW_ID, time, true)
+        Gl.text(c, "Esfera ${orbSlot + 1}" + (if (orbs[orbSlot] == null) " (nueva)" else ""), 540f, top + 500f, 40f, Gl.medium, Gl.white(235))
+
+        // casillas guardadas
+        for (k in 0 until Orb.SLOTS) {
+            val cx = 120f + (k % 6) * 168f
+            val cy = top + 580f + (k / 6) * 92f
+            val sel = k == orbSlot
+            if (sel) {
+                val pb = Gl.p()
+                pb.style = Paint.Style.STROKE
+                pb.strokeWidth = 4f
+                pb.color = Gl.white(230)
+                c.drawCircle(cx, cy, 40f, pb)
+            }
+            val sv = orbs[k]
+            if (sv != null) drawBallAt(c, cx, cy, 32f, pal[(k + (time * 0.8f).toInt()) % 4], Orb.FIRST_ID + k, time, false)
+            else {
+                c.drawCircle(cx, cy, 30f, ps(110, 3f))
+                Gl.text(c, "+", cx, cy + 14f, 40f, Gl.regular, Gl.white(150))
+            }
+            hits.add(Hit("orbslot:$k", cx - 62f, cy - 46f, cx + 62f, cy + 46f))
+        }
+
+        // tipo
+        for (k in 0 until 3) button(c, "orbkind:$k", Orb.kindNames[k], 190f + k * 350f, top + 810f, 320f, 78f, if (o.kind == k) pal[k] else 0, 32f)
+        // patrón
+        for (k in 0 until 6) {
+            val cx = 190f + (k % 3) * 350f
+            val cy = top + 905f + (k / 3) * 80f
+            button(c, "orbpat:$k", Orb.patNames[o.kind][k], cx, cy, 320f, 68f, if (o.pat == k) pal[(k + 1) % 4] else 0, 28f)
+        }
+        // colores
+        Gl.text(c, "Color 1", 110f, top + 1110f, 26f, Gl.regular, Gl.white(170))
+        Gl.text(c, "Color 2", 110f, top + 1190f, 26f, Gl.regular, Gl.white(170))
+        for (row in 0 until 2) {
+            val cy = top + 1112f + row * 80f
+            val sel = if (row == 0) o.c1 else o.c2
+            for (k in 0 until Orb.pal.size) {
+                val cx = 215f + k * 72f
+                c.drawCircle(cx, cy, 26f, Gl.p().also { it.color = Orb.pal[k] })
+                c.drawCircle(cx, cy, 26f, ps(if (k == sel) 255 else 70, if (k == sel) 5f else 2f))
+                hits.add(Hit((if (row == 0) "orbc1:" else "orbc2:") + k, cx - 36f, cy - 38f, cx + 36f, cy + 38f))
+            }
+        }
+        // ajustes numéricos
+        val labs = arrayOf("Cantidad", "Tamaño", "Velocidad")
+        val vals = intArrayOf(o.n, o.sz, o.sp)
+        val ids = arrayOf("orbn", "orbs", "orbv")
+        for (r in 0 until 3) {
+            val cy = top + 1300f + r * 84f
+            val on = !(r == 2 && o.kind == 0)
+            Gl.text(c, labs[r], 150f, cy + 12f, 32f, Gl.regular, Gl.white(if (on) 220 else 100))
+            button(c, ids[r] + "-", "−", 560f, cy, 110f, 70f, 0, 40f, on)
+            Gl.text(c, if (on) vals[r].toString() else "—", 700f, cy + 14f, 42f, Gl.medium, Gl.white(if (on) 245 else 110))
+            button(c, ids[r] + "+", "+", 840f, cy, 110f, 70f, 0, 40f, on)
+        }
+        // borde
+        for (k in 0 until 4) button(c, "orbbd:$k", Orb.borderNames[k], 135f + k * 270f, top + 1575f, 250f, 66f, if (o.bd == k) pal[k % 4] else 0, 26f)
+
+        // acciones
+        val by = vh - 105f
+        button(c, "orbsave", "Guardar", 190f, by, 300f, 84f, pal[1], 34f)
+        button(c, "orbuse", "Usar", 540f, by, 300f, 84f, pal[2], 34f)
+        button(c, "orbdel", "Eliminar", 890f, by, 300f, 84f, 0, 34f, orbs[orbSlot] != null)
+        if (time - orbMsgT < 2.4f) {
+            val a = (255 * (1f - ((time - orbMsgT - 1.8f) / 0.6f).coerceIn(0f, 1f))).toInt()
+            Gl.panel(c, 160f, by - 190f, 920f, by - 110f, 40f, 1f, pal[1])
+            Gl.textFit(c, orbMsg, 540f, by - 138f, 34f, 700f, Gl.medium, Gl.white(a))
+        }
+    }
+
+    /** Pseudoaleatorio estable en [0,1) para colocar elementos de las esferas. */
+    private fun oh(i: Int, k: Int): Float {
+        val v = sin(i * 12.9898f + k * 78.233f) * 43758.547f
+        return v - kotlin.math.floor(v)
+    }
+
+    /** Dibujo de una esfera propia, dentro de la bola ya recortada. */
+    private fun drawCustomOrb(c: Canvas, x: Float, y: Float, r: Float, col: Int, o: Orb, tm: Float) {
+        val a = Orb.pal[o.c1]
+        val b = Orb.pal[o.c2]
+        val t = if (o.kind == 0) 0f else tm * (0.35f + 0.35f * o.sp)
+        val n = o.n
+        val sz = o.sz
+        fun alt(i: Int) = if (i % 2 == 0) a else b
+        when (o.kind * 10 + o.pat) {
+            // ---- clásicas ----
+            0 -> {
+                val pp = Gl.p()
+                pp.shader = android.graphics.RadialGradient(x - r * 0.3f, y - r * 0.3f, r * 1.4f, intArrayOf(Gl.alpha(a, 220), Gl.alpha(b, 200)), null, Shader.TileMode.CLAMP)
+                c.drawCircle(x, y, r, pp)
+            }
+            1 -> {
+                c.save()
+                c.rotate(35f, x, y)
+                val wdt = r * (0.05f + 0.035f * sz)
+                for (k in 0 until n) {
+                    val yy = y + (-r + 2f * r * (k + 0.5f) / n)
+                    c.drawRect(x - r * 1.4f, yy - wdt, x + r * 1.4f, yy + wdt, Gl.p().also { it.color = Gl.alpha(alt(k), 215) })
+                }
+                c.restore()
+            }
+            2 -> for (k in 0 until n * 2) {
+                val ang = oh(k, 1) * 6.2832f
+                val rad = r * 0.75f * sqrt(oh(k, 2))
+                c.drawCircle(x + cos(ang) * rad, y + sin(ang) * rad, r * (0.06f + 0.045f * sz) * (0.7f + 0.6f * oh(k, 3)), Gl.p().also { it.color = Gl.alpha(alt(k), 225) })
+            }
+            3 -> {
+                val q = r * (0.45f - 0.05f * sz + 0.02f * n)
+                val m = (r / q).toInt() + 1
+                for (i in -m..m) for (j in -m..m) if ((i + j) % 2 == 0) {
+                    c.drawRect(x + i * q - q / 2f, y + j * q - q / 2f, x + i * q + q / 2f, y + j * q + q / 2f, Gl.p().also { it.color = Gl.alpha(a, 190) })
+                } else {
+                    c.drawRect(x + i * q - q / 2f, y + j * q - q / 2f, x + i * q + q / 2f, y + j * q + q / 2f, Gl.p().also { it.color = Gl.alpha(b, 110) })
+                }
+            }
+            4 -> for (k in 1..n) {
+                val pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeWidth = r * (0.03f + 0.02f * sz)
+                pp.color = Gl.alpha(alt(k), 225)
+                c.drawCircle(x, y, r * k / (n + 0.5f), pp)
+            }
+            5 -> {
+                val step = r * 2.2f / (n + 1)
+                val half = step * (0.28f + 0.07f * sz)
+                for (i in -n..n) for (j in -n..n) {
+                    if ((i + j) % 2 != 0) continue
+                    val cx = x + i * step * 0.5f
+                    val cy = y + j * step * 0.5f
+                    if ((cx - x) * (cx - x) + (cy - y) * (cy - y) > r * r * 1.5f) continue
+                    Gl.path.reset()
+                    Gl.path.moveTo(cx, cy - half); Gl.path.lineTo(cx + half, cy); Gl.path.lineTo(cx, cy + half); Gl.path.lineTo(cx - half, cy); Gl.path.close()
+                    c.drawPath(Gl.path, Gl.p().also { it.color = Gl.alpha(alt(i + j + 8), 215) })
+                }
+            }
+            // ---- estelares ----
+            10, 11, 12, 13, 14, 15 -> {
+                c.drawCircle(x, y, r, Gl.p().also { it.color = Color.argb(185, 8, 10, 32) })
+                when (o.pat) {
+                    0 -> for (k in 0 until n * 3) {
+                        val tw = 0.5f + 0.5f * sin(t * 2.2f + k * 1.9f)
+                        val px = x + (oh(k, 1) * 2f - 1f) * r * 0.85f
+                        val py = y + (oh(k, 2) * 2f - 1f) * r * 0.85f
+                        val rr = r * (0.025f + 0.018f * sz) * (0.5f + tw)
+                        c.drawCircle(px, py, rr, Gl.p().also { it.color = Gl.alpha(if (k % 3 == 0) a else Color.WHITE, (110 + 145 * tw).toInt()) })
+                        if (k % 4 == 0) {
+                            Gl.line(c, px - rr * 3f, py, px + rr * 3f, py, rr * 0.5f, Gl.alpha(b, (60 + 120 * tw).toInt()))
+                            Gl.line(c, px, py - rr * 3f, px, py + rr * 3f, rr * 0.5f, Gl.alpha(b, (60 + 120 * tw).toInt()))
+                        }
+                    }
+                    1 -> {
+                        val cnt = n + 2
+                        val px = FloatArray(cnt) { x + (oh(it, 4) * 2f - 1f) * r * 0.72f + sin(t + it * 2f) * r * 0.05f }
+                        val py = FloatArray(cnt) { y + (oh(it, 5) * 2f - 1f) * r * 0.72f + cos(t * 0.9f + it) * r * 0.05f }
+                        for (k in 0 until cnt - 1) Gl.line(c, px[k], py[k], px[k + 1], py[k + 1], r * 0.03f, Gl.alpha(b, 170))
+                        for (k in 0 until cnt) {
+                            Gl.glow(c, px[k], py[k], r * 0.22f, a, 120)
+                            c.drawCircle(px[k], py[k], r * (0.04f + 0.015f * sz), Gl.p().also { it.color = Gl.white(240) })
+                        }
+                    }
+                    2 -> {
+                        for (k in 0 until n) {
+                            val ang = t * 0.6f + k * 2.4f
+                            val bx = x + cos(ang) * r * 0.35f * oh(k, 6)
+                            val by = y + sin(ang * 0.8f) * r * 0.4f * oh(k, 7)
+                            Gl.glow(c, bx, by, r * (0.5f + 0.12f * sz), alt(k), 150)
+                        }
+                        for (k in 0 until 6) c.drawCircle(x + (oh(k, 8) * 2f - 1f) * r * 0.8f, y + (oh(k, 9) * 2f - 1f) * r * 0.8f, r * 0.03f, Gl.p().also { it.color = Gl.white(200) })
+                    }
+                    3 -> {
+                        Gl.glow(c, x, y, r * 0.6f, a, 200)
+                        c.drawCircle(x, y, r * 0.12f, Gl.p().also { it.color = Gl.white(245) })
+                        for (k in 0 until n) {
+                            val orr = r * (0.28f + 0.55f * (k + 1) / (n + 1))
+                            c.drawCircle(x, y, orr, ps(55, 1.8f))
+                            val ang = t * 1.6f / (1f + k * 0.45f) + k * 2.1f
+                            val px = x + cos(ang) * orr
+                            val py = y + sin(ang) * orr
+                            c.drawCircle(px, py, r * (0.045f + 0.02f * sz), Gl.p().also { it.color = alt(k) })
+                        }
+                    }
+                    4 -> {
+                        val ex = x + sin(t) * r * 0.3f
+                        val rr = r * (0.34f + 0.05f * sz)
+                        Gl.glow(c, ex, y, rr * 2.2f, a, 180)
+                        for (k in 0 until 3) c.drawCircle(ex, y, rr + k * r * 0.05f, ps(190 - k * 55, r * 0.05f).also { it.color = Gl.alpha(if (k == 0) Color.WHITE else b, 190 - k * 55) })
+                        c.drawCircle(ex, y, rr, Gl.p().also { it.color = Color.argb(255, 2, 3, 10) })
+                    }
+                    else -> {
+                        Gl.glow(c, x, y, r * 1.1f, Color.WHITE, 120)
+                        Gl.glow(c, x, y, r * 0.8f, a, 170)
+                        val rays = n * 2
+                        for (k in 0 until rays) {
+                            val ang = t * 0.9f + k * 6.2832f / rays
+                            val len = r * (0.55f + 0.4f * (0.5f + 0.5f * sin(t * 3f + k * 1.3f)))
+                            Gl.line(c, x, y, x + cos(ang) * len, y + sin(ang) * len, r * (0.03f + 0.012f * sz), Gl.alpha(if (k % 2 == 0) Color.WHITE else b, 215))
+                        }
+                    }
+                }
+            }
+            // ---- animadas ----
+            20 -> for (k in 0 until n) {
+                Gl.path.reset()
+                val base = t * 2.4f + k * 6.2832f / n
+                var first = true
+                var rad = 0f
+                while (rad <= r * 1.05f) {
+                    val ang = base + rad / r * 3.2f
+                    val px = x + cos(ang) * rad
+                    val py = y + sin(ang) * rad
+                    if (first) { Gl.path.moveTo(px, py); first = false } else Gl.path.lineTo(px, py)
+                    rad += r / 16f
+                }
+                val pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeCap = Paint.Cap.ROUND
+                pp.strokeWidth = r * (0.05f + 0.035f * sz)
+                pp.color = Gl.alpha(alt(k), 225)
+                c.drawPath(Gl.path, pp)
+            }
+            21 -> for (k in 0 until n + 1) {
+                val f = (t * 0.45f + k.toFloat() / (n + 1)) % 1f
+                val pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeWidth = r * (0.03f + 0.025f * sz) * (1f - f * 0.5f)
+                pp.color = Gl.alpha(alt(k), (240 * (1f - f)).toInt())
+                c.drawCircle(x, y, r * 1.1f * f, pp)
+            }
+            22 -> for (k in 0 until n) {
+                Gl.path.reset()
+                val yy = y + (-r + 2f * r * (k + 0.5f) / n)
+                var xx = -r
+                var first = true
+                while (xx <= r) {
+                    val py = yy + sin(xx / r * 4f + t * 3f + k) * r * (0.05f + 0.035f * sz)
+                    if (first) { Gl.path.moveTo(x + xx, py); first = false } else Gl.path.lineTo(x + xx, py)
+                    xx += r / 10f
+                }
+                val pp = Gl.p()
+                pp.style = Paint.Style.STROKE
+                pp.strokeCap = Paint.Cap.ROUND
+                pp.strokeWidth = r * (0.05f + 0.025f * sz)
+                pp.color = Gl.alpha(alt(k), 225)
+                c.drawPath(Gl.path, pp)
+            }
+            23 -> for (k in 0 until n * 2) {
+                val ph = (t * 0.7f + oh(k, 11)) % 1f
+                val f = sin(ph * 3.1416f)
+                val px = x + (oh(k, 12) * 2f - 1f) * r * 0.8f
+                val py = y + (oh(k, 13) * 2f - 1f) * r * 0.8f
+                val s2 = r * (0.1f + 0.05f * sz) * f
+                Gl.glow(c, px, py, s2 * 2.2f, alt(k), (170 * f).toInt())
+                Gl.line(c, px - s2, py, px + s2, py, r * 0.04f, Gl.white((240 * f).toInt()))
+                Gl.line(c, px, py - s2, px, py + s2, r * 0.04f, Gl.white((240 * f).toInt()))
+            }
+            24 -> {
+                c.save()
+                c.rotate(t * 70f, x, y)
+                val sw = 360f / (n * 2)
+                for (k in 0 until n * 2) {
+                    val pp = Gl.p()
+                    pp.color = Gl.alpha(alt(k), 215)
+                    Gl.rect.set(x - r * 1.05f, y - r * 1.05f, x + r * 1.05f, y + r * 1.05f)
+                    c.drawArc(Gl.rect, k * sw, sw, true, pp)
+                }
+                c.restore()
+                c.drawCircle(x, y, r * (0.12f + 0.04f * sz), Gl.p().also { it.color = Gl.white(235) })
+            }
+            else -> for (k in 0 until n * 2) {
+                val f = (t * 0.35f + oh(k, 14)) % 1f
+                val px = x + (oh(k, 15) * 2f - 1f) * r * 0.75f + sin(t * 2f + k) * r * 0.06f
+                val py = y + r - f * 2.2f * r
+                val rr = r * (0.07f + 0.035f * sz) * (0.6f + 0.6f * oh(k, 16))
+                c.drawCircle(px, py, rr, Gl.p().also { it.color = Gl.alpha(alt(k), 120) })
+                c.drawCircle(px, py, rr, ps(210, 2f))
+            }
+        }
     }
 
     private fun pw(a: Int): Paint {
@@ -3848,14 +4231,26 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Gl.text(c, "El rastro que deja la bola al subir", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
         } else {
             drawBallAt(c, 540f, top + 340f + sin(time * 2f) * 8f, 100f, colNow, k0, time, true)
-            Gl.text(c, Skins.names[k0], 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
+            Gl.text(c, skinName(k0), 540f, top + 540f, 54f, Gl.light, Gl.white(245), 0.08f)
             Gl.text(c, "La bola conserva su color de juego", 540f, top + 595f, 30f, Gl.regular, Gl.white(140))
         }
 
         // pestañas: clásicas / animadas
-        button(c, "tab0", "Clásicas", 195f, top + 690f, 330f, 84f, if (skinTab == 0) pal[0] else 0, 36f)
-        button(c, "tab1", "Animadas", 540f, top + 690f, 330f, 84f, if (skinTab == 1) pal[1] else 0, 36f)
-        button(c, "tab2", "Estelas", 885f, top + 690f, 330f, 84f, if (skinTab == 2) pal[2] else 0, 36f)
+        if (BuildConfig.DEV) {
+            button(c, "tab0", "Clásicas", 155f, top + 690f, 245f, 84f, if (skinTab == 0) pal[0] else 0, 32f)
+            button(c, "tab1", "Animadas", 412f, top + 690f, 245f, 84f, if (skinTab == 1) pal[1] else 0, 32f)
+            button(c, "tab2", "Estelas", 669f, top + 690f, 245f, 84f, if (skinTab == 2) pal[2] else 0, 32f)
+            button(c, "tab3", "Mías", 926f, top + 690f, 245f, 84f, if (skinTab == 3) pal[3] else 0, 32f)
+        } else {
+            button(c, "tab0", "Clásicas", 195f, top + 690f, 330f, 84f, if (skinTab == 0) pal[0] else 0, 36f)
+            button(c, "tab1", "Animadas", 540f, top + 690f, 330f, 84f, if (skinTab == 1) pal[1] else 0, 36f)
+            button(c, "tab2", "Estelas", 885f, top + 690f, 330f, 84f, if (skinTab == 2) pal[2] else 0, 36f)
+        }
+        val mine = if (skinTab == 3) (0 until Orb.SLOTS).filter { orbs[it] != null } else emptyList()
+        if (skinTab == 3 && mine.isEmpty()) {
+            Gl.text(c, "Aún no tienes esferas propias", 540f, top + 1000f, 40f, Gl.medium, Gl.white(200))
+            Gl.text(c, "Créalas en Editar → Crear esferas", 540f, top + 1060f, 32f, Gl.regular, Gl.white(140))
+        }
 
         val w = 240f
         val h = 262f
@@ -3863,14 +4258,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val viewBot = vh - 150f
         val tr = skinTab == 2
         val first = if (skinTab == 1) Skins.ANIM_FIRST else 0
-        val count = if (tr) Trails.COUNT else if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
+        val count = if (tr) Trails.COUNT else if (skinTab == 3) mine.size else if (skinTab == 1) Skins.names.size - Skins.ANIM_FIRST else Skins.ANIM_FIRST
         val rows = (count + 3) / 4
         skinMax = max(0f, rows * (h + 18f) - 18f - (viewBot - gy))
         skinScroll = skinScroll.coerceIn(-170f, skinMax + 170f)
         c.save()
         c.clipRect(0f, gy - 12f, Cfg.W, viewBot)
         for (j in 0 until count) {
-            val i = first + j
+            val i = if (skinTab == 3) Orb.FIRST_ID + mine[j] else first + j
             val cx = 135f + (j % 4) * 270f
             val cy = gy + h / 2f + (j / 4) * (h + 18f) - skinScroll
             if (cy + h / 2f < gy - 12f || cy - h / 2f > viewBot) continue
@@ -3912,7 +4307,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 }
             } else if (open) {
                 drawBallAt(c, cx, cy - 32f, 56f, bc, i, time, false)
-                Gl.textFit(c, Skins.names[i], cx, cy + 82f, 34f, w - 24f, Gl.medium, Gl.white(240))
+                Gl.textFit(c, skinName(i), cx, cy + 82f, 34f, w - 24f, Gl.medium, Gl.white(240))
                 val ht = max(gy, cy - h / 2f)
                 val hb = min(viewBot, cy + h / 2f)
                 if (hb > ht) hits.add(Hit(id, cx - w / 2f, ht, cx + w / 2f, hb))
@@ -3945,7 +4340,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
         Gl.text(
             c,
-            if (skinTab == 1) "Infinito ${prefs.endlessBest}  ·  Mundos ${prefs.worldsDone()}/${Levels.WORLDS}" else "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}",
+            if (skinTab == 3) "Esferas propias: ${mine.size}/${Orb.SLOTS}" else if (skinTab == 1) "Infinito ${prefs.endlessBest}  ·  Mundos ${prefs.worldsDone()}/${Levels.WORLDS}" else "Estrellas ${prefs.totalStars()}/${Levels.PLAYABLE * 3}",
             540f, vh - 90f,
             34f, Gl.regular, Gl.white(150)
         )
@@ -4739,19 +5134,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "EDITAR", top + 130f, 60f)
-        button(c, "ehx", "Editar niveles existentes", 540f, top + 400f, 840f, 150f, pal[0], 46f)
-        Gl.text(c, "Cambia cualquiera de los ${Levels.BASE} niveles del juego", 540f, top + 520f, 30f, Gl.regular, Gl.white(160))
-        button(c, "ehn", "Crear nivel nuevo", 540f, top + 640f, 840f, 150f, pal[1], 46f)
-        Gl.text(c, "Se añade al final, como nivel ${Levels.COUNT + 1}", 540f, top + 760f, 30f, Gl.regular, Gl.white(160))
+        button(c, "ehx", "Editar niveles existentes", 540f, top + 330f, 840f, 130f, pal[0], 44f)
+        Gl.text(c, "Cambia cualquiera de los ${Levels.BASE} niveles del juego", 540f, top + 430f, 30f, Gl.regular, Gl.white(160))
+        button(c, "ehn", "Crear nivel nuevo", 540f, top + 550f, 840f, 130f, pal[1], 44f)
+        Gl.text(c, "Se añade al final, como nivel ${Levels.COUNT + 1}", 540f, top + 650f, 30f, Gl.regular, Gl.white(160))
         val n = edPending.size
-        button(c, "ehp", if (n > 0) "Publicar al juego oficial ($n)" else "Publicar al juego oficial", 540f, top + 880f, 840f, 150f, pal[2], 42f, n > 0)
-        Gl.text(c, if (n > 0) "Niveles tuyos aún no publicados: " + edPending.joinToString(", ") else "No hay niveles pendientes", 540f, top + 1000f, 30f, Gl.regular, Gl.white(160))
-        Gl.textFit(c, "Al publicar se abre GitHub: pulsa «Submit new issue» y el juego", 540f, top + 1110f, 30f, 960f, Gl.regular, Gl.white(120))
-        Gl.textFit(c, "se vuelve a compilar solo con tus niveles (unos 4 minutos).", 540f, top + 1155f, 30f, 960f, Gl.regular, Gl.white(120))
+        button(c, "ehp", if (n > 0) "Publicar al juego oficial ($n)" else "Publicar al juego oficial", 540f, top + 770f, 840f, 130f, pal[2], 40f, n > 0)
+        Gl.textFit(c, if (n > 0) "Niveles tuyos aún no publicados: " + edPending.joinToString(", ") else "No hay niveles pendientes", 540f, top + 870f, 30f, 960f, Gl.regular, Gl.white(160))
+        button(c, "ehs", "Crear esferas", 540f, top + 990f, 840f, 130f, pal[3], 44f)
+        Gl.text(c, "Clásicas, estelares y animadas (solo en este teléfono)", 540f, top + 1090f, 30f, Gl.regular, Gl.white(160))
+        Gl.textFit(c, "Al publicar se abre GitHub: pulsa «Submit new issue» y el juego", 540f, top + 1200f, 28f, 960f, Gl.regular, Gl.white(120))
+        Gl.textFit(c, "se vuelve a compilar solo con tus niveles (unos 4 minutos).", 540f, top + 1240f, 28f, 960f, Gl.regular, Gl.white(120))
         if (time - edMsgT < 2.6f) {
             val a = (255 * (1f - ((time - edMsgT - 2f) / 0.6f).coerceIn(0f, 1f))).toInt()
-            Gl.panel(c, 90f, top + 1240f, 990f, top + 1326f, 40f, 1f, pal[1])
-            Gl.textFit(c, edMsg, 540f, top + 1296f, 34f, 840f, Gl.medium, Gl.white(a))
+            Gl.panel(c, 90f, top + 1310f, 990f, top + 1396f, 40f, 1f, pal[1])
+            Gl.textFit(c, edMsg, 540f, top + 1366f, 34f, 840f, Gl.medium, Gl.white(a))
         }
     }
 
