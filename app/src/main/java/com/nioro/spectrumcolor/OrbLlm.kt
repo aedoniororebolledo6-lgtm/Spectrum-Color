@@ -77,10 +77,19 @@ object OrbLlm {
             try {
                 LlmBackend.load(app, file(app).path)
                 status = 3
-                val reply = LlmBackend.run(OrbText.prompt(text))
-                val (orb, fromModel) = OrbText.finish(reply, text)
-                result = orb
-                say(if (fromModel) "La IA creó tu esfera" else "La IA respondió raro: usé reglas simples")
+                val reply = LlmBackend.run(OrbDraw.prompt(text))
+                val art = OrbDraw.parse(reply)
+                if (art != null) {
+                    val o = Orb(5, 0, 0, 3, 5, 3, 3, 0, art)
+                    result = o
+                    say("La IA dibujó tu esfera (" + (art.count { it == ';' } + 1) + " formas)")
+                } else {
+                    // el dibujo no se entendió: se prueba con los rasgos de las esferas conocidas
+                    val reply2 = LlmBackend.run(OrbText.prompt(text))
+                    val (orb, fromModel) = OrbText.finish(reply2, text)
+                    result = orb
+                    say(if (fromModel) "El dibujo falló: usé las esferas conocidas" else "La IA respondió raro: usé reglas simples")
+                }
             } catch (e: Throwable) {
                 result = OrbText.rules(text)
                 say("IA no disponible (" + (e.message ?: e.javaClass.simpleName).take(60) + "): usé reglas simples")

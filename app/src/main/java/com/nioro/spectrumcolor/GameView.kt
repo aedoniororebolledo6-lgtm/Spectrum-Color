@@ -3031,10 +3031,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 orbSlot = k
                 orbEd = orbs[k]?.copy() ?: Orb()
             }
-            id.startsWith("orbkind:") -> { o.kind = (id.substring(8).toIntOrNull() ?: return).coerceIn(0, 3); o.pat = 0 }
-            id == "orbpp" -> o.pat = (o.pat + 15) % 16
-            id == "orbpn" -> o.pat = (o.pat + 1) % 16
-            id.startsWith("orbpat:") -> o.pat = (id.substring(7).toIntOrNull() ?: return).coerceIn(0, 15)
+            id.startsWith("orbkind:") -> { o.kind = (id.substring(8).toIntOrNull() ?: return).coerceIn(0, 5); o.pat = 0 }
+            id == "orbpp" -> o.pat = (o.pat + Orb.patCount(o.kind) - 1) % Orb.patCount(o.kind)
+            id == "orbpn" -> o.pat = (o.pat + 1) % Orb.patCount(o.kind)
+            id == "orbpp10" -> o.pat = (o.pat + Orb.patCount(o.kind) * 10 - 10) % Orb.patCount(o.kind)
+            id == "orbpn10" -> o.pat = (o.pat + 10) % Orb.patCount(o.kind)
+            id.startsWith("orbpat:") -> o.pat = (id.substring(7).toIntOrNull() ?: return).coerceIn(0, 5)
             id.startsWith("orbc1:") -> o.c1 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
             id.startsWith("orbc2:") -> o.c2 = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, Orb.pal.size - 1)
             id.startsWith("orbbd:") -> o.bd = (id.substring(6).toIntOrNull() ?: return).coerceIn(0, 3)
@@ -3152,12 +3154,18 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
 
         // tipo
-        for (k in 0 until 4) button(c, "orbkind:$k", Orb.kindNames[k], 155f + k * 257f, top + 810f, 245f, 78f, if (o.kind == k) pal[k] else 0, 30f)
+        for (k in 0 until 6) button(c, "orbkind:$k", Orb.kindNames[k], 112f + k * 171f, top + 810f, 163f, 78f, if (o.kind == k) pal[k % 4] else 0, 22f)
         // patrón
-        if (o.kind == 3) {
-            button(c, "orbpp", "◀", 190f, top + 945f, 200f, 80f, 0, 36f)
-            Gl.text(c, Orb.patNames[3][o.pat] + "  (${o.pat + 1}/16)", 540f, top + 957f, 38f, Gl.medium, Gl.white(240))
-            button(c, "orbpn", "▶", 890f, top + 945f, 200f, 80f, 0, 36f)
+        if (o.kind == 5) {
+            Gl.text(c, if (o.art.isEmpty()) "Pulsa «IA: describir» y la IA dibuja" else "Dibujo de la IA: " + (o.art.count { it == ';' } + 1) + " formas", 540f, top + 957f, 32f, Gl.regular, Gl.white(200))
+        } else if (o.kind >= 3) {
+            val cnt = Orb.patCount(o.kind)
+            button(c, "orbpp10", "◀◀", 105f, top + 945f, 140f, 80f, 0, 28f, cnt > 20)
+            button(c, "orbpp", "◀", 275f, top + 945f, 140f, 80f, 0, 34f)
+            Gl.textFit(c, Orb.patName(o.kind, o.pat), 540f, top + 940f, 36f, 300f, Gl.medium, Gl.white(240))
+            Gl.text(c, "${o.pat + 1}/$cnt", 540f, top + 980f, 22f, Gl.regular, Gl.white(150))
+            button(c, "orbpn", "▶", 805f, top + 945f, 140f, 80f, 0, 34f)
+            button(c, "orbpn10", "▶▶", 975f, top + 945f, 140f, 80f, 0, 28f, cnt > 20)
         } else for (k in 0 until 6) {
             val cx = 190f + (k % 3) * 350f
             val cy = top + 905f + (k / 3) * 80f
@@ -3218,6 +3226,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val sz = o.sz
         fun alt(i: Int) = if (i % 2 == 0) a else b
         if (o.kind == 3) { drawFigure(c, x, y, r, o, tm); return }
+        if (o.kind == 4) { OrbArt.drawAnimal(c, x, y, r, o, tm); return }
+        if (o.kind == 5) { OrbArt.drawArt(c, x, y, r, o, tm); return }
         when (o.kind * 10 + o.pat) {
             // ---- clásicas ----
             0 -> {
