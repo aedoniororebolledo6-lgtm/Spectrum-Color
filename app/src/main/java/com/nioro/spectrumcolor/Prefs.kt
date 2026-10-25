@@ -16,6 +16,14 @@ class Prefs(context: Context) {
         }
     }
 
+    /** Esferas creadas en el editor (solo versión de desarrollador). */
+    fun getOrb(slot: Int): Orb? = Orb.parse(sp.getString("orb_$slot", null))
+    fun setOrb(slot: Int, o: Orb?) {
+        val ed = sp.edit()
+        if (o == null) ed.remove("orb_$slot") else ed.putString("orb_$slot", o.serialize())
+        ed.apply()
+    }
+
     /** Niveles editados (solo versión de desarrollador). */
     fun setCustom(level: Int, data: String?) {
         val ed = sp.edit()
