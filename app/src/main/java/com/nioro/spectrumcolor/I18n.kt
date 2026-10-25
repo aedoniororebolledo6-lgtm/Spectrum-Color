@@ -144,7 +144,7 @@ object I18n {
             "Teseracto|Tesseract|Тессеракт", "Caos Cuántico|Quantum Chaos|Квантовый хаос", "Materia Oscura|Dark Matter|Тёмная материя",
             "Agujero de Gusano|Wormhole|Червоточина", "Ecos del Big Bang|Big Bang Echoes|Эхо Большого взрыва",
             "Bioluminiscencia|Bioluminescence|Биолюминесценция", "ADN Giratorio|Spinning DNA|Вращающаяся ДНК",
-            "Telaraña Estelar|Starweb|Звёздная паутина", "Runas Antiguas|Ancient Runes|Древние руны",
+            "Hámster|Hamster|Хомяк", "Telaraña Estelar|Starweb|Звёздная паутина", "Runas Antiguas|Ancient Runes|Древние руны",
             "Alquimia|Alchemy|Алхимия", "Gema del Tiempo|Time Gem|Камень времени"
         )
         for (s in sk) { val a = s.split("|"); d(a[0], a[1], a[2]) }

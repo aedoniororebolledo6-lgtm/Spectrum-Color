@@ -18,21 +18,24 @@ object Skins {
         // animadas: fenómenos, ciencia y magia
         "Tornado", "Terremoto", "Volcán", "Avalancha", "Matriz Digital", "Holograma", "Teseracto", "Caos Cuántico",
         "Materia Oscura", "Agujero de Gusano", "Ecos del Big Bang", "Bioluminiscencia", "ADN Giratorio",
-        "Telaraña Estelar", "Runas Antiguas", "Alquimia", "Gema del Tiempo"
+        "Telaraña Estelar", "Runas Antiguas", "Alquimia", "Gema del Tiempo",
+        // animada: mascota
+        "Hámster"
     )
 
     val need = intArrayOf(
         0, 0, 4, 8, 12, 16, 20, 25, 30, 36, 42, 48, 55, 62, 70, 78, 86, 95, 104, 114,
         124, 135, 146, 158, 170, 183, 196, 210, 224, 238, 252, 266, 280, 294, 308, 322, 334, 344, 352, 358,
         10, 28, 46, 64, 82, 100, 118, 136, 154, 172, 190, 208, 226, 244, 262, 280, 298, 316, 334, 352,
-        14, 33, 52, 71, 90, 109, 128, 147, 166, 185, 204, 223, 242, 261, 280, 299, 318
+        14, 33, 52, 71, 90, 109, 128, 147, 166, 185, 204, 223, 242, 261, 280, 299, 318, 337
     )
 
-    /** Las apariencias 60..76 no usan estrellas: se abren con récord del modo infinito O con mundos completados. */
+    /** Las apariencias 60..77 no usan estrellas: se abren con récord del modo infinito O con mundos completados. */
     const val SPECIAL_FIRST = 60
     fun special(k: Int): Boolean = k >= SPECIAL_FIRST
-    fun endNeed(k: Int): Int = 20 + (k - SPECIAL_FIRST) * 10
-    fun worldNeed(k: Int): Int = 1 + ((k - SPECIAL_FIRST) * 11) / 16
+    /** El hámster (77) es más fácil de conseguir: 60 puntos en el infinito o 3 mundos. */
+    fun endNeed(k: Int): Int = if (k == 77) 60 else 20 + (k - SPECIAL_FIRST) * 10
+    fun worldNeed(k: Int): Int = if (k == 77) 3 else 1 + ((k - SPECIAL_FIRST) * 11) / 16
 
     fun isAnim(k: Int): Boolean = k >= ANIM_FIRST
 }

@@ -2771,7 +2771,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
-            in 60..76 -> drawAnimIcon2(c, x, y, r, skin, tm)
+            in 60..77 -> drawAnimIcon2(c, x, y, r, skin, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -3333,9 +3333,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun hf(n: Float): Float = frac(sin(n * 12.9898f) * 43758.547f)
 
-    /** Apariencias animadas 60..76: fenómenos, ciencia y magia (también recortadas a la bola). */
+    /** Apariencias animadas 60..77: fenómenos, ciencia y magia (también recortadas a la bola). */
     private fun drawAnimIcon2(c: Canvas, x: Float, y: Float, r: Float, skin: Int, tm: Float) {
-        val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100)
+        val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100, 45)
         val ua = under[skin - 60]
         if (ua > 0) c.drawCircle(x, y, r, pk(Gl.alpha(uSpace, ua)))
         val path = Gl.path
@@ -3648,6 +3648,70 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val a2 = tm * 0.4f
                 Gl.line(c, x, y, x + sin(a2) * r * 0.2f, y - cos(a2) * r * 0.2f, r * 0.06f, Gl.alpha(0xFFFFF59D.toInt(), 230))
                 dot(c, x, y, r * 0.05f, Color.WHITE, 255)
+            }
+            77 -> { // hámster corriendo dentro de su bola
+                // la bola: costura y respiraderos que giran al rodar
+                c.save()
+                c.rotate(Math.toDegrees((tm * 2.6f).toDouble()).toFloat(), x, y)
+                Gl.rect.set(x - r * 0.97f, y - r * 0.2f, x + r * 0.97f, y + r * 0.2f)
+                c.drawOval(Gl.rect, ps(95, r * 0.035f).also { it.color = Gl.white(95) })
+                Gl.rect.set(x - r * 0.2f, y - r * 0.97f, x + r * 0.2f, y + r * 0.97f)
+                c.drawOval(Gl.rect, ps(70, r * 0.03f).also { it.color = Gl.white(70) })
+                for (k in 0 until 6) {
+                    val a = k * pi / 3f
+                    dot(c, x + cos(a) * r * 0.82f, y + sin(a) * r * 0.82f, r * 0.035f, Color.WHITE, 120)
+                }
+                c.restore()
+
+                val fur = 0xFFE9A95C.toInt()
+                val furD = 0xFFB9783A.toInt()
+                val furL = 0xFFF6C98A.toInt()
+                val belly = 0xFFFFF1DA.toInt()
+                val pink = 0xFFF4A6B0.toInt()
+                val ph = tm * 14f
+                val bob = sin(ph * 2f) * r * 0.016f
+                val floor = y + r * 0.66f
+                val by = y + r * 0.32f + bob
+                // polvo que levanta al correr
+                for (k in 0 until 4) {
+                    val u = frac(tm * 2.2f + k * 0.25f)
+                    dot(c, x - r * 0.12f - u * r * 0.38f, y + r * 0.66f - u * r * 0.08f, r * (0.025f + 0.03f * u), Color.WHITE, (120 * (1f - u)).toInt())
+                }
+                // cola corta
+                dot(c, x - r * 0.43f, by + r * 0.0f, r * 0.055f, furD, 255)
+                // patas: las del mismo lado van a contratiempo
+                for (i in 0 until 4) {
+                    val front = i >= 2
+                    val ox = if (front) r * 0.2f else -r * 0.2f
+                    val phi = ph + (if (i % 2 == 0) 0f else pi)
+                    val fx = x + ox + sin(phi) * r * 0.15f
+                    val fy = floor - max(0f, cos(phi)) * r * 0.08f
+                    Gl.line(c, x + ox, by + r * 0.1f, fx, fy, r * 0.07f, if (i % 2 == 0) furD else fur)
+                    dot(c, fx + r * 0.025f, fy, r * 0.048f, pink, 255)
+                }
+                // cuerpo con lomo oscuro y barriga clara
+                Gl.rect.set(x - r * 0.44f, by - r * 0.23f, x + r * 0.38f, by + r * 0.21f)
+                c.drawOval(Gl.rect, pk(fur))
+                Gl.rect.set(x - r * 0.32f, by + r * 0.0f, x + r * 0.32f, by + r * 0.21f)
+                c.drawOval(Gl.rect, pk(belly))
+                Gl.rect.set(x - r * 0.36f, by - r * 0.23f, x + r * 0.3f, by - r * 0.05f)
+                c.drawOval(Gl.rect, pk(Gl.alpha(furD, 150)))
+                // cabeza
+                val hx = x + r * 0.38f
+                val hy = by - r * 0.09f + sin(ph * 2f + 1f) * r * 0.01f
+                dot(c, hx - r * 0.07f, hy - r * 0.18f, r * 0.08f, furD, 255)
+                dot(c, hx - r * 0.07f, hy - r * 0.18f, r * 0.045f, pink, 255)
+                dot(c, hx, hy, r * 0.21f, fur, 255)
+                Gl.rect.set(hx - r * 0.06f, hy - r * 0.0f, hx + r * 0.2f, hy + r * 0.2f)
+                c.drawOval(Gl.rect, pk(furL))
+                dot(c, hx + r * 0.02f, hy + r * 0.09f, r * 0.12f, belly, 255)
+                dot(c, hx + r * 0.1f, hy - r * 0.05f, r * 0.036f, 0xFF1A1418.toInt(), 255)
+                dot(c, hx + r * 0.112f, hy - r * 0.064f, r * 0.012f, Color.WHITE, 255)
+                dot(c, hx + r * 0.21f, hy + r * 0.03f, r * 0.034f, 0xFFF08A9A.toInt(), 255)
+                val wv = sin(ph) * r * 0.012f
+                Gl.line(c, hx + r * 0.16f, hy + r * 0.05f, hx + r * 0.32f, hy + r * 0.0f + wv, r * 0.012f, Gl.white(210))
+                Gl.line(c, hx + r * 0.16f, hy + r * 0.07f, hx + r * 0.33f, hy + r * 0.08f - wv, r * 0.012f, Gl.white(210))
+                Gl.line(c, hx + r * 0.15f, hy + r * 0.09f, hx + r * 0.29f, hy + r * 0.16f + wv, r * 0.012f, Gl.white(180))
             }
         }
     }
