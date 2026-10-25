@@ -3042,6 +3042,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "orbs+" -> o.sz = (o.sz + 1).coerceIn(1, 5)
             id == "orbv-" -> o.sp = (o.sp - 1).coerceIn(1, 5)
             id == "orbv+" -> o.sp = (o.sp + 1).coerceIn(1, 5)
+            id == "orbllm" -> {
+                if (OrbLlm.status != 0) orbToast("La IA está ocupada…")
+                else if (!OrbLlm.ready(context)) api.prompt("Descargar IA local (~550 MB)", "", "escribe SI (usa wifi)") { v ->
+                    if (v.trim().lowercase().startsWith("s")) OrbLlm.download(context.applicationContext)
+                }
+                else api.prompt("Describe tu esfera", "", "ej: remolino de fuego azul") { v ->
+                    if (v.isNotBlank()) OrbLlm.generate(context.applicationContext, v)
+                }
+            }
             id == "orbgen" -> {
                 orbEd = OrbAI.generate(orbW, orbRnd, orbs.filterNotNull(), o)
                 orbToast("La IA propuso una esfera nueva")
@@ -3094,6 +3103,24 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.glow(c, 540f, top + 330f, 260f, colNow, 70)
         drawBallAt(c, 540f, top + 330f + sin(time * 2f) * 6f, 110f, colNow, Orb.PREVIEW_ID, time, true)
         Gl.text(c, "Esfera ${orbSlot + 1}" + (if (orbs[orbSlot] == null) " (nueva)" else ""), 540f, top + 500f, 40f, Gl.medium, Gl.white(235))
+        // IA de texto local (modelo de lenguaje)
+        val st = OrbLlm.status
+        if (OrbLlm.result != null) {
+            orbEd = OrbLlm.result!!
+            OrbLlm.result = null
+        }
+        if (OrbLlm.noteFresh) {
+            OrbLlm.noteFresh = false
+            orbToast(OrbLlm.note)
+        }
+        button(c, "orbllm", if (!LlmBackend.AVAILABLE) "IA texto" else if (st != 0) "…" else if (OrbLlm.ready(context)) "IA: describir" else "Bajar IA", 880f, top + 110f, 300f, 76f, pal[0], 28f, LlmBackend.AVAILABLE && st == 0)
+        val stat = when (st) {
+            1 -> "Descargando ${(OrbLlm.progress * 100).toInt()} %"
+            2 -> "Cargando el modelo…"
+            3 -> "Pensando…"
+            else -> if (OrbLlm.ready(context)) "Qwen local listo" else "Modelo: ~550 MB"
+        }
+        Gl.text(c, stat, 880f, top + 178f, 22f, Gl.regular, Gl.white(150))
         // mini IA local
         button(c, "orbgen", "IA: nueva", 880f, top + 250f, 300f, 76f, pal[2], 30f)
         button(c, "orbmut", "Variar", 880f, top + 340f, 300f, 76f, 0, 30f)
