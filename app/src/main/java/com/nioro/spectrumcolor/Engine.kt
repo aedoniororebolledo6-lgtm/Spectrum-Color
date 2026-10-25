@@ -75,10 +75,15 @@ object T {
     const val CBAND = 16     // franja de tramos de color: desliza hasta un tramo de tu color
     const val SAW = 17       // sierras que patrullan de lado a lado (matan sin importar el color)
     const val PILLAR = 18    // pilar que oscila: hay que rodearlo
-    const val COUNT = 19
+    const val PENT = 19      // pentágono giratorio
+    const val STAR = 20      // estrella de cinco puntas giratoria
+    const val WAVE = 21      // ola: barra de colores que sube y baja ondulando
+    const val JAWS = 22      // mandíbulas: dos barras mortales que se abren y se cierran
+    const val EIGHT = 23     // serpiente de bolitas que recorre un ocho
+    const val COUNT = 24
 
     /** Obstáculos que solo aparecen dentro de las zonas de deslizar. */
-    fun isSlide(type: Int): Boolean = type >= SGATE
+    fun isSlide(type: Int): Boolean = type in SGATE..PILLAR
 }
 
 fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
@@ -108,6 +113,9 @@ class Ob(
         T.BARS, T.PEND, T.GATE, T.PULSE, T.LASER, T.SGATE, T.CBAND -> Cfg.BAR_DY + Cfg.BAR_H + 6f
         T.SAW -> aux + 6f
         T.PILLAR -> Cfg.PILLAR_HH + 6f
+        T.WAVE -> size + Cfg.BAR_H + 6f
+        T.JAWS -> aux + Cfg.BAR_H + 6f
+        T.EIGHT -> aux + Cfg.ORB_R + 6f
         T.HEX -> size + Cfg.THICK / 2f
         T.COUNTER -> aux + Cfg.BAR_H + 6f
         T.SQUARE -> size * 1.4143f + Cfg.THICK / 2f
@@ -125,6 +133,8 @@ class Ob(
             T.PEND -> m = (1 shl (shift % n)) or (1 shl ((shift + 1) % n))
             T.CROSS -> for (k in 0 until 4) m = m or (1 shl ((k + shift) % n))
             T.HEX -> for (k in 0 until 6) m = m or (1 shl ((k + shift) % n))
+            T.PENT, T.STAR -> for (k in 0 until 5) m = m or (1 shl ((k + shift) % n))
+            T.EIGHT -> for (k in 0 until 6) m = m or (1 shl ((k + shift) % n))
             T.ORBIT -> {
                 for (k in 0 until 3) m = m or (1 shl ((k + shift) % n))
                 for (k in 0 until 2) m = m or (1 shl ((k + shift + 1) % n))
@@ -242,7 +252,7 @@ object Geo {
         return u >= 1f - o.aux - 0.14f && u < 1f - o.aux
     }
 
-    fun polySides(o: Ob): Int = if (o.type == T.SQUARE) 4 else if (o.type == T.HEX) 6 else 3
+    fun polySides(o: Ob): Int = if (o.type == T.SQUARE) 4 else if (o.type == T.HEX) 6 else if (o.type == T.PENT) 5 else 3
 
     fun vx(o: Ob, t: Float, i: Int): Float {
         val k = polySides(o)
@@ -259,6 +269,33 @@ object Geo {
         val ang = (rot(o, t) + base + i * (360f / k)) * PI_F / 180f
         return o.y + sin(ang) * rad
     }
+
+    const val STAR_IN = 0.52f
+
+    /** Vértice i (0..9) de la estrella: los pares son las puntas y los impares el hueco entre puntas. */
+    fun starX(o: Ob, t: Float, i: Int): Float {
+        val rad = if (i % 2 == 0) o.size else o.size * STAR_IN
+        return Cfg.W / 2f + cos((rot(o, t) - 90f + i * 36f) * PI_F / 180f) * rad
+    }
+
+    fun starY(o: Ob, t: Float, i: Int): Float {
+        val rad = if (i % 2 == 0) o.size else o.size * STAR_IN
+        return o.y + sin((rot(o, t) - 90f + i * 36f) * PI_F / 180f) * rad
+    }
+
+    /** Altura de la ola en la posición x: sube y baja con el tiempo y ondula a lo ancho (inner = ritmo del vaivén). */
+    fun waveY(o: Ob, x: Float, t: Float): Float =
+        o.y + o.size * sin(o.phase * PI_F / 180f + o.inner * t + (x - Cfg.W / 2f) * 0.011f)
+
+    /** Separación (mitad) entre las dos mandíbulas: de 0 (cerradas) a aux (abiertas del todo). speed = ciclos por segundo. */
+    /** Las dos mandíbulas comparten color y lo van cambiando: solo se cruzan con ese color. */
+    fun jawsColor(o: Ob, t: Float): Int = (o.shift + (t / 1.6f).toInt()) % o.n
+
+    fun jawsD(o: Ob, t: Float): Float = o.aux * (0.5f + 0.5f * cos(2f * PI_F * (o.phase / 360f + o.speed * t)))
+
+    /** Posición de la bolita k de la serpiente EIGHT: recorre un ocho de ancho size y alto aux. */
+    fun eightX(o: Ob, t: Float, k: Int): Float = Cfg.W / 2f + o.size * sin((rot(o, t) + k * 60f) * PI_F / 180f)
+    fun eightY(o: Ob, t: Float, k: Int): Float = o.y + o.aux * sin(2f * (rot(o, t) + k * 60f) * PI_F / 180f)
 
     fun segDist(px: Float, py: Float, ax: Float, ay: Float, bx: Float, by: Float): Float {
         val abx = bx - ax
@@ -406,6 +443,36 @@ object Geo {
                 }
                 return false
             }
+            T.STAR -> {
+                val band = Cfg.THICK / 2f + graze
+                for (i in 0 until 10) {
+                    if (((i / 2) + o.shift) % o.n == color) continue
+                    val j = (i + 1) % 10
+                    if (segDist(bx, by, starX(o, t, i), starY(o, t, i), starX(o, t, j), starY(o, t, j)) < band) return true
+                }
+                return false
+            }
+            T.WAVE -> {
+                if (abs(by - waveY(o, bx, t)) > Cfg.BAR_H + graze) return false
+                return barColor(o, 0, bx, t) != color
+            }
+            T.JAWS -> {
+                val d = jawsD(o, t)
+                val reach = Cfg.BAR_H + graze
+                if (jawsColor(o, t) == color) return false
+                return abs(by - (o.y - d)) < reach || abs(by - (o.y + d)) < reach
+            }
+            T.EIGHT -> {
+                val rr = Cfg.ORB_R + Cfg.BALL_R * 0.85f
+                val r2 = rr * rr
+                for (k in 0 until 6) {
+                    if ((k + o.shift) % o.n == color) continue
+                    val dx = bx - eightX(o, t, k)
+                    val dy = by - eightY(o, t, k)
+                    if (dx * dx + dy * dy < r2) return true
+                }
+                return false
+            }
             else -> {
                 val k = polySides(o)
                 val band = Cfg.THICK / 2f + graze
@@ -455,6 +522,7 @@ object Levels {
         // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
         it[11] = 3
         it[12] = 2
+        it[13] = 1
         it[15] = 2
         it[17] = 5
         it[18] = 1
@@ -508,7 +576,8 @@ object Levels {
         1, 999, 1, 5, 9,        // anillo, doble, barras, cuadrado, triángulo
         21, 31, 41, 51, 61, 71, // pinchos, péndulo, cruz, puertas, órbitas, opuestas
         4, 7, 13, 46,           // arco abierto, barra que cambia de color, hexágono, rayo
-        999, 999, 999, 999      // obstáculos de deslizar: solo dentro de las zonas
+        999, 999, 999, 999,     // obstáculos de deslizar: solo dentro de las zonas
+        11, 33, 55, 77, 99      // pentágono, estrella, ola, mandíbulas, serpiente (mundos 2, 4, 6, 8 y 10)
     )
 
     fun unlockLevel(type: Int): Int = unlockAt[type]
@@ -538,7 +607,7 @@ object Levels {
     fun totalGates(level: Int): Int = gates(level) + slidePlan(level).sum()
 
     /** Obstáculo desde el que aparece cada tipo en el modo infinito. */
-    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64, 9999, 9999, 9999, 9999)
+    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64, 9999, 9999, 9999, 9999, 12, 36, 44, 56, 62)
 }
 
 class Zone(val bottom: Float, val top: Float)
@@ -699,8 +768,14 @@ class Course private constructor(
 
     private fun pickType(i: Int, g: Int): Int {
         val hard = isLevel && Levels.isHard(level)
-        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f, 0f, 0f, 0f, 0f)
-        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f, 0f, 0f, 0f, 0f)
+        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f, 0f, 0f, 0f, 0f, 2.0f, 2.0f, 2.0f, 2.6f, 2.8f)
+        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f, 0f, 0f, 0f, 0f, 2.4f, 1.8f, 1.7f, 1.5f, 1.6f)
+        // desde el mundo 2 los anillos, cuadrados y triángulos van cediendo su lugar a los obstáculos nuevos
+        if (isLevel && level >= 11) {
+            w[T.RING] *= 0.55f
+            w[T.SQUARE] *= 0.55f
+            w[T.TRI] *= 0.55f
+        }
         val wf = if (isLevel) Levels.worldFirst(Levels.world(level)) else 0
         var sum = 0f
         for (t in 0 until T.COUNT) {
@@ -777,6 +852,11 @@ class Course private constructor(
             T.PULSE -> { speed = lerp(0.62f, 0.85f, d) * vari; size = 0f }
             T.HEX -> { speed = dirS * spin * 0.9f; size = lerp(280f, 310f, sizeVar) }
             T.LASER -> { speed = lerp(0.36f, 0.45f, d) * vari; size = 0f; aux = lerp(0.42f, 0.52f, d) }
+            T.PENT -> { speed = dirS * spin * 0.9f; size = lerp(285f, 320f, sizeVar) }
+            T.STAR -> { speed = dirS * spin * 0.85f; size = lerp(300f, 340f, sizeVar) }
+            T.WAVE -> { speed = dirS * barSpd * vari; size = lerp(50f, 90f, d); inner = lerp(1.3f, 2.0f, d) }
+            T.JAWS -> { speed = lerp(0.2f, 0.3f, d) * vari; size = 0f; aux = lerp(170f, 140f, d) }
+            T.EIGHT -> { speed = dirS * spin * 0.9f; size = lerp(250f, 300f, sizeVar); aux = lerp(100f, 125f, d) }
             else -> { speed = dirS * spin * 0.9f; size = 370f }
         }
 
@@ -789,7 +869,7 @@ class Course private constructor(
         if (hard) {
             if (rnd.nextFloat() < Levels.driftProb(level)) drift = (if (rnd.nextBoolean()) 1f else -1f) * lerp(1100f, 1700f, d)
             if (rnd.nextFloat() < Levels.fadeProb(level)) fade = true
-            val rotating = type == T.RING || type == T.ARC || type == T.HEX || type == T.SQUARE || type == T.TRI || type == T.SPIKES || type == T.CROSS || type == T.ORBIT
+            val rotating = type == T.RING || type == T.ARC || type == T.HEX || type == T.SQUARE || type == T.TRI || type == T.SPIKES || type == T.CROSS || type == T.ORBIT || type == T.PENT || type == T.STAR
             val pw = if (type == T.SPIKES && level > 100) max(0.9f, Levels.wobProb(level)) else Levels.wobProb(level)
             if (rotating && rnd.nextFloat() < pw) wob = lerp(25f, 40f, d)
         }

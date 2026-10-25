@@ -3,6 +3,7 @@ package com.nioro.spectrumcolor
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.random.Random
 
@@ -277,7 +278,7 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
-fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar").getOrElse(t) { "?" }
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar", "pentágono", "estrella", "ola", "mandíbulas", "ocho").getOrElse(t) { "?" }
 
 val bestStarsTL = ThreadLocal.withInitial { 0 }
 

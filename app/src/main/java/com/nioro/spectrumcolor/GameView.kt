@@ -2053,6 +2053,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.CBAND -> drawCBand(c, o, t, pal)
             T.SAW -> drawSaws(c, o, t)
             T.PILLAR -> drawPillar(c, o, t)
+            T.STAR -> drawStarOb(c, o, t, pal)
+            T.WAVE -> drawWave(c, o, t, pal)
+            T.JAWS -> drawJaws(c, o, t, pal)
+            T.EIGHT -> drawEight(c, o, t, pal)
             T.COUNTER -> {
                 drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
                 drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * Cfg.COUNTER_RATIO * t, pal)
@@ -2476,6 +2480,117 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     x1 - ux * inset + nx * off, y1 - uy * inset + ny * off, th * 0.14f, Gl.white(150)
                 )
             }
+        }
+    }
+
+    private fun drawStarOb(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val th = Cfg.THICK
+        for (i in 0 until 10) {
+            val j = (i + 1) % 10
+            val x0 = Geo.starX(o, t, i)
+            val y0 = Geo.starY(o, t, i)
+            val x1 = Geo.starX(o, t, j)
+            val y1 = Geo.starY(o, t, j)
+            val col = pal[((i / 2) + o.shift) % o.n]
+            Gl.line(c, x0, y0, x1, y1, th * 1.9f, Gl.alpha(col, 34))
+            Gl.line(c, x0, y0, x1, y1, th, Gl.alpha(col, 170))
+            val dx = x1 - x0
+            val dy = y1 - y0
+            val len = sqrt(dx * dx + dy * dy)
+            if (len > 1f) {
+                val ux = dx / len
+                val uy = dy / len
+                val inset = th * 0.45f
+                Gl.line(c, x0 + ux * inset, y0 + uy * inset - th * 0.18f, x1 - ux * inset, y1 - uy * inset - th * 0.18f, th * 0.14f, Gl.white(150))
+            }
+        }
+    }
+
+    /** Ola: cinta de colores que sube y baja ondulando; el color a cada altura es el de su tramo. */
+    private fun drawWave(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val half = Cfg.BAR_H
+        var px = -30f
+        var py = Geo.waveY(o, px, t)
+        var x = -30f + 30f
+        while (x <= Cfg.W + 60f) {
+            val y = Geo.waveY(o, x, t)
+            val col = pal[Geo.barColor(o, 0, (x + px) / 2f, t) % pal.size]
+            Gl.line(c, px, py, x, y, half * 2f + 20f, Gl.alpha(col, 34))
+            Gl.line(c, px, py, x, y, half * 2f, Gl.alpha(col, 170))
+            Gl.line(c, px, py - half * 0.45f, x, y - half * 0.45f, half * 0.3f, Gl.white(130))
+            px = x
+            py = y
+            x += 30f
+        }
+    }
+
+    /** Mandíbulas: dos barras con dientes que se abren y se cierran. Matan sin importar el color. */
+    private fun drawJaws(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        val d = Geo.jawsD(o, t)
+        val danger = pal[Geo.jawsColor(o, t) % pal.size]
+        val half = Cfg.BAR_H
+        Gl.glow(c, Cfg.W / 2f, o.y, 300f, danger, 26)
+        for (side in intArrayOf(-1, 1)) {
+            val y = o.y + side * d
+            capsule(c, -80f, Cfg.W + 80f, y, half, danger)
+            // dientes hacia el hueco
+            val path = Gl.path
+            val n = 14
+            val tw = (Cfg.W + 160f) / n
+            val base = y - side * half
+            val tip = base - side * half * 1.1f
+            path.reset()
+            for (k in 0 until n) {
+                val x0 = -80f + k * tw
+                path.moveTo(x0 + tw * 0.12f, base)
+                path.lineTo(x0 + tw * 0.5f, tip)
+                path.lineTo(x0 + tw * 0.88f, base)
+                path.close()
+            }
+            var pp = Gl.p()
+            pp.color = Gl.white(225)
+            c.drawPath(path, pp)
+            pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 2f
+            pp.color = Gl.alpha(danger, 220)
+            c.drawPath(path, pp)
+        }
+        // aviso en el centro: cuánto se están separando
+        if (d < Cfg.BAR_H * 1.8f) {
+            val a = (120 + 90 * sin(t * 12f)).toInt()
+            Gl.line(c, Cfg.W / 2f - 60f, o.y, Cfg.W / 2f + 60f, o.y, 5f, Gl.white(a))
+        }
+    }
+
+    /** Serpiente de bolitas que recorre un ocho. */
+    private fun drawEight(c: Canvas, o: Ob, t: Float, pal: IntArray) {
+        var px = Cfg.W / 2f
+        var py = o.y
+        val pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2f
+        pp.color = Gl.white(26)
+        val path = Gl.path
+        path.reset()
+        for (i in 0..72) {
+            val u = i * 5f * 3.14159265f / 180f
+            val x = Cfg.W / 2f + o.size * sin(u)
+            val y = o.y + o.aux * sin(2f * u)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+        c.drawPath(path, pp)
+        for (k in 0 until 6) {
+            val x = Geo.eightX(o, t, k)
+            val y = Geo.eightY(o, t, k)
+            if (k > 0) {
+                val col = pal[((k - 1) + o.shift) % o.n]
+                Gl.line(c, px, py, x, y, 6f, Gl.alpha(col, 40))
+            }
+            orb(c, x, y, pal[(k + o.shift) % o.n])
+            px = x
+            py = y
         }
     }
 
@@ -3843,7 +3958,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private val edTypeNames = arrayOf(
         "Anillo", "Doble", "Barras", "Cuadrado", "Triángulo", "Pinchos", "Péndulo", "Cruz", "Compuerta", "Órbita",
-        "Contrabarras", "Arco", "Pulso", "Hexágono", "Láser", "Puerta lateral", "Franja", "Sierras", "Pilar"
+        "Contrabarras", "Arco", "Pulso", "Hexágono", "Láser", "Puerta lateral", "Franja", "Sierras", "Pilar",
+        "Pentágono", "Estrella", "Ola", "Mandíbulas", "Ocho"
     )
     // etiquetas de tamaño / interior / auxiliar según el tipo (null = no se usa)
     private val edLbl: Array<Array<String?>> = arrayOf(
@@ -3853,10 +3969,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         arrayOf("Radio ext.", "Radio int.", null), arrayOf(null, null, "Separación"), arrayOf("Radio", null, "Hueco °"),
         arrayOf(null, null, null), arrayOf("Tamaño", null, null), arrayOf(null, null, "Encendido"),
         arrayOf("Amplitud", "Centro", "Hueco"), arrayOf("Largo", null, null), arrayOf("Recorrido", "Cantidad", "Radio"),
-        arrayOf("Amplitud", null, "Ancho")
+        arrayOf("Amplitud", null, "Ancho"),
+        arrayOf("Tamaño", null, null), arrayOf("Tamaño", null, null), arrayOf("Amplitud", "Ritmo", null),
+        arrayOf(null, null, "Apertura"), arrayOf("Ancho", null, "Alto")
     )
     private val edTplNames = arrayOf(
-        "Tres anillos", "Barras", "Pinchos y cruz", "Formas", "Órbitas y arco", "Rayos", "Compuertas", "Zona de deslizar", "Viento y sombras"
+        "Tres anillos", "Barras", "Pinchos y cruz", "Formas", "Órbitas y arco", "Rayos", "Compuertas", "Zona de deslizar", "Viento y sombras", "Los 5 nuevos"
     )
 
     private fun edPanelOpenEff(): Boolean = edPanelOpen && !edOverview
@@ -3914,6 +4032,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.CBAND -> { speed = 170f; size = 320f; n = 4 }
             T.SAW -> { speed = 100f; size = 360f; aux = 60f; inner = 2f; n = 4 }
             T.PILLAR -> { speed = 60f; size = 100f; aux = 145f; n = 4 }
+            T.PENT -> { size = 300f }
+            T.STAR -> { size = 320f }
+            T.WAVE -> { speed = 200f; size = 70f; inner = 1.6f }
+            T.JAWS -> { speed = 0.28f; size = 0f; aux = 170f }
+            T.EIGHT -> { size = 270f; aux = 110f }
         }
         return Ob(type, y, n, 0, speed, 0f, size, inner, aux)
     }
@@ -4093,7 +4216,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             5 -> listOf(o(T.LASER), o(T.PULSE), o(T.LASER) { it.copy(speed = 0.45f) })
             6 -> listOf(o(T.GATE), o(T.PEND), o(T.GATE) { it.copy(speed = -it.speed) })
             7 -> listOf(o(T.SGATE), o(T.CBAND), o(T.SAW), o(T.PILLAR))
-            else -> listOf(o(T.RING) { it.copy(drift = 1400f) }, o(T.SQUARE) { it.copy(drift = -1400f) }, o(T.HEX) { it.copy(fade = true) })
+            8 -> listOf(o(T.RING) { it.copy(drift = 1400f) }, o(T.SQUARE) { it.copy(drift = -1400f) }, o(T.HEX) { it.copy(fade = true) })
+            else -> listOf(o(T.PENT), o(T.STAR), o(T.WAVE), o(T.JAWS), o(T.EIGHT))
         }
     }
 
@@ -4315,14 +4439,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 { val n = min(4, o.n + 1); edSetOb(o.copy(n = n, shift = o.shift % n)) }))
             edRows.add(EdRow("Desfase color", o.shift.toString(),
                 { edSetOb(o.copy(shift = (o.shift + o.n - 1) % o.n)) }, { edSetOb(o.copy(shift = (o.shift + 1) % o.n)) }))
-            val small = o.type == T.PULSE || o.type == T.LASER
+            val small = o.type == T.PULSE || o.type == T.LASER || o.type == T.JAWS
             val sp = if (small) 0.02f * st else 5f * st
             edRows.add(EdRow("Velocidad", edFmt(o.speed), { edSetOb(o.copy(speed = o.speed - sp)) }, { edSetOb(o.copy(speed = o.speed + sp)) }))
             edRows.add(EdRow("Fase °", edFmt(o.phase), { edSetOb(o.copy(phase = (o.phase - 15f * st + 3600f) % 360f)) }, { edSetOb(o.copy(phase = (o.phase + 15f * st) % 360f)) }))
             val lb = edLbl[o.type]
             lb[0]?.let { l -> edRows.add(EdRow(l, edFmt(o.size), { edSetOb(o.copy(size = max(0f, o.size - 10f * st))) }, { edSetOb(o.copy(size = o.size + 10f * st)) })) }
             lb[1]?.let { l ->
-                val s2 = if (o.type == T.SAW) 1f else 10f
+                val s2 = if (o.type == T.SAW) 1f else if (o.type == T.WAVE) 0.1f else 10f
                 edRows.add(EdRow(l, edFmt(o.inner), { edSetOb(o.copy(inner = o.inner - s2 * st)) }, { edSetOb(o.copy(inner = o.inner + s2 * st)) }))
             }
             lb[2]?.let { l ->
