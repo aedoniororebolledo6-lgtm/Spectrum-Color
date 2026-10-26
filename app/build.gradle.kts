@@ -62,8 +62,3 @@ android {
         jvmTarget = "17"
     }
 }
-
-dependencies {
-    // Modelo de lenguaje local (solo versión de desarrollador)
-    "devImplementation"("com.google.mediapipe:tasks-genai:0.10.24")
-}
