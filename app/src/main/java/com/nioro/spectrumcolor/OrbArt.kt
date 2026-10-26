@@ -22,6 +22,8 @@ object OrbArt {
             Gl.text(c, "?", x, y + r * 0.3f, r * 1.0f, Gl.medium, Gl.white(160))
             return
         }
+        // fondo oscuro para que los colores del dibujo se vean sobre la bola brillante
+        c.drawCircle(x, y, r, Gl.p().also { it.color = Color.argb(215, 12, 14, 30) })
         for (sh in o.art.split(';')) {
             val q = sh.trim().split(' ')
             if (q.size < 2) continue

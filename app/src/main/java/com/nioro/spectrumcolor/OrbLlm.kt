@@ -23,6 +23,8 @@ object OrbLlm {
     @Volatile var note = ""
     @Volatile var result: Orb? = null
     @Volatile var noteFresh = false
+    /** Última respuesta cruda del modelo (para ver qué escribió). */
+    @Volatile var lastReply = ""
 
     fun file(ctx: Context, m: Model): File = File(File(ctx.filesDir, "llm"), m.file)
     fun ready(ctx: Context, m: Model): Boolean = file(ctx, m).let { it.exists() && it.length() > m.minBytes }
@@ -107,6 +109,7 @@ object OrbLlm {
                 status = 3
                 val rich = m.tpl == 1
                 val reply = LlmBackend.run(OrbDraw.prompt(text, m.tpl, rich))
+                lastReply = reply
                 val art = OrbDraw.parse(reply)
                 if (art != null) {
                     result = Orb(5, 0, 0, 3, 5, 3, 3, 0, art)

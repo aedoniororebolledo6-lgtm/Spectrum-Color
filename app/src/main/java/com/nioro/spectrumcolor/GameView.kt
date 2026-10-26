@@ -3173,6 +3173,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         // patrón
         if (o.kind == 5) {
             Gl.text(c, if (o.art.isEmpty()) "Pulsa «IA: describir» y la IA dibuja" else "Dibujo de la IA: " + (o.art.count { it == ';' } + 1) + " formas", 540f, top + 957f, 32f, Gl.regular, Gl.white(200))
+            if (OrbLlm.lastReply.isNotEmpty()) Gl.textFit(c, "IA: " + OrbLlm.lastReply.replace('\n', ' ').take(90), 540f, top + 1000f, 20f, 980f, Gl.regular, Gl.white(120))
         } else if (o.kind >= 3) {
             val cnt = Orb.patCount(o.kind)
             button(c, "orbpp10", "◀◀", 105f, top + 945f, 140f, 80f, 0, 28f, cnt > 20)

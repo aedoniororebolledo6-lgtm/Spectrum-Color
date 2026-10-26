@@ -472,28 +472,53 @@ object OrbDraw {
     fun prompt(text: String, tpl: Int = 0, rich: Boolean = false): String =
         Chat.build(tpl, system, (if (rich) shots + extraShots else shots).toList(), text)
 
-    /** Valida la respuesta y la devuelve limpia («forma;forma;…») o null si no hay al menos 3 formas. */
+    /**
+     * Valida la respuesta y la devuelve limpia («forma;forma;…») o null si no hay al menos 3 formas.
+     * Además centra y escala todo el dibujo para que quepa en la esfera, venga la IA con el lienzo que venga
+     * (-100..100, 0..100, 0..1000…).
+     */
     fun parse(reply: String): String? {
-        val out = ArrayList<String>()
+        class Sh(val cmd: Char, val col: Int, val xs: DoubleArray, val ys: DoubleArray, val size: Double, val w: Double)
+        val shapes = ArrayList<Sh>()
+        fun col(v: Int) = v.coerceIn(0, Orb.pal.size - 1)
         for (line in reply.split('\n', ';')) {
             val t = line.trim()
             if (t.isEmpty()) continue
             val cmd = t[0].lowercaseChar()
-            val nums = Regex("-?\\d+").findAll(t.substring(1)).map { it.value.toInt() }.toList()
-            fun co(v: Int) = v.coerceIn(-120, 120)
-            fun col(v: Int) = v.coerceIn(0, Orb.pal.size - 1)
+            val nums = Regex("-?\\d+(?:\\.\\d+)?").findAll(t.substring(1)).map { it.value.toDouble() }.toList()
             when (cmd) {
-                'c' -> if (nums.size >= 4) out.add("c ${co(nums[0])} ${co(nums[1])} ${nums[2].coerceIn(1, 120)} ${col(nums[3])}")
-                'o' -> if (nums.size >= 5) out.add("o ${co(nums[0])} ${co(nums[1])} ${co(nums[2])} ${co(nums[3])} ${col(nums[4])}")
-                'l' -> if (nums.size >= 6) out.add("l ${co(nums[0])} ${co(nums[1])} ${co(nums[2])} ${co(nums[3])} ${nums[4].coerceIn(1, 24)} ${col(nums[5])}")
+                'c' -> if (nums.size >= 4) shapes.add(Sh('c', col(nums[3].toInt()), doubleArrayOf(nums[0]), doubleArrayOf(nums[1]), Math.abs(nums[2]), 0.0))
+                'o' -> if (nums.size >= 5) shapes.add(Sh('o', col(nums[4].toInt()), doubleArrayOf(nums[0], nums[2]), doubleArrayOf(nums[1], nums[3]), 0.0, 0.0))
+                'l' -> if (nums.size >= 6) shapes.add(Sh('l', col(nums[5].toInt()), doubleArrayOf(nums[0], nums[2]), doubleArrayOf(nums[1], nums[3]), 0.0, Math.abs(nums[4])))
                 'p' -> if (nums.size >= 7) {
                     val pts = nums.drop(1)
                     val n = minOf(pts.size / 2, 12)
-                    if (n >= 3) out.add("p ${col(nums[0])} " + (0 until n * 2).joinToString(" ") { co(pts[it]).toString() })
+                    if (n >= 3) shapes.add(Sh('p', col(nums[0].toInt()), DoubleArray(n) { pts[it * 2] }, DoubleArray(n) { pts[it * 2 + 1] }, 0.0, 0.0))
                 }
             }
-            if (out.size >= 60) break
+            if (shapes.size >= 60) break
         }
-        return if (out.size >= 3) out.joinToString(";") else null
+        if (shapes.size < 3) return null
+        var x0 = 1e9; var x1 = -1e9; var y0 = 1e9; var y1 = -1e9
+        for (sh in shapes) for (i in sh.xs.indices) {
+            val rr = if (sh.cmd == 'c') sh.size else 0.0
+            x0 = minOf(x0, sh.xs[i] - rr); x1 = maxOf(x1, sh.xs[i] + rr)
+            y0 = minOf(y0, sh.ys[i] - rr); y1 = maxOf(y1, sh.ys[i] + rr)
+        }
+        val ext = maxOf(x1 - x0, y1 - y0)
+        if (ext < 1e-6) return null
+        val k = minOf(170.0 / ext, 6.0)
+        val cx = (x0 + x1) / 2
+        val cy = (y0 + y1) / 2
+        fun tx(v: Double) = Math.round((v - cx) * k).toInt().coerceIn(-120, 120)
+        fun ty(v: Double) = Math.round((v - cy) * k).toInt().coerceIn(-120, 120)
+        val out = ArrayList<String>()
+        for (sh in shapes) when (sh.cmd) {
+            'c' -> out.add("c ${tx(sh.xs[0])} ${ty(sh.ys[0])} ${Math.round(sh.size * k).toInt().coerceIn(1, 120)} ${sh.col}")
+            'o' -> out.add("o ${tx(sh.xs[0])} ${ty(sh.ys[0])} ${tx(sh.xs[1])} ${ty(sh.ys[1])} ${sh.col}")
+            'l' -> out.add("l ${tx(sh.xs[0])} ${ty(sh.ys[0])} ${tx(sh.xs[1])} ${ty(sh.ys[1])} ${Math.round(sh.w * k).toInt().coerceIn(1, 24)} ${sh.col}")
+            else -> out.add("p ${sh.col} " + sh.xs.indices.joinToString(" ") { "${tx(sh.xs[it])} ${ty(sh.ys[it])}" })
+        }
+        return out.joinToString(";")
     }
 }
