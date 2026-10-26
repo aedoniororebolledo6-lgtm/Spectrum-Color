@@ -147,6 +147,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var dragged = false
     private var skinScroll = 0f
     private var skinTab = 0
+    /** Creador de esferas propias: desactivado por ahora (el código se conserva; ponlo en true para volver a usarlo). */
+    private val orbsOn = false
     /** Esferas propias (solo desarrollador) y la que se está editando. */
     private val orbs: Array<Orb?> = Array(Orb.SLOTS) { if (BuildConfig.DEV) prefs.getOrb(it) else null }
     private var orbSlot = 0
@@ -454,7 +456,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun activate(id: String) {
         audio.play(Sfx.CLICK)
         when {
-            id == "ehs" -> if (BuildConfig.DEV) {
+            id == "ehs" -> if (BuildConfig.DEV && orbsOn) {
                 orbSlot = orbs.indexOfFirst { it != null }.let { if (it < 0) 0 else it }
                 orbEd = orbs[orbSlot]?.copy() ?: Orb()
                 scr = Scr.ORB
@@ -489,7 +491,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val row = if (skinTab == 3) 0 else (effSkin() - (if (skinTab == 1) Skins.ANIM_FIRST else 0)) / 4
                 skinScroll = (row * 280f - 300f).coerceAtLeast(0f)
             }
-            id == "tab0" || id == "tab1" || id == "tab2" || (id == "tab3" && BuildConfig.DEV) -> {
+            id == "tab0" || id == "tab1" || id == "tab2" || (id == "tab3" && BuildConfig.DEV && orbsOn) -> {
                 skinTab = id.substring(3).toInt()
                 skinScroll = 0f
                 skinVel = 0f
@@ -2718,7 +2720,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val ballClip = Path()
 
     private fun skinOpen(k: Int): Boolean {
-        if (k >= Orb.FIRST_ID) return BuildConfig.DEV && k - Orb.FIRST_ID < Orb.SLOTS && orbs[k - Orb.FIRST_ID] != null
+        if (k >= Orb.FIRST_ID) return BuildConfig.DEV && orbsOn && k - Orb.FIRST_ID < Orb.SLOTS && orbs[k - Orb.FIRST_ID] != null
         if (prefs.allOpen) return true
         if (Skins.special(k)) return prefs.endlessBest >= Skins.endNeed(k) || prefs.worldsDone() >= Skins.worldNeed(k)
         return prefs.totalStars() >= Skins.need[k]
@@ -4497,7 +4499,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
 
         // pestañas: clásicas / animadas
-        if (BuildConfig.DEV) {
+        if (BuildConfig.DEV && orbsOn) {
             button(c, "tab0", "Clásicas", 155f, top + 690f, 245f, 84f, if (skinTab == 0) pal[0] else 0, 32f)
             button(c, "tab1", "Animadas", 412f, top + 690f, 245f, 84f, if (skinTab == 1) pal[1] else 0, 32f)
             button(c, "tab2", "Estelas", 669f, top + 690f, 245f, 84f, if (skinTab == 2) pal[2] else 0, 32f)
@@ -5402,8 +5404,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val n = edPending.size
         button(c, "ehp", if (n > 0) "Publicar al juego oficial ($n)" else "Publicar al juego oficial", 540f, top + 770f, 840f, 130f, pal[2], 40f, n > 0)
         Gl.textFit(c, if (n > 0) "Niveles tuyos aún no publicados: " + edPending.joinToString(", ") else "No hay niveles pendientes", 540f, top + 870f, 30f, 960f, Gl.regular, Gl.white(160))
-        button(c, "ehs", "Crear esferas", 540f, top + 990f, 840f, 130f, pal[3], 44f)
-        Gl.text(c, "Clásicas, estelares y animadas (solo en este teléfono)", 540f, top + 1090f, 30f, Gl.regular, Gl.white(160))
+        if (orbsOn) {
+            button(c, "ehs", "Crear esferas", 540f, top + 990f, 840f, 130f, pal[3], 44f)
+            Gl.text(c, "Clásicas, estelares y animadas (solo en este teléfono)", 540f, top + 1090f, 30f, Gl.regular, Gl.white(160))
+        }
         Gl.textFit(c, "Al publicar se abre GitHub: pulsa «Submit new issue» y el juego", 540f, top + 1200f, 28f, 960f, Gl.regular, Gl.white(120))
         Gl.textFit(c, "se vuelve a compilar solo con tus niveles (unos 4 minutos).", 540f, top + 1240f, 28f, 960f, Gl.regular, Gl.white(120))
         if (time - edMsgT < 2.6f) {
