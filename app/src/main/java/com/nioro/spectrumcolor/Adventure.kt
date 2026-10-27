@@ -33,8 +33,15 @@ object AdvCfg {
     const val SUB_CROSS = 3
     const val SUB_WATER = 4
     const val SUB_WATCH = 5
-    val subCost = intArrayOf(0, 1, 2, 2, 2, 4)
-    val subNames = arrayOf("Nada", "Daga de luz", "Hacha prisma", "Aro bumerán", "Fuego líquido", "Reloj del tiempo")
+    const val SUB_BIBLE = 6
+    const val SUB_STAR = 7
+    const val SUB_BOLT = 8
+    const val SUB_ORB = 9
+    const val SUBS = 9
+    val subCost = intArrayOf(0, 1, 2, 2, 2, 4, 3, 3, 4, 3)
+    val subNames = arrayOf("Nada", "Daga de luz", "Hacha prisma", "Aro bumerán", "Fuego líquido", "Reloj del tiempo",
+        "Libro de luz", "Estrellas ninja", "Rayo celeste", "Orbes guía")
+    const val subLetters = "-DHAFRLETO"
 
     // patrones de jefe
     const val P_FAN = 1
@@ -46,24 +53,28 @@ object AdvCfg {
     const val P_TELE = 7
     const val P_ORBS = 8
     const val P_ULT = 9
+    const val P_WAVE = 10
+    const val P_METEOR = 11
+    const val P_SPIRAL = 12
 
     class Boss(val name: String, val w: Float, val h: Float, val pats: IntArray)
 
     val bosses = arrayOf(
-        Boss("Guardián Prisma", 46f, 56f, intArrayOf(P_FAN, P_CHARGE, P_RAIN)),
-        Boss("Reina Aurora", 40f, 62f, intArrayOf(P_BEAM, P_FAN, P_TELE)),
-        Boss("Kraken Abisal", 62f, 60f, intArrayOf(P_SLAM, P_RAIN, P_SUMMON)),
-        Boss("Rey Neón", 48f, 62f, intArrayOf(P_CHARGE, P_FAN, P_BEAM)),
-        Boss("Coloso de Cristal", 66f, 74f, intArrayOf(P_SLAM, P_BEAM, P_ORBS)),
-        Boss("Señor del Ocaso", 44f, 64f, intArrayOf(P_TELE, P_FAN, P_RAIN)),
-        Boss("Devorador Galáctico", 60f, 60f, intArrayOf(P_ORBS, P_CHARGE, P_SUMMON)),
-        Boss("Titán de Lava", 70f, 78f, intArrayOf(P_SLAM, P_FAN, P_RAIN)),
-        Boss("Ent Ancestral", 64f, 84f, intArrayOf(P_SUMMON, P_SLAM, P_BEAM)),
-        Boss("Emperatriz de Hielo", 44f, 66f, intArrayOf(P_BEAM, P_RAIN, P_TELE)),
-        Boss("Oráculo Cósmico", 50f, 64f, intArrayOf(P_ORBS, P_TELE, P_BEAM)),
-        Boss("El Espectro", 58f, 78f, intArrayOf(P_CHARGE, P_SLAM, P_ORBS, P_BEAM, P_TELE, P_RAIN))
+        Boss("Guardián Prisma", 46f, 56f, intArrayOf(P_FAN, P_CHARGE, P_RAIN, P_WAVE)),
+        Boss("Reina Aurora", 40f, 62f, intArrayOf(P_BEAM, P_FAN, P_TELE, P_SPIRAL)),
+        Boss("Kraken Abisal", 62f, 60f, intArrayOf(P_SLAM, P_RAIN, P_SUMMON, P_WAVE)),
+        Boss("Rey Neón", 48f, 62f, intArrayOf(P_CHARGE, P_FAN, P_BEAM, P_METEOR)),
+        Boss("Coloso de Cristal", 66f, 74f, intArrayOf(P_SLAM, P_BEAM, P_ORBS, P_WAVE)),
+        Boss("Señor del Ocaso", 44f, 64f, intArrayOf(P_TELE, P_FAN, P_RAIN, P_SPIRAL)),
+        Boss("Devorador Galáctico", 60f, 60f, intArrayOf(P_ORBS, P_CHARGE, P_SUMMON, P_METEOR)),
+        Boss("Titán de Lava", 70f, 78f, intArrayOf(P_SLAM, P_FAN, P_RAIN, P_METEOR, P_WAVE)),
+        Boss("Ent Ancestral", 64f, 84f, intArrayOf(P_SUMMON, P_SLAM, P_BEAM, P_WAVE)),
+        Boss("Emperatriz de Hielo", 44f, 66f, intArrayOf(P_BEAM, P_RAIN, P_TELE, P_SPIRAL)),
+        Boss("Oráculo Cósmico", 50f, 64f, intArrayOf(P_ORBS, P_TELE, P_BEAM, P_SPIRAL, P_METEOR)),
+        Boss("El Espectro", 58f, 78f, intArrayOf(P_CHARGE, P_SLAM, P_ORBS, P_BEAM, P_TELE, P_RAIN, P_SPIRAL, P_METEOR, P_WAVE))
     )
 
+    const val finalText = "Los doce mundos recuperaron sus colores. La Esfera, por fin completa, vuelve a girar en el centro del Prisma y un nuevo ciclo de luz comienza."
     val worldIntro = arrayOf(
         "El Prisma se apagó. Sus colores huyeron del cielo y un guardián ocupa su corazón.",
         "En la Aurora ya no brillan las luces del norte. Una reina de hielo y viento las encadenó.",
@@ -109,11 +120,15 @@ class AdvEnemy(val type: Int, var x: Float, var y: Float, val x0: Float, val x1:
     var flash = 0f
     var baseY = y
     var dead = false
+    var floor = y
+    var aggro = false
 }
 class AdvProj(var x: Float, var y: Float, var vx: Float, var vy: Float, val kind: Int, val dmg: Int, val mine: Boolean, val r: Float) {
     var grav = 0f
     var life = 3f
     var pierce = false
+    var armor = false
+    var homing = false
     var t = 0f
     val hit = HashSet<Any>()
 }
@@ -121,7 +136,45 @@ class AdvProj(var x: Float, var y: Float, var vx: Float, var vy: Float, val kind
 class AdvHaz(var x0: Float, var y0: Float, var x1: Float, var y1: Float, var vx: Float, var warn: Float, var life: Float, val dmg: Int, val mine: Boolean, val kind: Int) {
     var tick = 0f
 }
-class AdvEv(val t: Int, val x: Float, val y: Float)
+class AdvEv(val t: Int, val x: Float, val y: Float, val n: Int = 0)
+
+/** Plataforma móvil: su centro va de (x0,y0) a (x1,y1). */
+class AdvMover(val x0: Float, val x1: Float, val y0: Float, val y1: Float, val w: Float, val speed: Float, val phase: Float) {
+    var x = x0
+    var y = y0
+    var dx = 0f
+    var dy = 0f
+    val vertical: Boolean get() = abs(y1 - y0) > abs(x1 - x0)
+}
+/** Plataforma que se rompe poco después de pisarla. st: 0 sólida, 1 temblando, 2 caída. */
+class AdvCrumble(val x0: Float, val x1: Float, val y: Float) {
+    var st = 0
+    var t = 0f
+}
+/** Chorro de fuego periódico. */
+class AdvJet(val x: Float, val y: Float, val period: Float, val phase: Float) {
+    var warn = false
+    var on = false
+}
+/** Cuchilla colgante que oscila. */
+class AdvPend(val cx: Float, val cy: Float, val len: Float, val speed: Float, val phase: Float) {
+    var bx = cx
+    var by = cy + len
+}
+/** Roca que cae al acercarse. st: 0 espera, 1 temblando, 2 cayendo, 3 rota. */
+class AdvRock(val x: Float, val y0: Float) {
+    var st = 0
+    var y = y0
+    var vy = 0f
+    var t = 0f
+}
+/** Emboscada: la puerta se cierra y llegan oleadas. st: 0 espera, 1 activa, 2 vencida. */
+class AdvAmbush(val x0: Float, val x1: Float) {
+    var st = 0
+    var t = 0f
+    var wave = 0
+    val mine = ArrayList<AdvEnemy>()
+}
 class AdvInput {
     var left = false
     var right = false
@@ -151,6 +204,14 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val EV_WIN = 15
         const val EV_DIE = 16
         const val EV_STUN = 17
+        const val EV_BLOCK = 18
+        const val EV_JUMP2 = 19
+        const val EV_CRUMBLE = 20
+        const val EV_ROCK = 21
+        const val EV_AMBUSH = 22
+        const val EV_CLEAR = 23
+        const val EV_BOLT = 24
+        const val EV_POTION = 25
 
         const val IT_HEART = 0
         const val IT_BIG = 1
@@ -158,6 +219,8 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val IT_SUB = 3
         const val IT_WHIP = 4
         const val IT_ORB = 5
+        const val IT_BOOTS = 6
+        const val IT_POTION = 7
 
         // enemigos
         const val E_WALKER = 0
@@ -166,6 +229,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val E_HOPPER = 3
         const val E_TURRET = 4
         const val E_CHARGER = 5
+        const val E_MEDUSA = 6
+        const val E_KNIGHT = 7
+        const val E_GHOST = 8
+        const val E_SPIDER = 9
 
         const val BS_INTRO = 0
         const val BS_WALK = 1
@@ -174,7 +241,21 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val BS_STUN = 4
         const val BS_DEAD = 5
 
-        private val ehp = intArrayOf(2, 1, 3, 2, 3, 4)
+        private val ehp = intArrayOf(2, 1, 3, 2, 3, 4, 1, 5, 2, 2)
+
+        // tipos de tramo
+        private const val S_FLAT = 0
+        private const val S_PIT = 1
+        private const val S_PLATS = 2
+        private const val S_SPIKES = 3
+        private const val S_TRIAL = 4
+        private const val S_MOVER = 5
+        private const val S_CRUMBLE = 6
+        private const val S_JETS = 7
+        private const val S_PEND = 8
+        private const val S_ROCKS = 9
+        private const val S_AMBUSH = 10
+        private const val S_VMOVER = 11
     }
 
     val rnd = Random(world * 7919L + 31L)
@@ -187,8 +268,15 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     val projs = ArrayList<AdvProj>()
     val hazs = ArrayList<AdvHaz>()
     val events = ArrayList<AdvEv>()
+    val movers = ArrayList<AdvMover>()
+    val crumbles = ArrayList<AdvCrumble>()
+    val jets = ArrayList<AdvJet>()
+    val pends = ArrayList<AdvPend>()
+    val rocks = ArrayList<AdvRock>()
+    val ambushes = ArrayList<AdvAmbush>()
     var arenaX = 0f
     var endX = 0f
+    val ice: Boolean get() = world == 9
 
     // jugador
     var px = 40f
@@ -201,6 +289,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var hearts = 5
     var sub = 0
     var whip = 0
+    var boots = false
+    var jumpsLeft = 0
+    var potionT = 0f
+    var bibleT = 0f
     var invuln = 0f
     var hitstun = 0f
     var atkT = 0f
@@ -215,8 +307,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var freezeT = 0f
     var time = 0f
     var camX = 0f
+    var hitStop = 0f
+    var riding: AdvMover? = null
+    var kills = 0
     private var acc = 0f
     private val swingHit = HashSet<Any>()
+    private var bibleTick = 0f
     private var lastCheck = 40f
 
     // jefe
@@ -225,8 +321,8 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var bx = 0f
     var bvx = 0f
     var bvy = 0f
-    var bhp = 16 + 4 * world
-    val bmax = 16 + 4 * world
+    val bmax = 18 + 4 * world
+    var bhp = bmax
     var bstate = BS_INTRO
     var bst = 0f
     var bpat = 0
@@ -248,22 +344,36 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     // ------------------------------------------------------------------ construcción del nivel
     private fun ground(x0: Float, x1: Float) { plats.add(AdvPlat(x0, x1, AdvCfg.GROUND)) }
 
-    private fun allowed(): IntArray = when {
-        world == 0 -> intArrayOf(E_WALKER, E_BAT)
-        world == 1 -> intArrayOf(E_WALKER, E_BAT, E_HOPPER)
-        world == 2 -> intArrayOf(E_WALKER, E_BAT, E_THROWER)
-        world == 3 -> intArrayOf(E_WALKER, E_HOPPER, E_TURRET)
-        world == 4 -> intArrayOf(E_BAT, E_THROWER, E_CHARGER)
-        else -> intArrayOf(E_WALKER, E_BAT, E_THROWER, E_HOPPER, E_TURRET, E_CHARGER)
+    private fun allowed(): IntArray = when (world) {
+        0 -> intArrayOf(E_WALKER, E_BAT)
+        1 -> intArrayOf(E_WALKER, E_BAT, E_HOPPER, E_MEDUSA)
+        2 -> intArrayOf(E_WALKER, E_BAT, E_THROWER, E_SPIDER)
+        3 -> intArrayOf(E_WALKER, E_HOPPER, E_TURRET, E_KNIGHT)
+        4 -> intArrayOf(E_BAT, E_THROWER, E_CHARGER, E_MEDUSA)
+        5 -> intArrayOf(E_KNIGHT, E_GHOST, E_BAT, E_THROWER)
+        6 -> intArrayOf(E_GHOST, E_MEDUSA, E_TURRET, E_CHARGER)
+        7 -> intArrayOf(E_KNIGHT, E_CHARGER, E_HOPPER, E_TURRET)
+        8 -> intArrayOf(E_SPIDER, E_WALKER, E_MEDUSA, E_KNIGHT)
+        9 -> intArrayOf(E_GHOST, E_HOPPER, E_THROWER, E_KNIGHT)
+        else -> intArrayOf(E_WALKER, E_BAT, E_THROWER, E_HOPPER, E_TURRET, E_CHARGER, E_MEDUSA, E_KNIGHT, E_GHOST, E_SPIDER)
     }
 
-    private fun addEnemy(type: Int, x: Float, y: Float, x0: Float, x1: Float) {
+    private fun addEnemy(type: Int, x: Float, y: Float, x0: Float, x1: Float): AdvEnemy {
         val hp = ehp[type] + (if (world >= 6) 1 else 0) + (if (world >= 10) 1 else 0)
-        val e = AdvEnemy(type, x, if (type == E_BAT) y - 70f - rnd.nextInt(30) else y, x0, x1, hp)
+        val ey = when (type) {
+            E_BAT -> y - 70f - rnd.nextInt(30)
+            E_MEDUSA -> y - 55f - rnd.nextInt(30)
+            E_GHOST -> y - 40f - rnd.nextInt(20)
+            E_SPIDER -> y - 105f
+            else -> y
+        }
+        val e = AdvEnemy(type, x, ey, x0, x1, hp)
         e.face = if (rnd.nextBoolean()) 1 else -1
         e.baseY = e.y
+        e.floor = y
         e.t = rnd.nextFloat() * 2f
         enemies.add(e)
+        return e
     }
 
     private fun addCandle(x: Float, y: Float) {
@@ -271,17 +381,23 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         var drop = IT_HEART
         var arg = 0
         when {
-            r < 48 -> drop = IT_HEART
-            r < 60 -> drop = IT_BIG
-            r < 72 -> drop = IT_MEAT
-            r < 94 -> { drop = IT_SUB; arg = 1 + rnd.nextInt(5) }
-            else -> drop = IT_WHIP
+            r < 38 -> drop = IT_HEART
+            r < 48 -> drop = IT_BIG
+            r < 58 -> drop = IT_MEAT
+            r < 82 -> { drop = IT_SUB; arg = 1 + rnd.nextInt(AdvCfg.SUBS) }
+            r < 88 -> drop = IT_WHIP
+            r < 93 -> drop = IT_BOOTS
+            else -> drop = IT_POTION
         }
         candles.add(AdvCandle(x, y, drop, arg))
     }
 
-    private fun scatter(x0: Float, x1: Float, y: Float, count: Int) {
-        val al = allowed()
+    private fun scatter(x0: Float, x1: Float, y: Float, count: Int, grounded: Boolean = false) {
+        var al = allowed()
+        if (grounded) {
+            val g = al.filter { it != E_BAT && it != E_MEDUSA && it != E_GHOST && it != E_SPIDER && it != E_TURRET && it != E_THROWER }.toIntArray()
+            al = if (g.isNotEmpty()) g else intArrayOf(E_WALKER)
+        }
         for (i in 0 until count) {
             val t = al[rnd.nextInt(al.size)]
             val m = if (x1 - x0 > 200f) 55f else 22f
@@ -290,25 +406,56 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         }
     }
 
+    private fun pickSeg(cx: Float, target: Float, amb: Int, last: Int): Int {
+        if (amb == 0 && cx > target * 0.5f && world >= 1) return S_AMBUSH
+        if (amb == 1 && cx > target * 0.82f && world >= 5) return S_AMBUSH
+        val w = IntArray(12)
+        w[S_FLAT] = 18; w[S_PIT] = 14; w[S_PLATS] = 14; w[S_TRIAL] = 8
+        if (world >= 2) w[S_SPIKES] = 8
+        if (world >= 1) w[S_MOVER] = 11
+        if (world >= 3) w[S_VMOVER] = 7
+        if (world >= 2) w[S_CRUMBLE] = 10
+        if (world >= 3) w[S_JETS] = 10
+        if (world >= 4) w[S_PEND] = 9
+        if (world >= 5) w[S_ROCKS] = 8
+        // sabor de cada mundo
+        when (world) {
+            7 -> { w[S_JETS] += 12; w[S_CRUMBLE] += 6 }
+            8 -> { w[S_CRUMBLE] += 10; w[S_ROCKS] += 6 }
+            9 -> { w[S_PIT] += 8; w[S_MOVER] += 6 }
+            2 -> { w[S_PIT] += 6; w[S_MOVER] += 6 }
+            4 -> { w[S_SPIKES] += 8; w[S_PEND] += 4 }
+            11 -> { for (i in 5..9) w[i] += 4 }
+        }
+        if (last in 5..9) { w[last] = 0 } // no repetir dos obstáculos grandes seguidos
+        if (last == S_AMBUSH) { w[S_AMBUSH] = 0 }
+        var tot = 0
+        for (v in w) tot += v
+        var r = rnd.nextInt(max(1, tot))
+        for (i in w.indices) { if (r < w[i]) return i; r -= w[i] }
+        return S_FLAT
+    }
+
     private fun build() {
         val diff = world / 11f
         ground(0f, 360f)
         checks.add(40f)
         var cx = 360f
-        val target = 2600f + world * 140f
+        val target = 3700f + world * 180f
         var lastCk = 0f
-        var wins = 0
+        var amb = 0
+        var last = -1
         while (cx < target) {
-            val k = rnd.nextInt(100)
-            when {
-                k < 28 -> { // tramo llano con enemigos
+            val k = pickSeg(cx, target, amb, last)
+            when (k) {
+                S_FLAT -> {
                     val len = 260f + rnd.nextInt(180)
                     ground(cx, cx + len)
                     scatter(cx, cx + len, AdvCfg.GROUND, 1 + (diff * 2f).toInt() + rnd.nextInt(2))
                     if (rnd.nextInt(3) == 0) addCandle(cx + 60f + rnd.nextInt(max(1, len.toInt() - 120)), AdvCfg.GROUND)
                     cx += len
                 }
-                k < 52 -> { // foso con plataforma flotante opcional
+                S_PIT -> {
                     val gap = 55f + rnd.nextInt(30) + 10f * diff
                     if (rnd.nextBoolean()) {
                         val pw = 46f
@@ -320,7 +467,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
                     cx += len
                 }
-                k < 76 -> { // zona de plataformas
+                S_PLATS -> {
                     val len = 380f
                     ground(cx, cx + len)
                     var px0 = cx + 40f
@@ -337,7 +484,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
                     cx += len
                 }
-                k < 88 && world >= 2 -> { // pinchos
+                S_SPIKES -> {
                     val len = 320f
                     ground(cx, cx + len)
                     val sw = 40f + rnd.nextInt(30)
@@ -346,15 +493,82 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     scatter(cx, cx + len, AdvCfg.GROUND, 1)
                     cx += len
                 }
-                else -> { // prueba de enemigos
+                S_TRIAL -> {
                     val len = 330f
                     ground(cx, cx + len)
                     scatter(cx, cx + len, AdvCfg.GROUND, 2 + (diff * 2f).toInt())
                     addCandle(cx + len / 2f, AdvCfg.GROUND)
                     cx += len
                 }
+                S_MOVER -> {
+                    val g = 200f + rnd.nextInt(30)
+                    movers.add(AdvMover(cx + 34f, cx + g - 34f, AdvCfg.GROUND, AdvCfg.GROUND, 56f, 0.9f + 0.1f * rnd.nextInt(3), rnd.nextFloat() * 6f))
+                    if (world >= 4 && rnd.nextBoolean()) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
+                    cx += g
+                    val len = 240f
+                    ground(cx, cx + len)
+                    scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
+                    addCandle(cx + 120f, AdvCfg.GROUND)
+                    cx += len
+                }
+                S_VMOVER -> {
+                    val g = 110f
+                    val hh = 90f
+                    movers.add(AdvMover(cx + g / 2f, cx + g / 2f, AdvCfg.GROUND, AdvCfg.GROUND - hh, 78f, 0.7f, 0f))
+                    cx += g
+                    val len = 200f
+                    plats.add(AdvPlat(cx, cx + len, AdvCfg.GROUND - hh)) // cornisa alta
+                    addCandle(cx + len / 2f, AdvCfg.GROUND - hh)
+                    scatter(cx, cx + len, AdvCfg.GROUND - hh, 1, true)
+                    cx += len
+                    ground(cx, cx + 240f)
+                    scatter(cx, cx + 240f, AdvCfg.GROUND, 1, true)
+                    cx += 240f
+                }
+                S_CRUMBLE -> {
+                    val n = 4 + rnd.nextInt(2)
+                    val g = n * 54f + 8f
+                    for (i in 0 until n) crumbles.add(AdvCrumble(cx + 8f + i * 54f, cx + 8f + i * 54f + 46f, AdvCfg.GROUND))
+                    if (world >= 4) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
+                    cx += g
+                    val len = 240f
+                    ground(cx, cx + len)
+                    scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
+                    cx += len
+                }
+                S_JETS -> {
+                    val len = 480f
+                    ground(cx, cx + len)
+                    for (i in 0 until 3) jets.add(AdvJet(cx + 130f + i * 120f, AdvCfg.GROUND, 2.7f, rnd.nextFloat() * 2.7f))
+                    addCandle(cx + 40f, AdvCfg.GROUND)
+                    cx += len
+                }
+                S_PEND -> {
+                    val len = 480f
+                    ground(cx, cx + len)
+                    for (i in 0 until 2) pends.add(AdvPend(cx + 170f + i * 160f, AdvCfg.GROUND - 170f, 150f, 1.4f, rnd.nextFloat() * 6f))
+                    addCandle(cx + 40f, AdvCfg.GROUND)
+                    cx += len
+                }
+                S_ROCKS -> {
+                    val len = 460f
+                    ground(cx, cx + len)
+                    for (i in 0 until 2) rocks.add(AdvRock(cx + 170f + i * 130f, AdvCfg.GROUND - 220f))
+                    addCandle(cx + 40f, AdvCfg.GROUND)
+                    scatter(cx, cx + 100f, AdvCfg.GROUND, 0)
+                    cx += len
+                }
+                else -> { // S_AMBUSH
+                    val len = viewW + 60f
+                    ground(cx, cx + len)
+                    ambushes.add(AdvAmbush(cx, cx + viewW))
+                    checks.add(cx + 30f)
+                    amb++
+                    cx += len
+                }
             }
-            if (cx - lastCk > 1000f) { checks.add(cx - 120f); lastCk = cx; wins++ }
+            last = k
+            if (cx - lastCk > 1000f) { checks.add(cx - 120f); lastCk = cx }
         }
         // entrada a la arena del jefe
         ground(cx, cx + 140f)
@@ -363,7 +577,6 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         ground(arenaX, arenaX + viewW + 80f)
         endX = arenaX + viewW
         bx = arenaX + viewW * 0.78f
-        // quita enemigos pegados al inicio
         enemies.removeAll { it.x < 220f }
         px = 40f
         py = AdvCfg.GROUND
@@ -371,7 +584,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     // ------------------------------------------------------------------ utilidades
-    private fun ev(t: Int, x: Float, y: Float) { events.add(AdvEv(t, x, y)) }
+    private fun ev(t: Int, x: Float, y: Float, n: Int = 0) { events.add(AdvEv(t, x, y, n)) }
 
     fun groundBelow(x: Float, y: Float): Float {
         var best = AdvCfg.H + 400f
@@ -387,11 +600,13 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (!god) hp -= dmg
         invuln = 1.3f
         hitstun = 0.28f
+        hitStop = 0.07f
         pvx = if (px >= fromX) 170f else -170f
         pvy = -230f
         onGround = false
+        riding = null
         atkT = 0f
-        ev(EV_HURT, px, py - 15f)
+        ev(EV_HURT, px, py - 15f, dmg)
         if (hp <= 0) { hp = 0; die() }
     }
 
@@ -400,6 +615,8 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         deaths++
         ev(EV_DIE, px, py - 15f)
     }
+
+    private fun lastAmbushActive(): AdvAmbush? { for (a in ambushes) if (a.st == 1) return a; return null }
 
     private fun respawn() {
         hp = AdvCfg.MAXHP
@@ -410,11 +627,20 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         invuln = 1.5f
         hitstun = 0f
         deadT = 0f
+        riding = null
+        bibleT = 0f
         projs.removeAll { !it.mine }
         hazs.removeAll { !it.mine }
+        // una emboscada a medias se reinicia
+        for (a in ambushes) if (a.st == 1) {
+            for (e in a.mine) e.dead = true
+            a.mine.clear()
+            a.st = 0
+            a.wave = 0
+            a.t = 0f
+        }
         if (bossStarted && bstate != BS_DEAD) resetBoss()
-        if (bstate == BS_DEAD) { /* el jefe ya cayó: se queda así */ }
-        for (e in enemies) if (e.type != E_BAT && abs(e.x - px) < 100f) e.x += 130f
+        for (e in enemies) if (e.type != E_BAT && e.type != E_MEDUSA && abs(e.x - px) < 100f) e.x += 130f
     }
 
     private fun resetBoss() {
@@ -444,8 +670,17 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (n == 12) acc = 0f
     }
 
-    private fun lockedMin() = if (bossStarted) arenaX + AdvCfg.PHALF + 2f else AdvCfg.PHALF
-    private fun lockedMax() = if (bossStarted) arenaX + viewW - AdvCfg.PHALF - 2f else endX + 200f
+    private fun lockedMin(): Float {
+        val a = lastAmbushActive()
+        if (a != null) return a.x0 + AdvCfg.PHALF + 2f
+        return if (bossStarted) arenaX + AdvCfg.PHALF + 2f else AdvCfg.PHALF
+    }
+
+    private fun lockedMax(): Float {
+        val a = lastAmbushActive()
+        if (a != null) return a.x1 - AdvCfg.PHALF - 2f
+        return if (bossStarted) arenaX + viewW - AdvCfg.PHALF - 2f else endX + 200f
+    }
 
     private fun tick(dt: Float, inp: AdvInput) {
         time += dt
@@ -456,8 +691,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             updateCam(dt)
             return
         }
+        if (hitStop > 0f) { hitStop -= dt; return }
         if (freezeT > 0f) freezeT -= dt
+        updateMovers(dt)
         updatePlayer(dt, inp)
+        updateTraps(dt)
+        updateAmbush(dt)
         updateCandlesItems(dt)
         updateEnemies(dt)
         updateProjs(dt)
@@ -467,15 +706,148 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     private fun updateCam(dt: Float) {
-        val target = if (bossStarted) arenaX else (px - viewW * 0.38f + face * 30f)
+        val a = lastAmbushActive()
+        val target = if (bossStarted) arenaX else if (a != null) a.x0 else (px - viewW * 0.38f + face * 30f)
         val maxCam = max(0f, endX - viewW)
         val t = target.coerceIn(0f, maxCam)
         camX += (t - camX) * min(1f, dt * 6f)
         camX = camX.coerceIn(0f, maxCam)
     }
 
+    // ------------------------------------------------------------------ plataformas
+    private fun updateMovers(dt: Float) {
+        for (m in movers) {
+            val u = 0.5f + 0.5f * sin(time * m.speed + m.phase)
+            val nx = m.x0 + (m.x1 - m.x0) * u
+            val ny = m.y0 + (m.y1 - m.y0) * u
+            m.dx = nx - m.x
+            m.dy = ny - m.y
+            m.x = nx
+            m.y = ny
+        }
+        val r = riding
+        if (r != null && onGround) {
+            if (abs(px - r.x) <= r.w / 2f + AdvCfg.PHALF - 2f) { px += r.dx; py = r.y } else riding = null
+        } else if (r != null) riding = null
+    }
+
+    private fun updateTraps(dt: Float) {
+        // plataformas que se rompen
+        for (c in crumbles) {
+            when (c.st) {
+                1 -> { c.t -= dt; if (c.t <= 0f) { c.st = 2; c.t = 2.8f } }
+                2 -> { c.t -= dt; if (c.t <= 0f) { c.st = 0 } }
+            }
+        }
+        // chorros de fuego
+        for (j in jets) {
+            val per = j.period
+            val cyc = (time + j.phase) % per
+            j.warn = cyc >= per - 1.5f && cyc < per - 0.8f
+            j.on = cyc >= per - 0.8f
+            if (j.on && invuln <= 0f && deadT <= 0f &&
+                overlap(px - 8f, py - 29f, px + 8f, py - 1f, j.x - 9f, j.y - 74f, j.x + 9f, j.y)) playerHurt(2, j.x)
+        }
+        // péndulos
+        for (p in pends) {
+            val ang = 0.95f * sin(time * p.speed + p.phase)
+            p.bx = p.cx + sin(ang) * p.len
+            p.by = p.cy + cos(ang) * p.len
+            if (invuln <= 0f && deadT <= 0f) {
+                val dx = max(abs(p.bx - px) - 8f, 0f)
+                val dy = max(abs(p.by - (py - 15f)) - 14f, 0f)
+                if (dx * dx + dy * dy < 11f * 11f) playerHurt(2, p.bx)
+            }
+        }
+        // rocas
+        for (r in rocks) {
+            when (r.st) {
+                0 -> if (abs(px - r.x) < 95f && abs(py - AdvCfg.GROUND) < 40f) { r.st = 1; r.t = 0.5f }
+                1 -> { r.t -= dt; if (r.t <= 0f) { r.st = 2; r.vy = 0f } }
+                2 -> {
+                    r.vy += 1100f * dt
+                    r.y += r.vy * dt
+                    if (invuln <= 0f && deadT <= 0f &&
+                        overlap(px - 8f, py - 29f, px + 8f, py - 1f, r.x - 11f, r.y - 22f, r.x + 11f, r.y)) { playerHurt(3, r.x) }
+                    if (r.y >= AdvCfg.GROUND) {
+                        r.y = AdvCfg.GROUND
+                        r.st = 3
+                        r.t = 4f
+                        shake = max(shake, 4f)
+                        ev(EV_ROCK, r.x, AdvCfg.GROUND)
+                    }
+                }
+                3 -> { r.t -= dt; if (r.t <= 0f && abs(px - r.x) > 300f) { r.st = 0; r.y = r.y0 } }
+            }
+        }
+    }
+
+    private fun updateAmbush(dt: Float) {
+        for (a in ambushes) {
+            if (a.st == 0 && px >= a.x0 + 70f && px < a.x1 - 10f && deadT <= 0f) {
+                a.st = 1
+                a.wave = 0
+                ev(EV_AMBUSH, a.x0 + viewW / 2f, AdvCfg.GROUND)
+                spawnWave(a, 2 + (world / 5))
+            } else if (a.st == 1) {
+                a.t += dt
+                if (a.t > 50f) for (e in a.mine) if (!e.dead) { e.dead = true; ev(EV_EDIE, e.x, e.y - 10f) } // seguro contra bloqueos
+                a.mine.removeAll { it.dead }
+                if (a.wave == 1 && a.mine.size <= 1) { a.wave = 2; spawnWave(a, 3 + (world / 3)) }
+                else if (a.wave >= 2 && a.mine.isEmpty()) {
+                    a.st = 2
+                    ev(EV_CLEAR, px, py - 20f)
+                    items.add(AdvItem((a.x0 + a.x1) / 2f, AdvCfg.GROUND - 60f, IT_BIG, 0))
+                    items.add(AdvItem((a.x0 + a.x1) / 2f + 24f, AdvCfg.GROUND - 60f, if (rnd.nextBoolean()) IT_SUB else IT_MEAT, 1 + rnd.nextInt(AdvCfg.SUBS)))
+                }
+            }
+        }
+    }
+
+    private fun spawnWave(a: AdvAmbush, n: Int) {
+        a.wave++
+        val al = allowed().filter { it != E_SPIDER }.toIntArray()
+        for (i in 0 until n) {
+            val t = al[rnd.nextInt(al.size)]
+            var x = a.x0 + 60f + rnd.nextFloat() * (viewW - 120f)
+            if (abs(x - px) < 140f) x = if (px < a.x0 + viewW / 2f) a.x1 - 40f - rnd.nextFloat() * 80f else a.x0 + 40f + rnd.nextFloat() * 80f
+            val e = addEnemy(t, x, AdvCfg.GROUND, a.x0 + 10f, a.x1 - 10f)
+            e.aggro = true
+            a.mine.add(e)
+            ev(EV_POTION, e.x, e.y - 10f, 1) // chispa de aparición
+        }
+    }
+
+    /** y de la superficie sobre la que podría aterrizar el jugador, o NaN. */
+    private fun landing(prev: Float, now: Float): Float {
+        val x0 = px - AdvCfg.PHALF
+        val x1 = px + AdvCfg.PHALF
+        var best = Float.NaN
+        for (p in plats) {
+            if (x1 > p.x0 && x0 < p.x1 && prev <= p.y + 1f && now >= p.y && (best.isNaN() || p.y < best)) best = p.y
+        }
+        riding = null
+        for (m in movers) {
+            if (x1 > m.x - m.w / 2f && x0 < m.x + m.w / 2f && prev <= m.y + 10f && now >= m.y && (best.isNaN() || m.y <= best)) {
+                best = m.y
+                riding = m
+            }
+        }
+        for (c in crumbles) {
+            if (c.st == 2) continue
+            if (x1 > c.x0 && x0 < c.x1 && prev <= c.y + 1f && now >= c.y && (best.isNaN() || c.y <= best)) {
+                best = c.y
+                riding = null
+                if (c.st == 0) { c.st = 1; c.t = 0.5f; ev(EV_CRUMBLE, (c.x0 + c.x1) / 2f, c.y) }
+            }
+        }
+        return best
+    }
+
+    // ------------------------------------------------------------------ jugador
     private fun updatePlayer(dt: Float, inp: AdvInput) {
         invuln = max(0f, invuln - dt)
+        if (potionT > 0f) { potionT -= dt; invuln = max(invuln, 0.12f) }
         hitstun = max(0f, hitstun - dt)
         atkCd = max(0f, atkCd - dt)
         spCd = max(0f, spCd - dt)
@@ -484,19 +856,27 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (control) {
             if (dir != 0) face = dir
             val tv = dir * AdvCfg.RUN * (if (atkT > 0f && onGround) 0.55f else 1f)
-            pvx += (tv - pvx) * min(1f, dt * (if (onGround) 22f else 12f))
+            val k = if (onGround) (if (ice) 9f else 22f) else 12f
+            pvx += (tv - pvx) * min(1f, dt * k)
         } else {
             pvx *= (1f - min(1f, dt * 2f))
         }
-        if (onGround) coyote = 0.1f else coyote -= dt
+        if (onGround) { coyote = 0.1f; jumpsLeft = if (boots) 1 else 0 } else coyote -= dt
         if (inp.jumpPressed) jumpBuf = 0.12f else jumpBuf -= dt
         if (control && jumpBuf > 0f && coyote > 0f) {
             pvy = -AdvCfg.JUMP_V
             coyote = 0f
             jumpBuf = 0f
             onGround = false
+            riding = null
             jumping = true
             ev(EV_JUMP, px, py)
+        } else if (control && jumpBuf > 0f && !onGround && boots && jumpsLeft > 0) {
+            pvy = -AdvCfg.JUMP_V * 0.9f
+            jumpsLeft--
+            jumpBuf = 0f
+            jumping = true
+            ev(EV_JUMP2, px, py - 10f)
         }
         if (jumping && !inp.jumpHeld && pvy < -190f) { pvy = -190f; jumping = false }
         if (pvy >= 0f) jumping = false
@@ -506,39 +886,30 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         py += pvy * dt
         var landed = false
         if (pvy >= 0f) {
-            for (p in plats) {
-                if (px + AdvCfg.PHALF > p.x0 && px - AdvCfg.PHALF < p.x1 && prev <= p.y + 1f && py >= p.y) {
-                    py = p.y
-                    landed = true
-                    break
-                }
-            }
+            val y = landing(prev, py)
+            if (!y.isNaN()) { py = y; landed = true }
         }
         if (landed) {
             if (!onGround) ev(EV_LAND, px, py)
             pvy = 0f
             onGround = true
-        } else onGround = false
-        if (py > AdvCfg.H + 40f) { // se cayó
+        } else { onGround = false; riding = null }
+        if (py > AdvCfg.H + 40f) {
             hp = max(0, hp - 3)
             if (god) hp = AdvCfg.MAXHP
             die()
             return
         }
-        // pinchos
         if (onGround && invuln <= 0f) {
             for (s in spikes) if (px + 6f > s[0] && px - 6f < s[1] && py >= AdvCfg.GROUND - 2f) playerHurt(2, (s[0] + s[1]) / 2f)
         }
-        // checkpoints
         for (c in checks) if (c > lastCheck && px >= c && !bossStarted) { lastCheck = c; ev(EV_CHECK, c, AdvCfg.GROUND) }
-        // arena
         if (!bossStarted && px > arenaX + 60f && bstate != BS_DEAD) {
             bossStarted = true
             bstate = BS_INTRO
             bst = 1.6f
             ev(EV_BOSSWARN, bx, AdvCfg.GROUND)
         }
-        // ataque normal (látigo de luz)
         if (control && inp.atkPressed && atkCd <= 0f) {
             atkT = 0.34f
             atkCd = 0.36f
@@ -549,8 +920,8 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             atkT -= dt
             if (atkT in 0.12f..0.27f) whipHit()
         }
-        // ataque especial
         if (control && inp.spPressed) useSub()
+        if (bibleT > 0f) updateBible(dt)
     }
 
     val whipReach: Float get() = 60f + 18f * whip
@@ -567,7 +938,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             if (e.dead || swingHit.contains(e)) continue
             if (overlap(w[0], w[1], w[2], w[3], e.x - ew(e) / 2f, e.y - eh(e), e.x + ew(e) / 2f, e.y)) {
                 swingHit.add(e)
-                hurtEnemy(e, whipDmg)
+                hurtEnemy(e, whipDmg, px, whip >= 2)
             }
         }
         for (c in candles) {
@@ -593,34 +964,81 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         val y = py - 18f
         when (sub) {
             AdvCfg.SUB_DAGGER -> { projs.add(AdvProj(x, y, 430f * face, 0f, 1, 2, true, 6f).also { it.life = 1.2f }); spCd = 0.3f }
-            AdvCfg.SUB_AXE -> { projs.add(AdvProj(x, y - 6f, 140f * face, -440f, 2, 3, true, 9f).also { it.grav = 1100f; it.pierce = true; it.life = 2.5f }); spCd = 0.55f }
+            AdvCfg.SUB_AXE -> { projs.add(AdvProj(x, y - 6f, 140f * face, -440f, 2, 3, true, 9f).also { it.grav = 1100f; it.pierce = true; it.armor = true; it.life = 2.5f }); spCd = 0.55f }
             AdvCfg.SUB_CROSS -> {
                 if (projs.any { it.mine && it.kind == 3 }) return
-                projs.add(AdvProj(x, y, 270f * face, 0f, 3, 2, true, 8f).also { it.pierce = true; it.life = 2.4f })
+                projs.add(AdvProj(x, y, 270f * face, 0f, 3, 2, true, 8f).also { it.pierce = true; it.armor = true; it.life = 2.4f })
                 spCd = 0.7f
             }
             AdvCfg.SUB_WATER -> { projs.add(AdvProj(x, y - 4f, 120f * face, -230f, 4, 0, true, 6f).also { it.grav = 900f; it.life = 3f }); spCd = 0.8f }
             AdvCfg.SUB_WATCH -> { freezeT = 2.6f; spCd = 1f }
+            AdvCfg.SUB_BIBLE -> { if (bibleT > 0f) return; bibleT = 4.5f; bibleTick = 0f; spCd = 0.5f }
+            AdvCfg.SUB_STAR -> {
+                for (i in -1..1) projs.add(AdvProj(x, y, 400f * face * cos(i * 0.2f), 400f * sin(i * 0.2f), 6, 1, true, 5f).also { it.life = 0.9f })
+                spCd = 0.4f
+            }
+            AdvCfg.SUB_BOLT -> {
+                val targets = ArrayList<Float>()
+                for (e in enemies) if (!e.dead && e.x > camX && e.x < camX + viewW && targets.size < 3) targets.add(e.x)
+                if (bossStarted && bstate != BS_DEAD && bstate != BS_INTRO && targets.size < 3) targets.add(bx)
+                var k = 1
+                while (targets.size < 3) { targets.add(px + face * 70f * k); k++ }
+                for ((i, tx) in targets.withIndex()) hazs.add(AdvHaz(tx - 11f, 0f, tx + 11f, AdvCfg.GROUND, 0f, 0.25f + 0.1f * i, 0.18f, 3, true, 1))
+                spCd = 1.0f
+                ev(EV_BOLT, px, py - 18f)
+            }
+            AdvCfg.SUB_ORB -> {
+                for (i in 0 until 2) projs.add(AdvProj(x, y, 90f * face, -100f + i * 200f, 5, 2, true, 6f).also { it.homing = true; it.armor = true; it.life = 2.6f })
+                spCd = 0.6f
+            }
         }
         hearts -= cost
         ev(EV_SPECIAL, px, py - 18f)
     }
 
-    // ------------------------------------------------------------------ daños
-    fun ew(e: AdvEnemy) = when (e.type) { E_BAT -> 18f; E_TURRET -> 22f; E_CHARGER -> 28f; else -> 22f }
-    fun eh(e: AdvEnemy) = when (e.type) { E_BAT -> 14f; E_TURRET -> 24f; E_CHARGER -> 26f; else -> 28f }
+    private fun updateBible(dt: Float) {
+        bibleT -= dt
+        bibleTick -= dt
+        val cx = px
+        val cy = py - 15f
+        val ang0 = time * 6.5f
+        val tickNow = bibleTick <= 0f
+        if (tickNow) bibleTick = 0.3f
+        for (k in 0 until 4) {
+            val a = ang0 + k * 1.5708f
+            val bx0 = cx + cos(a) * 36f
+            val by0 = cy + sin(a) * 28f
+            if (tickNow) {
+                for (e in enemies) if (!e.dead && abs(e.x - bx0) < ew(e) / 2f + 8f && abs(e.y - eh(e) / 2f - by0) < eh(e) / 2f + 8f) hurtEnemy(e, 1, e.x, true)
+                if (bossStarted && bstate != BS_DEAD && bstate != BS_INTRO && abs(bx - bx0) < bdef.w / 2f + 8f && abs(AdvCfg.GROUND - bdef.h / 2f - by0) < bdef.h / 2f + 8f) hurtBoss(1)
+            }
+            projs.removeAll { !it.mine && abs(it.x - bx0) < 11f && abs(it.y - by0) < 11f }
+        }
+    }
 
-    private fun hurtEnemy(e: AdvEnemy, dmg: Int) {
+    // ------------------------------------------------------------------ daños
+    fun ew(e: AdvEnemy) = when (e.type) { E_BAT -> 18f; E_TURRET -> 22f; E_CHARGER -> 28f; E_MEDUSA -> 18f; E_KNIGHT -> 26f; E_GHOST -> 22f; E_SPIDER -> 18f; else -> 22f }
+    fun eh(e: AdvEnemy) = when (e.type) { E_BAT -> 14f; E_TURRET -> 24f; E_CHARGER -> 26f; E_MEDUSA -> 16f; E_KNIGHT -> 38f; E_GHOST -> 26f; E_SPIDER -> 14f; else -> 28f }
+
+    private fun hurtEnemy(e: AdvEnemy, dmg: Int, srcX: Float, armor: Boolean) {
         if (e.dead) return
+        if (e.type == E_KNIGHT && !armor && (srcX - e.x) * e.face > 0f) {
+            e.flash = 0.05f
+            ev(EV_BLOCK, e.x + e.face * 12f, e.y - 22f)
+            return
+        }
         e.hp -= dmg
         e.flash = 0.15f
-        ev(EV_HIT, e.x, e.y - eh(e) / 2f)
+        ev(EV_HIT, e.x, e.y - eh(e) / 2f, dmg)
         if (e.hp <= 0) {
             e.dead = true
+            kills++
+            hitStop = max(hitStop, 0.03f)
             ev(EV_EDIE, e.x, e.y - eh(e) / 2f)
             val r = rnd.nextInt(100)
-            if (r < 32) items.add(AdvItem(e.x, e.y - 12f, IT_HEART, 0))
-            else if (r < 38) items.add(AdvItem(e.x, e.y - 12f, IT_BIG, 0))
+            if (r < 30) items.add(AdvItem(e.x, e.y - 12f, IT_HEART, 0))
+            else if (r < 36) items.add(AdvItem(e.x, e.y - 12f, IT_BIG, 0))
+            else if (r < 39 && e.type == E_KNIGHT) items.add(AdvItem(e.x, e.y - 12f, IT_MEAT, 0))
         }
     }
 
@@ -634,13 +1052,15 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (bstate == BS_DEAD || bstate == BS_INTRO) return
         bhp -= dmg
         bflash = 0.12f
-        ev(EV_BOSSHIT, bx, AdvCfg.GROUND - bdef.h / 2f)
+        hitStop = max(hitStop, 0.045f)
+        ev(EV_BOSSHIT, bx, AdvCfg.GROUND - bdef.h / 2f, dmg)
         bacc += dmg
         if (bhp <= 0) {
             bhp = 0
             bstate = BS_DEAD
             bst = 2f
             clearPending = true
+            hitStop = 0.15f
             ev(EV_BOSSDIE, bx, AdvCfg.GROUND - bdef.h / 2f)
             return
         }
@@ -663,16 +1083,19 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             i.vy = min(500f, i.vy + 900f * dt)
             i.y += i.vy * dt
             if (i.y >= gy - 6f) { i.y = gy - 6f; i.vy = 0f }
+            if (i.y > AdvCfg.H + 60f) { it.remove(); continue }
             if (overlap(px - 11f, py - 32f, px + 11f, py, i.x - 8f, i.y - 8f, i.x + 8f, i.y + 8f)) {
                 when (i.kind) {
                     IT_HEART -> hearts = min(AdvCfg.MAXHEARTS, hearts + 1)
                     IT_BIG -> hearts = min(AdvCfg.MAXHEARTS, hearts + 5)
                     IT_MEAT -> hp = min(AdvCfg.MAXHP, hp + 4)
-                    IT_SUB -> sub = i.arg
+                    IT_SUB -> sub = i.arg.coerceIn(1, AdvCfg.SUBS)
                     IT_WHIP -> whip = min(2, whip + 1)
+                    IT_BOOTS -> boots = true
+                    IT_POTION -> potionT = 9f
                     IT_ORB -> { hp = AdvCfg.MAXHP; won = true; ev(EV_WIN, px, py - 20f) }
                 }
-                ev(EV_PICK, i.x, i.y)
+                ev(EV_PICK, i.x, i.y, i.kind)
                 it.remove()
             }
         }
@@ -688,9 +1111,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             e.flash = max(0f, e.flash - dt)
             if (abs(e.x - px) > 700f) continue
             if (!frozen) enemyAi(e, dt)
-            if (!e.dead && invuln <= 0f && deadT <= 0f &&
+            if (e.dead) continue
+            if (invuln <= 0f && deadT <= 0f &&
                 overlap(px - 9f, py - 29f, px + 9f, py - 1f, e.x - ew(e) / 2f, e.y - eh(e), e.x + ew(e) / 2f, e.y)) {
-                playerHurt(if (e.type == E_BAT) 1 else 2, e.x)
+                playerHurt(if (e.type == E_BAT || e.type == E_MEDUSA) 1 else 2, e.x)
             }
         }
     }
@@ -703,10 +1127,55 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 if (e.x < e.x0 + 10f) e.face = 1
                 if (e.x > e.x1 - 10f) e.face = -1
             }
+            E_KNIGHT -> {
+                if (abs(px - e.x) < 170f && abs(py - e.y) < 50f) {
+                    e.face = toP
+                    if (abs(px - e.x) > 46f) e.x += e.face * 30f * dt
+                } else {
+                    e.x += e.face * 24f * dt
+                    if (e.x < e.x0 + 10f) e.face = 1
+                    if (e.x > e.x1 - 10f) e.face = -1
+                }
+                e.x = e.x.coerceIn(e.x0 + 4f, e.x1 - 4f)
+            }
             E_BAT -> {
                 e.t += dt
                 if (abs(px - e.x) < 300f) { e.x += toP * 62f * dt; e.face = toP }
                 e.y = e.baseY + sin(e.t * 3f) * 26f
+            }
+            E_MEDUSA -> {
+                e.t += dt
+                if (e.st == 0 && abs(px - e.x) < 430f) { e.st = 1; e.face = toP }
+                if (e.st == 1) {
+                    e.x += e.face * 78f * dt
+                    e.y = e.baseY + sin(e.t * 3.4f) * 36f
+                    if (abs(e.x - px) > 520f) e.dead = true
+                }
+            }
+            E_GHOST -> {
+                e.t += dt
+                val behind = e.aggro || (e.x - px) * face < 0f // persigue si el jugador mira hacia otro lado
+                e.st = if (behind) 1 else 0 // 1 = persigue
+                if (e.st == 1 && abs(px - e.x) < 380f) {
+                    e.x += toP * 52f * dt
+                    e.y += ((py - 24f) - e.y).coerceIn(-40f * dt, 40f * dt)
+                } else e.y += (e.baseY + sin(e.t * 2f) * 8f - e.y) * min(1f, dt * 2f)
+                e.face = toP
+            }
+            E_SPIDER -> {
+                when (e.st) {
+                    0 -> if (abs(px - e.x) < 42f && py > e.floor - 10f) { e.st = 1; e.vy = 0f }
+                    1 -> {
+                        e.vy = min(420f, e.vy + 1100f * dt)
+                        e.y += e.vy * dt
+                        if (e.y >= e.floor) { e.y = e.floor; e.st = 2; ev(EV_LAND, e.x, e.floor) }
+                    }
+                    else -> {
+                        e.face = toP
+                        if (abs(px - e.x) < 260f) e.x += toP * 44f * dt
+                        e.x = e.x.coerceIn(e.x0 + 4f, e.x1 - 4f)
+                    }
+                }
             }
             E_THROWER -> {
                 e.face = toP
@@ -760,6 +1229,20 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     // ------------------------------------------------------------------ proyectiles
+    private fun nearestTarget(x: Float, y: Float): FloatArray? {
+        var best: FloatArray? = null
+        var bd = 1e9f
+        for (e in enemies) if (!e.dead) {
+            val d = (e.x - x) * (e.x - x) + (e.y - eh(e) / 2f - y) * (e.y - eh(e) / 2f - y)
+            if (d < bd && abs(e.x - x) < 420f) { bd = d; best = floatArrayOf(e.x, e.y - eh(e) / 2f) }
+        }
+        if (bossStarted && bstate != BS_DEAD && bstate != BS_INTRO) {
+            val d = (bx - x) * (bx - x) + (AdvCfg.GROUND - bdef.h / 2f - y) * (AdvCfg.GROUND - bdef.h / 2f - y)
+            if (d < bd) best = floatArrayOf(bx, AdvCfg.GROUND - bdef.h / 2f)
+        }
+        return best
+    }
+
     private fun updateProjs(dt: Float) {
         val frozen = freezeT > 0f
         val it = projs.iterator()
@@ -768,7 +1251,17 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             if (!p.mine && frozen) continue
             p.t += dt
             p.life -= dt
-            if (p.kind == 3 && p.mine) { // bumerán: vuelve
+            if (p.homing && p.mine) {
+                val tg = nearestTarget(p.x, p.y)
+                if (tg != null) {
+                    val ax = tg[0] - p.x
+                    val ay = tg[1] - p.y
+                    val d = sqrt(ax * ax + ay * ay).coerceAtLeast(1f)
+                    p.vx += (ax / d * 260f - p.vx) * min(1f, dt * 5f)
+                    p.vy += (ay / d * 260f - p.vy) * min(1f, dt * 5f)
+                }
+            }
+            if (p.kind == 3 && p.mine) {
                 if (p.t > 0.55f) p.vx -= (if (p.vx > 0f) 1f else -1f) * 760f * dt
                 if (p.t > 0.55f) { val back = if (px >= p.x) 1f else -1f; if (abs(p.vx) < 30f) p.vx = back * 30f }
                 if (p.t > 0.9f && abs(px - p.x) < 20f && abs(py - 15f - p.y) < 30f) { it.remove(); continue }
@@ -776,9 +1269,9 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             p.vy += p.grav * dt
             p.x += p.vx * dt
             p.y += p.vy * dt
-            if (p.life <= 0f || p.x < camX - 120f || p.x > camX + viewW + 120f || p.y > AdvCfg.H + 40f) { it.remove(); continue }
+            if (p.life <= 0f || p.x < camX - 120f || p.x > camX + viewW + 120f || p.y > AdvCfg.H + 40f || (p.y < -80f)) { it.remove(); continue }
             if (p.mine) {
-                if (p.kind == 4) { // agua bendita: al tocar suelo hace fuego
+                if (p.kind == 4) {
                     val g = groundBelow(p.x, p.y - 4f)
                     if (p.y >= g - 4f && p.vy > 0f) {
                         hazs.add(AdvHaz(p.x - 28f, g - 24f, p.x + 28f, g, 0f, 0f, 2.6f, 1, true, 2))
@@ -795,8 +1288,9 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     val dy = abs(p.y - (e.y - eh(e) / 2f)) - eh(e) / 2f
                     if (dx < p.r && dy < p.r) {
                         p.hit.add(e)
-                        hurtEnemy(e, p.dmg)
-                        if (!p.pierce) { gone = true; break }
+                        val blocked = e.type == E_KNIGHT && !p.armor && (p.x - e.x) * e.face > 0f
+                        hurtEnemy(e, p.dmg, p.x, p.armor)
+                        if (!p.pierce || blocked) { gone = true; break }
                     }
                 }
                 if (!gone) for (c in candles) {
@@ -838,9 +1332,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 h.tick -= dt
                 if (h.tick <= 0f) {
                     h.tick = 0.35f
-                    for (e in enemies) if (!e.dead && overlap(h.x0, h.y0, h.x1, h.y1, e.x - ew(e) / 2f, e.y - eh(e), e.x + ew(e) / 2f, e.y)) hurtEnemy(e, h.dmg)
+                    for (e in enemies) if (!e.dead && overlap(h.x0, h.y0, h.x1, h.y1, e.x - ew(e) / 2f, e.y - eh(e), e.x + ew(e) / 2f, e.y)) hurtEnemy(e, h.dmg, e.x, true)
                     if (bossStarted && bstate != BS_DEAD && bstate != BS_INTRO &&
                         overlap(h.x0, h.y0, h.x1, h.y1, bx - bdef.w / 2f, AdvCfg.GROUND - bdef.h, bx + bdef.w / 2f, AdvCfg.GROUND)) hurtBoss(h.dmg)
+                    for (c in candles) if (c.alive && c.x > h.x0 - 6f && c.x < h.x1 + 6f && c.y > h.y0 && c.y - 28f < h.y1) breakCandle(c)
                 }
             } else if (invuln <= 0f && deadT <= 0f && overlap(h.x0, h.y0, h.x1, h.y1, px - 8f, py - 29f, px + 8f, py - 1f)) {
                 playerHurt(h.dmg, (h.x0 + h.x1) / 2f)
@@ -857,16 +1352,17 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
 
     private fun pickPattern(): Int {
         val ps = bdef.pats
-        val lim = if (bhp * 3 > bmax * 2) min(2, ps.size) else if (bhp * 3 > bmax) min(3, ps.size) else ps.size
+        val lim = if (bhp * 3 > bmax * 2) min(3, ps.size) else if (bhp * 3 > bmax) min(5, ps.size) else ps.size
         var p: Int
         var tries = 0
-        do { p = ps[rnd.nextInt(max(2, lim).coerceAtMost(ps.size))]; tries++ } while (p == bpat && tries < 4)
+        do { p = ps[rnd.nextInt(max(2, lim).coerceAtMost(ps.size))]; tries++ } while (p == bpat && tries < 5)
         return p
     }
 
     private fun teleTime(p: Int) = when (p) {
         AdvCfg.P_CHARGE -> 0.7f; AdvCfg.P_SLAM -> 0.6f; AdvCfg.P_BEAM -> 0.8f; AdvCfg.P_TELE -> 0.45f
-        AdvCfg.P_ULT -> 1.1f; AdvCfg.P_RAIN -> 0.35f; else -> 0.4f
+        AdvCfg.P_ULT -> 1.1f; AdvCfg.P_RAIN -> 0.35f; AdvCfg.P_WAVE -> 0.55f; AdvCfg.P_METEOR -> 0.5f
+        AdvCfg.P_SPIRAL -> 0.5f; else -> 0.4f
     } * (if (benraged) 0.8f else 1f)
 
     private fun updateBoss(dt: Float) {
@@ -883,17 +1379,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             if (bst <= 0f && items.none { it.kind == IT_ORB } && !won) items.add(AdvItem(arenaX + viewW / 2f, AdvCfg.GROUND - 80f, IT_ORB, 0))
             return
         }
-        if (freezeT > 0f && bstate != BS_INTRO) {
-            // el reloj detiene al jefe, pero lo deja a tiro
-            return
-        }
+        if (freezeT > 0f && bstate != BS_INTRO) return
         val toP = if (px >= bx) 1 else -1
-        // contacto
         if (bstate != BS_INTRO && invuln <= 0f && deadT <= 0f &&
             overlap(px - 9f, py - 29f, px + 9f, py - 1f, bx - bdef.w / 2f + 4f, AdvCfg.GROUND - bdef.h + 4f, bx + bdef.w / 2f - 4f, AdvCfg.GROUND)) {
             playerHurt(if (bstate == BS_ACT && bpat == AdvCfg.P_CHARGE) 3 else 2, bx)
         }
-        // furia final (movimiento desesperado, como en Bloodstained)
         if (!bult && bhp * 4 <= bmax && bstate != BS_STUN) {
             bult = true
             bpat = AdvCfg.P_ULT
@@ -973,6 +1464,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 val a0 = aimAng(bx, my)
                 for (i in 0 until 3) fire(bx, my, a0 + (i - 1) * 0.3f, 185f)
             }
+            AdvCfg.P_WAVE -> {
+                hazs.add(AdvHaz(bx - 10f, AdvCfg.GROUND - 18f, bx + 10f, AdvCfg.GROUND, 170f, 0f, 3.2f, 2, false, 4))
+                hazs.add(AdvHaz(bx - 10f, AdvCfg.GROUND - 18f, bx + 10f, AdvCfg.GROUND, -170f, 0f, 3.2f, 2, false, 4))
+                shake = 5f
+                ev(EV_SLAM, bx, AdvCfg.GROUND)
+            }
             AdvCfg.P_ULT -> { bcount = 0 }
         }
     }
@@ -998,7 +1495,6 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 bvy += 1500f * dt
                 bx = (bx + bvx * dt).coerceIn(arenaX + bdef.w / 2f + 4f, arenaX + viewW - bdef.w / 2f - 4f)
                 bt2 += dt
-                // sube como un salto: se mide con una altura virtual
                 bsub = if (bsub == 0 && bvy > 0f && bt2 > 0.3f) 1 else bsub
                 if (bt2 > 0.9f || (bsub == 1 && bt2 > 0.8f)) {
                     bvx = 0f; bvy = 0f
@@ -1013,6 +1509,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             AdvCfg.P_SUMMON -> if (bst > 0.6f) endAct(1.4f)
             AdvCfg.P_BEAM -> if (bst > 1.0f) endAct(1.0f)
             AdvCfg.P_TELE -> if (bst > 0.5f) endAct(1.1f)
+            AdvCfg.P_WAVE -> if (bst > 0.5f) endAct(1.1f)
             AdvCfg.P_ORBS -> {
                 bt2 += dt
                 val period = if (benraged) 0.14f else 0.2f
@@ -1022,6 +1519,28 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     fire(bx, my, bcount * 0.7f, 125f)
                 }
                 if (bst > 2.4f) endAct(1.0f)
+            }
+            AdvCfg.P_SPIRAL -> {
+                bt2 += dt
+                val period = if (benraged) 0.09f else 0.12f
+                if (bt2 >= period) {
+                    bt2 -= period
+                    bcount++
+                    fire(bx, my, bcount * 0.5f, 118f, 2, 5f)
+                    fire(bx, my, bcount * 0.5f + 3.1416f, 118f, 2, 5f)
+                }
+                if (bst > 2.2f) endAct(1.1f)
+            }
+            AdvCfg.P_METEOR -> {
+                bt2 += dt
+                val period = if (benraged) 0.14f else 0.2f
+                if (bt2 >= period) {
+                    bt2 -= period
+                    bcount++
+                    val x = if (bcount % 3 == 0) px else arenaX + 30f + rnd.nextFloat() * (viewW - 60f)
+                    projs.add(AdvProj(x, -20f, (rnd.nextFloat() - 0.5f) * 40f, 210f, 0, 2, false, 8f).also { it.life = 3.2f })
+                }
+                if (bst > 1.8f) endAct(1.1f)
             }
             AdvCfg.P_ULT -> {
                 bt2 += dt

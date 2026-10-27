@@ -115,7 +115,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val advUi = AdvUi(
         { cv, x, y, r, col -> drawBallAt(cv, x, y, r, col, effSkin(), time, true) },
         { audio.play(it) },
-        { w -> prefs.advMask = prefs.advMask or (1 shl w) },
+        { w -> prefs.advMask = prefs.advMask or (1 shl w); Integer.bitCount(prefs.advMask and ((1 shl AdvCfg.WORLDS) - 1)) },
         { advExit() }
     )
     private var advPending = -1
