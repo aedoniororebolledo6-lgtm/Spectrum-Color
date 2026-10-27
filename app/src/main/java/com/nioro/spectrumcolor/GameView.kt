@@ -36,6 +36,7 @@ interface HostApi {
     fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit)
     fun quit()
     fun openUrl(url: String)
+    fun setLandscape(on: Boolean)
 }
 
 /**
@@ -44,7 +45,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME }
+    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ADV_MENU, ADV }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -110,15 +111,43 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var time = 0f
 
     // ---- navegación ----
+    // ---- modo Aventura (horizontal) ----
+    private val advUi = AdvUi(
+        { cv, x, y, r, col -> drawBallAt(cv, x, y, r, col, effSkin(), time, true) },
+        { audio.play(it) },
+        { w -> prefs.advMask = prefs.advMask or (1 shl w) },
+        { advExit() }
+    )
+    private var advPending = -1
+    private var advWait = 0f
+    private var advLeaving = false
+
+    private fun advStart(w: Int) {
+        advPending = w
+        advWait = 0f
+        advLeaving = false
+        scr = Scr.ADV
+        api.setLandscape(true)
+    }
+
+    private fun advExit() {
+        advPending = -1
+        advLeaving = true
+        advWait = 0f
+        api.setLandscape(false)
+    }
+
+    private fun advUnlocked(w: Int): Boolean = prefs.allOpen || prefs.worldDone(w)
+
     private var scrT0 = -10f
     private var scrDir = 1
     private var ovT0 = -10f
     private var uiIdx = 0
     private fun depthOf(s: Scr): Int = when (s) {
         Scr.HOME -> 0
-        Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> 1
+        Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME, Scr.ADV_MENU -> 1
         Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
-        Scr.PLAY -> 3
+        Scr.PLAY, Scr.ADV -> 3
     }
     private var scr = Scr.HOME
         set(v) {
@@ -326,6 +355,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     fun onBack(): Boolean {
         when (scr) {
             Scr.HOME -> return false
+            Scr.ADV_MENU -> goHome()
+            Scr.ADV -> { if (advUi.active) advUi.back() else if (!advLeaving) advExit() }
             Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
             Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> goHome()
             Scr.THEMES -> scr = Scr.SETTINGS
@@ -451,6 +482,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             id == "ehn" -> if (BuildConfig.DEV) edNewLevel()
             id == "ehp" -> if (BuildConfig.DEV) edPublish(edPendingList())
+            id == "adv" -> scr = Scr.ADV_MENU
+            id.startsWith("advw:") -> {
+                val w = id.substring(5).toIntOrNull() ?: -1
+                if (w in 0 until AdvCfg.WORLDS && advUnlocked(w)) advStart(w)
+            }
             id == "play" -> {
                 edMode = false
                 levelPage = Levels.world(prefs.unlocked())
@@ -581,6 +617,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (scr == Scr.ADV) {
+            if (advUi.active) advUi.touch(e, width, height)
+            return true
+        }
         val x = e.x / sc
         val y = e.y / sc
         when (e.actionMasked) {
@@ -840,6 +880,19 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun update(dt: Float) {
         time += dt
+        if (scr == Scr.ADV) {
+            if (advUi.active) advUi.update(dt)
+            else {
+                advWait += dt
+                if (advLeaving) {
+                    if (height > width || advWait > 3f) { advLeaving = false; scr = Scr.ADV_MENU }
+                } else if (advPending >= 0) {
+                    if (width > height) { advUi.start(advPending, width / (height / AdvCfg.H), false); advPending = -1 }
+                    else if (advWait > 3f) { advPending = -1; advExit() }
+                }
+            }
+            return
+        }
         updateCats(dt)
         updateScroll(dt)
         pollNet()
@@ -1229,6 +1282,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     override fun onDraw(canvas: Canvas) {
         if (width == 0 || height == 0) return
         hits.clear()
+        if (scr == Scr.ADV) {
+            if (advUi.active) {
+                try { advUi.draw(canvas, width, height) } catch (e: Exception) { Log.e("SpectrumColor", "adv", e) }
+            } else canvas.drawColor(Color.BLACK)
+            return
+        }
         canvas.save()
         canvas.scale(sc, sc)
         try {
@@ -1297,6 +1356,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.MP_JOIN -> drawMpJoin(c)
             Scr.EDITOR -> drawEditor(c)
             Scr.EDIT_HOME -> drawEditHome(c)
+            Scr.ADV_MENU -> drawAdvMenu(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -1611,9 +1671,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
         val b0 = topI + 1040f
         button(c, "play", "Jugar", 540f, b0, 760f, 130f, pal[0], 56f)
-        button(c, "endless", "Modo infinito", 540f, b0 + 175f, 760f, 130f, 0, 50f)
-        button(c, "mp", "Multijugador local", 540f, b0 + 350f, 760f, 130f, pal[1], 50f)
-        if (BuildConfig.DEV) button(c, "edit", "Editar", 540f, b0 + 515f, 440f, 100f, pal[2], 44f)
+        button(c, "endless", "Modo infinito", 540f, b0 + 160f, 760f, 130f, 0, 50f)
+        button(c, "adv", "Aventura", 540f, b0 + 320f, 760f, 130f, pal[2], 50f)
+        button(c, "mp", "Multijugador local", 540f, b0 + 480f, 760f, 130f, pal[1], 50f)
+        if (BuildConfig.DEV) button(c, "edit", "Editar", 540f, b0 + 625f, 440f, 100f, pal[2], 44f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -1853,6 +1914,28 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             c.restore()
             hits.add(Hit(id, rcx - 230f * k, rcy - 320f * k, rcx + 230f * k, rcy + 320f * k))
         }
+    }
+
+    private fun drawAdvMenu(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
+        title(c, "AVENTURA", top + 130f, 56f)
+        val saved = Integer.bitCount(prefs.advMask and ((1 shl AdvCfg.WORLDS) - 1))
+        Gl.text(c, "Los colores huyeron de los mundos. Salva cada uno.", 540f, top + 270f, 34f, Gl.light, Gl.white(210))
+        Gl.text(c, "Se juega en horizontal  ·  Salvados $saved/${AdvCfg.WORLDS}", 540f, top + 325f, 34f, Gl.regular, Gl.white(160))
+        for (i in 0 until AdvCfg.WORLDS) {
+            val col = i % 2
+            val row = i / 2
+            val cx = 540f + (if (col == 0) -250f else 250f)
+            val cy = top + 470f + row * 150f
+            val open = advUnlocked(i)
+            val done = (prefs.advMask shr i) and 1 == 1
+            val wc = Worlds.colors[i.coerceIn(0, Worlds.colors.size - 1)]
+            val label = if (open) (if (done) "✓ ${Worlds.names[i]}" else "${i + 1}. ${Worlds.names[i]}") else "${i + 1}. Bloqueado"
+            button(c, "advw:$i", label, cx, cy, 470f, 120f, if (open) wc[0] else 0, 42f, open)
+        }
+        Gl.text(c, "Termina un mundo del modo normal para abrir su aventura", 540f, vh - 130f, 32f, Gl.regular, Gl.white(130))
     }
 
     private fun drawMpMenu(c: Canvas) {

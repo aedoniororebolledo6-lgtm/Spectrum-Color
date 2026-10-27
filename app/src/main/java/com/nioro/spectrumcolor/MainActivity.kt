@@ -63,6 +63,12 @@ class MainActivity : Activity(), HostApi {
         if (!game.onBack()) super.onBackPressed()
     }
 
+    override fun setLandscape(on: Boolean) {
+        runOnUiThread {
+            requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     override fun quit() {
         finish()
     }

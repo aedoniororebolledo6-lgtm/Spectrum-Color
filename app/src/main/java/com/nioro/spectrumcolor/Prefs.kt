@@ -137,6 +137,20 @@ class Prefs(context: Context) {
         return l
     }
 
+    /** Mundos del modo Aventura ya salvados (un bit por mundo). */
+    var advMask: Int
+        get() = sp.getInt("advMask", 0)
+        set(v) { sp.edit().putInt("advMask", v).apply() }
+
+    /** El mundo w del modo normal está completo (los 10 niveles con al menos 1 estrella). */
+    fun worldDone(w: Int): Boolean {
+        for (i in 0 until Levels.PER_WORLD) {
+            val l = Levels.worldFirst(w) + i
+            if (l > Levels.COUNT || starArr[l] <= 0) return false
+        }
+        return true
+    }
+
     /** Mundos con todos sus niveles superados (al menos 1 estrella en cada uno). */
     fun worldsDone(): Int {
         var n = 0
