@@ -35,6 +35,7 @@ class MainActivity : Activity(), HostApi {
         game = GameView(this, this)
         setContentView(game)
         hideSystemBars()
+        requestHighRefresh()
     }
 
     override fun onResume() {
@@ -66,6 +67,27 @@ class MainActivity : Activity(), HostApi {
     override fun setLandscape(on: Boolean) {
         runOnUiThread {
             requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    /** Pide al sistema la tasa de refresco más alta que tenga la pantalla (90/120 Hz), con la misma resolución. */
+    @Suppress("DEPRECATION")
+    private fun requestHighRefresh() {
+        if (Build.VERSION.SDK_INT < 23) return
+        try {
+            val d = windowManager.defaultDisplay ?: return
+            val cur = d.mode
+            var best = cur
+            for (m in d.supportedModes) {
+                if (m.physicalWidth == cur.physicalWidth && m.physicalHeight == cur.physicalHeight && m.refreshRate > best.refreshRate) best = m
+            }
+            if (best.modeId != cur.modeId) {
+                val lp = window.attributes
+                lp.preferredDisplayModeId = best.modeId
+                window.attributes = lp
+            }
+        } catch (e: Exception) {
+            // si el sistema no lo permite, se queda con la tasa por defecto
         }
     }
 

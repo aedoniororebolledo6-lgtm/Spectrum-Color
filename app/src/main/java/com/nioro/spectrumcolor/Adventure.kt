@@ -108,6 +108,8 @@ object AdvCfg {
 class AdvPlat(val x0: Float, val x1: Float, val y: Float)
 class AdvCandle(val x: Float, val y: Float, val drop: Int, val arg: Int) { var alive = true }
 class AdvItem(var x: Float, var y: Float, val kind: Int, val arg: Int) {
+    var ox = x
+    var oy = y
     var vy = -140f
     var t = 0f
 }
@@ -122,6 +124,9 @@ class AdvEnemy(val type: Int, var x: Float, var y: Float, val x0: Float, val x1:
     var dead = false
     var floor = y
     var aggro = false
+    var ox = x
+    var oy = y
+    var age = 0f
 }
 class AdvProj(var x: Float, var y: Float, var vx: Float, var vy: Float, val kind: Int, val dmg: Int, val mine: Boolean, val r: Float) {
     var grav = 0f
@@ -129,6 +134,8 @@ class AdvProj(var x: Float, var y: Float, var vx: Float, var vy: Float, val kind
     var pierce = false
     var armor = false
     var homing = false
+    var ox = x
+    var oy = y
     var t = 0f
     val hit = HashSet<Any>()
 }
@@ -144,6 +151,8 @@ class AdvMover(val x0: Float, val x1: Float, val y0: Float, val y1: Float, val w
     var y = y0
     var dx = 0f
     var dy = 0f
+    var ox = x0
+    var oy = y0
     val vertical: Boolean get() = abs(y1 - y0) > abs(x1 - x0)
 }
 /** Plataforma que se rompe poco después de pisarla. st: 0 sólida, 1 temblando, 2 caída. */
@@ -308,6 +317,13 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var time = 0f
     var camX = 0f
     var hitStop = 0f
+    var opx = 40f
+    var opy = AdvCfg.GROUND
+    var ocam = 0f
+    var obx = 0f
+    var alpha = 1f
+    var bz = 0f
+    var bteleMax = 0.5f
     var riding: AdvMover? = null
     var kills = 0
     private var acc = 0f
@@ -601,6 +617,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         invuln = 1.3f
         hitstun = 0.28f
         hitStop = 0.07f
+        shake = max(shake, 3f)
         pvx = if (px >= fromX) 170f else -170f
         pvy = -230f
         onGround = false
@@ -649,7 +666,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         bstate = BS_INTRO
         bst = 0f
         bx = arenaX + viewW * 0.78f
-        bvx = 0f; bvy = 0f
+        bvx = 0f; bvy = 0f; bz = 0f
         bcd = 1.4f
         benraged = false
         bult = false
@@ -668,6 +685,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             n++
         }
         if (n == 12) acc = 0f
+        alpha = (acc / AdvCfg.STEP).coerceIn(0f, 1f)
     }
 
     private fun lockedMin(): Float {
@@ -682,8 +700,17 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         return if (bossStarted) arenaX + viewW - AdvCfg.PHALF - 2f else endX + 200f
     }
 
+    private fun snapshot() {
+        opx = px; opy = py; ocam = camX; obx = bx
+        for (e in enemies) { e.ox = e.x; e.oy = e.y }
+        for (p in projs) { p.ox = p.x; p.oy = p.y }
+        for (m in movers) { m.ox = m.x; m.oy = m.y }
+        for (i in items) { i.ox = i.x; i.oy = i.y }
+    }
+
     private fun tick(dt: Float, inp: AdvInput) {
         time += dt
+        snapshot()
         if (shake > 0f) shake = max(0f, shake - dt * 30f)
         if (deadT > 0f) {
             deadT -= dt
@@ -1109,6 +1136,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             val e = it.next()
             if (e.dead) { it.remove(); continue }
             e.flash = max(0f, e.flash - dt)
+            e.age += dt
             if (abs(e.x - px) > 700f) continue
             if (!frozen) enemyAi(e, dt)
             if (e.dead) continue
@@ -1390,6 +1418,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             bpat = AdvCfg.P_ULT
             bstate = BS_TELE
             bst = teleTime(AdvCfg.P_ULT)
+            bteleMax = bst
             ev(EV_BOSSWARN, bx, AdvCfg.GROUND)
         }
         when (bstate) {
@@ -1408,6 +1437,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                     bpat = pickPattern()
                     bstate = BS_TELE
                     bst = teleTime(bpat)
+                    bteleMax = bst
                     bface = toP
                     bLane = rnd.nextInt(2)
                 }
@@ -1492,12 +1522,13 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 }
             }
             AdvCfg.P_SLAM -> {
+                bz = max(0f, bz - bvy * dt)
                 bvy += 1500f * dt
                 bx = (bx + bvx * dt).coerceIn(arenaX + bdef.w / 2f + 4f, arenaX + viewW - bdef.w / 2f - 4f)
                 bt2 += dt
                 bsub = if (bsub == 0 && bvy > 0f && bt2 > 0.3f) 1 else bsub
                 if (bt2 > 0.9f || (bsub == 1 && bt2 > 0.8f)) {
-                    bvx = 0f; bvy = 0f
+                    bvx = 0f; bvy = 0f; bz = 0f
                     shake = 8f
                     ev(EV_SLAM, bx, AdvCfg.GROUND)
                     hazs.add(AdvHaz(bx - 10f, AdvCfg.GROUND - 16f, bx + 10f, AdvCfg.GROUND, 210f, 0f, 2.2f, 2, false, 4))

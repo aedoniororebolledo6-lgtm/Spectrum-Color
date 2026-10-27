@@ -305,10 +305,22 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         audio.release()
     }
 
+    private val dtH = FloatArray(4)
+    private var dtI = 0
+    private var dtN = 0
+
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
-        val dt = if (lastNanos == 0L) 0.016f else min(0.05f, (frameTimeNanos - lastNanos) / 1_000_000_000f)
+        val raw = if (lastNanos == 0L) 0.016f else (frameTimeNanos - lastNanos) / 1_000_000_000f
         lastNanos = frameTimeNanos
+        // Suaviza el dt (promedio de los últimos cuadros) para absorber el jitter del vsync; si hubo una pausa larga, reinicia.
+        if (raw > 0.08f || raw <= 0f) dtN = 0
+        dtH[dtI] = min(0.05f, max(0.001f, raw))
+        dtI = (dtI + 1) % dtH.size
+        if (dtN < dtH.size) dtN++
+        var dsum = 0f
+        for (k in 0 until dtN) dsum += dtH[(dtI - 1 - k + dtH.size * 2) % dtH.size]
+        val dt = dsum / dtN
         try {
             update(dt)
         } catch (e: Exception) {

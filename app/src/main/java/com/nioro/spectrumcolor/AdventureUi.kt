@@ -45,6 +45,22 @@ class AdvUi(
     private var banner = ""
     private var zoom = 0f
     private var lastHp = 0
+    private var al = 0f
+    private var swapBuf = FloatArray(512)
+    private class Trail(val x: Float, val y: Float, var life: Float)
+    private class Corpse(val x: Float, val y: Float, val col: Int, var t: Float)
+    private val trail = ArrayList<Trail>()
+    private val corpses = ArrayList<Corpse>()
+    private var trailT = 0f
+    private var hpDisp = 12f
+    private var hpChip = 12f
+    private var bossDisp = 1f
+    private var bossChip = 1f
+    private var heartPop = 0f
+    private var lastHearts = 0
+    private var bannerAge = 0f
+    private var bossSquash = 0f
+    private var uiT = 0f
     private val rnd = java.util.Random(5)
     private val pth = Path()
     private val rf = RectF()
@@ -65,6 +81,9 @@ class AdvUi(
         bannerT = 0f
         squash = 0f
         zoom = 0f
+        trail.clear()
+        corpses.clear()
+        hpDisp = AdvCfg.MAXHP.toFloat(); hpChip = hpDisp; bossDisp = 1f; bossChip = 1f; heartPop = 0f; lastHearts = 5; bossSquash = 0f
         inp.left = false; inp.right = false; inp.jumpHeld = false
     }
 
@@ -73,7 +92,7 @@ class AdvUi(
     /** Botón "atrás": pausa, o sale si ya estaba en pausa. */
     fun back(): Boolean {
         return when (phase) {
-            1 -> { phase = 2; false }
+            1 -> { phase = 2; phT = 0f; false }
             else -> { stop(); onExit(); true }
         }
     }
@@ -118,7 +137,7 @@ class AdvUi(
                             "A" -> inp.atkPressed = true
                             "J" -> inp.jumpPressed = true
                             "S" -> inp.spPressed = true
-                            "P" -> phase = 2
+                            "P" -> { phase = 2; phT = 0f }
                         }
                     }
                 }
@@ -149,6 +168,9 @@ class AdvUi(
         flash = max(0f, flash - dt * 2.5f)
         squash = max(0f, squash - dt * 5f)
         bannerT = max(0f, bannerT - dt)
+        bannerAge += dt
+        bossSquash = max(0f, bossSquash - dt * 4f)
+        heartPop = max(0f, heartPop - dt * 3.5f)
         zoom = max(0f, zoom - dt * 1.2f)
         if (phase == 1 || phase == 3) {
             if (phase == 3) { inp.left = false; inp.right = false; inp.jumpHeld = false }
@@ -193,6 +215,24 @@ class AdvUi(
         if (a.potionT > 0f && rnd.nextInt(3) == 0) parts.add(Pt(a.px + (rnd.nextFloat() - 0.5f) * 16f, a.py - rnd.nextFloat() * 28f, 0f, -30f, 0xFF80FFC0.toInt(), 2f, 0.5f, 1f, 0f))
         if (a.hp < lastHp) flash = max(flash, 0.8f)
         lastHp = a.hp
+        // estela de imágenes residuales al correr o saltar rápido
+        trailT -= dt
+        if (trailT <= 0f && a.deadT <= 0f && (abs(a.pvx) > 150f || (!a.onGround && abs(a.pvy) > 260f))) {
+            trailT = 0.04f
+            trail.add(Trail(a.px, a.py - 11f, 0.22f))
+        }
+        val ti = trail.iterator()
+        while (ti.hasNext()) { val t = ti.next(); t.life -= dt; if (t.life <= 0f) ti.remove() }
+        val ci = corpses.iterator()
+        while (ci.hasNext()) { val k = ci.next(); k.t += dt; if (k.t > 0.5f) ci.remove() }
+        // barras con retraso (chip) y contador de corazones con rebote
+        hpDisp += (a.hp - hpDisp) * min(1f, dt * 14f)
+        if (hpChip > a.hp) hpChip += (a.hp - hpChip) * min(1f, dt * 2.4f) else hpChip = a.hp.toFloat()
+        val bf = if (a.bossStarted) a.bhp / a.bmax.toFloat() else 1f
+        bossDisp += (bf - bossDisp) * min(1f, dt * 14f)
+        if (bossChip > bf) bossChip += (bf - bossChip) * min(1f, dt * 2.4f) else bossChip = bf
+        if (a.hearts > lastHearts) heartPop = 1f
+        lastHearts = a.hearts
     }
 
     private fun burst(x: Float, y: Float, col: Int, n: Int, sp: Float, grav: Float = 220f) {
@@ -204,7 +244,7 @@ class AdvUi(
         }
     }
 
-    private fun say(s: String, t: Float = 2.2f) { banner = s; bannerT = t }
+    private fun say(s: String, t: Float = 2.2f) { banner = s; bannerT = t; bannerAge = 0f }
 
     private fun handleEvents(a: Adv) {
         val pal = Worlds.colors[world.coerceIn(0, Worlds.colors.size - 1)]
@@ -223,16 +263,16 @@ class AdvUi(
                 Adv.EV_BOLT -> { flash = max(flash, 0.5f); sfx(Sfx.WIN) }
                 Adv.EV_BOSSHIT -> { burst(e.x, e.y, Color.WHITE, 9, 140f); sfx(Sfx.TAP); if (e.n > 0) nums.add(Num(e.x, e.y - 20f, e.n.toString(), 0.7f, 0xFFFFE070.toInt())) }
                 Adv.EV_BOSSDIE -> { for (k in 0 until 5) burst(e.x, e.y, pal[k % 4], 24, 240f); flash = 1f; zoom = 1f; sfx(Sfx.WIN) }
-                Adv.EV_EDIE -> burst(e.x, e.y, pal[2], 12, 130f)
+                Adv.EV_EDIE -> { burst(e.x, e.y, pal[2], 12, 130f); corpses.add(Corpse(e.x, e.y, pal[2], 0f)) }
                 Adv.EV_CHECK -> { burst(e.x, e.y - 10f, 0xFF80FFA0.toInt(), 12, 90f, 0f); sfx(Sfx.STAR); say("Punto de control", 1.4f) }
-                Adv.EV_SLAM -> sfx(Sfx.DIE)
+                Adv.EV_SLAM -> { sfx(Sfx.DIE); bossSquash = 1f; burst(e.x, e.y - 2f, Gl.white(170), 8, 90f, 60f) }
                 Adv.EV_ROCK -> { burst(e.x, e.y - 4f, 0xFFB0A090.toInt(), 14, 120f); sfx(Sfx.DIE) }
                 Adv.EV_CRUMBLE -> burst(e.x, e.y, 0xFFB0A090.toInt(), 6, 60f, 120f)
                 Adv.EV_AMBUSH -> { say("¡EMBOSCADA!", 2.0f); sfx(Sfx.COUNT) }
                 Adv.EV_CLEAR -> { say("¡Despejado!", 2.0f); sfx(Sfx.WIN) }
                 Adv.EV_POTION -> burst(e.x, e.y, 0xFFFFFFFF.toInt(), 6, 70f, 0f)
                 Adv.EV_BOSSWARN -> sfx(Sfx.COUNT)
-                Adv.EV_DIE -> { burst(e.x, e.y, pal[0], 28, 210f); sfx(Sfx.DIE) }
+                Adv.EV_DIE -> { burst(e.x, e.y, pal[0], 28, 210f); corpses.add(Corpse(e.x, e.y, pal[0], 0f)); sfx(Sfx.DIE) }
                 Adv.EV_WIN -> { for (k in 0 until 4) burst(e.x, e.y, pal[k], 22, 210f); sfx(Sfx.WIN) }
                 Adv.EV_STUN -> nums.add(Num(e.x, e.y - 10f, "¡Aturdido!", 1.0f, 0xFFFFE070.toInt()))
             }
@@ -260,12 +300,52 @@ class AdvUi(
         return Color.rgb((r + (255 - r) * f).toInt(), (g + (255 - g) * f).toInt(), (b + (255 - b) * f).toInt())
     }
 
+    private val gradCache = HashMap<Long, LinearGradient>()
+    private val glowCache = HashMap<Int, android.graphics.RadialGradient>()
+
+    private fun vGrad(col: Int, h: Float): LinearGradient {
+        if (gradCache.size > 700) gradCache.clear()
+        val hk = (h * 2f).toInt().coerceIn(1, 4000)
+        val key = (col.toLong() and 0xFFFFFFFFL) * 8192L + hk
+        var g = gradCache[key]
+        if (g == null) {
+            g = LinearGradient(0f, 0f, 0f, hk / 2f, intArrayOf(lighten(col, 0.42f), col, Gl.darken(col, 0.5f)), floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
+            gradCache[key] = g
+        }
+        return g
+    }
+
+    /** Resplandor con degradado reutilizado (evita crear uno nuevo en cada cuadro). */
+    private fun glow(c: Canvas, x: Float, y: Float, rad: Float, color: Int, a: Int) {
+        if (a <= 0 || rad < 0.5f) return
+        val key = color and 0xFFFFFF
+        var g = glowCache[key]
+        if (g == null) {
+            g = android.graphics.RadialGradient(0f, 0f, 64f, (0xFF shl 24) or key, key, Shader.TileMode.CLAMP)
+            glowCache[key] = g
+        }
+        val pp = Gl.p()
+        pp.shader = g
+        pp.alpha = a.coerceIn(0, 255)
+        c.save()
+        c.translate(x, y)
+        val k = rad / 64f
+        c.scale(k, k)
+        c.drawCircle(0f, 0f, 64f, pp)
+        c.restore()
+    }
+
     /** Cuerpo opaco tipo acrílico: degradado vertical, borde oscuro, brillo en la esquina y reflejo. kind 0=óvalo 1=rect redondeado. */
     private fun gloss(c: Canvas, kind: Int, l: Float, t: Float, r: Float, b: Float, rad: Float, col0: Int, alpha: Int = 255) {
         val col = opaque(col0)
-        rf.set(l, t, r, b)
+        val w = r - l
+        val h = b - t
+        if (w <= 0f || h <= 0f) return
+        c.save()
+        c.translate(l, t)
+        rf.set(0f, 0f, w, h)
         var pp = Gl.p()
-        pp.shader = LinearGradient(0f, t, 0f, b, intArrayOf(lighten(col, 0.42f), col, Gl.darken(col, 0.5f)), floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP)
+        pp.shader = vGrad(col, h)
         pp.alpha = alpha
         if (kind == 0) c.drawOval(rf, pp) else c.drawRoundRect(rf, rad, rad, pp)
         pp = Gl.p()
@@ -273,24 +353,29 @@ class AdvUi(
         pp.strokeWidth = 1.6f
         pp.color = Gl.alpha(Gl.darken(col, 0.3f), alpha)
         if (kind == 0) c.drawOval(rf, pp) else c.drawRoundRect(rf, rad, rad, pp)
-        val w = r - l
-        val h = b - t
         if (w > 7f && h > 7f) {
-            rf2.set(l + w * 0.14f, t + h * 0.07f, l + w * 0.64f, t + h * 0.34f)
+            rf2.set(w * 0.14f, h * 0.07f, w * 0.64f, h * 0.34f)
             pp = Gl.p()
             pp.color = Gl.white((110 * alpha) / 255)
             c.drawRoundRect(rf2, h * 0.16f, h * 0.16f, pp)
             pp = Gl.p()
             pp.color = Gl.white((70 * alpha) / 255)
-            c.drawCircle(l + w * 0.2f, t + h * 0.2f, max(1f, min(w, h) * 0.05f), pp)
+            c.drawCircle(w * 0.2f, h * 0.2f, max(1f, min(w, h) * 0.05f), pp)
         }
+        c.restore()
     }
 
-    /** Igual que gloss pero para un contorno ya construido en `pth`. */
+    /** Igual que gloss pero para un contorno ya construido en `pth` (coordenadas absolutas). */
     private fun glossPath(c: Canvas, l: Float, t: Float, r: Float, b: Float, col0: Int, alpha: Int = 255) {
         val col = opaque(col0)
+        val w = r - l
+        val h = b - t
+        if (w <= 0f || h <= 0f) return
+        pth.offset(-l, -t)
+        c.save()
+        c.translate(l, t)
         var pp = Gl.p()
-        pp.shader = LinearGradient(0f, t, 0f, b, intArrayOf(lighten(col, 0.4f), col, Gl.darken(col, 0.5f)), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+        pp.shader = vGrad(col, h)
         pp.alpha = alpha
         c.drawPath(pth, pp)
         pp = Gl.p()
@@ -299,14 +384,13 @@ class AdvUi(
         pp.strokeJoin = Paint.Join.ROUND
         pp.color = Gl.alpha(Gl.darken(col, 0.3f), alpha)
         c.drawPath(pth, pp)
-        val w = r - l
-        val h = b - t
         if (w > 7f && h > 7f) {
-            rf2.set(l + w * 0.16f, t + h * 0.08f, l + w * 0.5f, t + h * 0.28f)
+            rf2.set(w * 0.16f, h * 0.08f, w * 0.5f, h * 0.28f)
             pp = Gl.p()
             pp.color = Gl.white((95 * alpha) / 255)
             c.drawOval(rf2, pp)
         }
+        c.restore()
     }
 
     private fun eyes(c: Canvas, x: Float, y: Float, face: Int, s: Float, col: Int = Color.WHITE) {
@@ -325,6 +409,44 @@ class AdvUi(
     // ------------------------------------------------------------------ dibujo
     fun draw(c: Canvas, w: Int, h: Int) {
         val a = adv ?: return
+        al = if (phase == 1 || phase == 3) a.alpha else 1f
+        swapPos(a, true)
+        try { drawInner(c, a, w, h) } finally { swapPos(a, false) }
+    }
+
+    /** Pone las posiciones interpoladas entre el paso anterior y el actual (y las restaura después). */
+    private fun swapPos(a: Adv, forward: Boolean) {
+        val need = 8 + 2 * (a.enemies.size + a.projs.size + a.movers.size + a.items.size)
+        if (swapBuf.size < need) {
+            if (!forward) return
+            swapBuf = FloatArray(need + 64)
+        }
+        var k = 0
+        val b = swapBuf
+        if (forward) {
+            b[k++] = a.px; b[k++] = a.py; b[k++] = a.bx; b[k++] = a.camX
+            a.px = ip(a.opx, a.px); a.py = ip(a.opy, a.py); a.bx = ip(a.obx, a.bx); a.camX = ip(a.ocam, a.camX)
+            for (e in a.enemies) { b[k++] = e.x; b[k++] = e.y; e.x = ip(e.ox, e.x); e.y = ip(e.oy, e.y) }
+            for (p in a.projs) { b[k++] = p.x; b[k++] = p.y; p.x = ip(p.ox, p.x); p.y = ip(p.oy, p.y) }
+            for (m in a.movers) { b[k++] = m.x; b[k++] = m.y; m.x = ip(m.ox, m.x); m.y = ip(m.oy, m.y) }
+            for (i in a.items) { b[k++] = i.x; b[k++] = i.y; i.x = ip(i.ox, i.x); i.y = ip(i.oy, i.y) }
+        } else {
+            a.px = b[k++]; a.py = b[k++]; a.bx = b[k++]; a.camX = b[k++]
+            for (e in a.enemies) { e.x = b[k++]; e.y = b[k++] }
+            for (p in a.projs) { p.x = b[k++]; p.y = b[k++] }
+            for (m in a.movers) { m.x = b[k++]; m.y = b[k++] }
+            for (i in a.items) { i.x = b[k++]; i.y = b[k++] }
+        }
+    }
+
+    private fun ip(o: Float, n: Float): Float = if (abs(n - o) > 90f) n else o + (n - o) * al
+
+    private fun easeBack(t: Float): Float {
+        val x = t.coerceIn(0f, 1f) - 1f
+        return 1f + 2.70158f * x * x * x + 1.70158f * x * x
+    }
+
+    private fun drawInner(c: Canvas, a: Adv, w: Int, h: Int) {
         val s = h / AdvCfg.H
         val pal = Worlds.colors[world.coerceIn(0, Worlds.colors.size - 1)]
         val bg = Worlds.bg[world.coerceIn(0, Worlds.bg.size - 1)]
@@ -354,13 +476,25 @@ class AdvUi(
         drawHud(c, a, pal)
         if (phase != 0) drawControls(c)
         if (bannerT > 0f && phase == 1) {
-            val al = (255 * min(1f, bannerT * 2f)).toInt()
-            Gl.text(c, banner, vw / 2f, 96f, 26f, Gl.medium, Gl.alpha(Color.WHITE, al), 0.06f, null, Gl.alpha(pal[0], al))
+            val ba = (255 * min(1f, bannerT * 2.5f)).toInt()
+            val bs = 0.6f + 0.4f * easeBack(bannerAge / 0.28f)
+            c.save()
+            c.scale(bs, bs, vw / 2f, 96f)
+            Gl.text(c, banner, vw / 2f, 96f, 26f, Gl.medium, Gl.alpha(Color.WHITE, ba), 0.06f, null, Gl.alpha(pal[0], ba))
+            c.restore()
         }
-        when (phase) {
-            0 -> drawStory(c, pal)
-            2 -> drawPause(c, pal)
-            3 -> drawWin(c, pal)
+        if (phase != 1) {
+            val ov = Gl.p(); ov.color = Gl.alpha(Color.BLACK, (150 * min(1f, phT * 4f)).toInt())
+            c.drawRect(0f, 0f, vw, AdvCfg.H, ov)
+            val pk = 0.8f + 0.2f * easeBack(phT / 0.35f)
+            c.save()
+            c.scale(pk, pk, vw / 2f, AdvCfg.H / 2f)
+            when (phase) {
+                0 -> drawStory(c, pal)
+                2 -> drawPause(c, pal)
+                3 -> drawWin(c, pal)
+            }
+            c.restore()
         }
         c.restore()
     }
@@ -395,7 +529,7 @@ class AdvUi(
         for (i in 0 until 22) {
             val fx = ((i * 97f + time * (8f + (i % 5) * 3f) - cam * 0.3f) % (vw + 40f) + vw + 40f) % (vw + 40f)
             val fy = 40f + (i * 53f) % 220f + sin(time * 0.8f + i) * 10f
-            Gl.glow(c, fx, fy, 5f + (i % 3) * 3f, pal[i % 4], 90)
+            glow(c, fx, fy, 5f + (i % 3) * 3f, pal[i % 4], 90)
         }
     }
 
@@ -410,7 +544,7 @@ class AdvUi(
             c.drawRect(l, AdvCfg.H - 40f, r, AdvCfg.H, pp)
             for (k in 0 until 14) {
                 val bx = l + ((k * 83f + time * 14f) % (vw + 120f))
-                Gl.glow(c, bx, AdvCfg.H - 10f + sin(time * 2f + k) * 4f, 16f, pitCol, 90)
+                glow(c, bx, AdvCfg.H - 10f + sin(time * 2f + k) * 4f, 16f, pitCol, 90)
             }
         }
         for (p in a.plats) {
@@ -447,9 +581,9 @@ class AdvUi(
             if (m.x1 + m.w < l || m.x0 - m.w > r) continue
             if (m.vertical) line(c, m.x, m.y1 + 12f, m.x, m.y0 + 12f, 2f, Gl.white(40))
             else line(c, m.x0, m.y0 + 12f, m.x1, m.y0 + 12f, 2f, Gl.white(40))
-            Gl.glow(c, m.x, m.y + 14f, m.w * 0.7f, pal[1], 60)
+            glow(c, m.x, m.y + 14f, m.w * 0.7f, pal[1], 60)
             gloss(c, 1, m.x - m.w / 2f, m.y, m.x + m.w / 2f, m.y + 13f, 5f, pal[2])
-            for (k in intArrayOf(-1, 1)) Gl.glow(c, m.x + k * (m.w / 2f - 7f), m.y + 6f, 7f, 0xFFFFFFFF.toInt(), 110)
+            for (k in intArrayOf(-1, 1)) glow(c, m.x + k * (m.w / 2f - 7f), m.y + 6f, 7f, 0xFFFFFFFF.toInt(), 110)
         }
         for (sp in a.spikes) {
             if (sp[1] < l || sp[0] > r) continue
@@ -460,12 +594,12 @@ class AdvUi(
                 glossPath(c, x, AdvCfg.GROUND - 16f, x + 10f, AdvCfg.GROUND, 0xFFD8E0F0.toInt())
                 x += 10f
             }
-            Gl.glow(c, (sp[0] + sp[1]) / 2f, AdvCfg.GROUND - 8f, 40f, 0xFFFF4050.toInt(), 40)
+            glow(c, (sp[0] + sp[1]) / 2f, AdvCfg.GROUND - 8f, 40f, 0xFFFF4050.toInt(), 40)
         }
         for (ck in a.checks) {
             if (ck < l || ck > r || ck <= 40f) continue
             line(c, ck, AdvCfg.GROUND, ck, AdvCfg.GROUND - 34f, 2f, Gl.white(120))
-            Gl.glow(c, ck, AdvCfg.GROUND - 38f, 22f, 0xFF80FFA0.toInt(), 120)
+            glow(c, ck, AdvCfg.GROUND - 38f, 22f, 0xFF80FFA0.toInt(), 120)
         }
         for (j in a.jets) if (j.x > l && j.x < r) drawJet(c, j)
         for (rk in a.rocks) if (rk.x > l && rk.x < r) drawRock(c, rk, pal)
@@ -474,7 +608,7 @@ class AdvUi(
             line(c, cd.x, cd.y, cd.x, cd.y - 18f, 3f, 0xFFB09070.toInt())
             line(c, cd.x - 6f, cd.y, cd.x + 6f, cd.y, 3f, 0xFF806040.toInt())
             val fl = 1f + 0.2f * sin(time * 12f + cd.x)
-            Gl.glow(c, cd.x, cd.y - 24f, 18f * fl, 0xFFFFA030.toInt(), 130)
+            glow(c, cd.x, cd.y - 24f, 18f * fl, 0xFFFFA030.toInt(), 130)
             rf.set(cd.x - 3.5f, cd.y - 31f, cd.x + 3.5f, cd.y - 19f)
             val pp = Gl.p(); pp.color = 0xFFFFE080.toInt()
             c.drawOval(rf, pp)
@@ -486,8 +620,28 @@ class AdvUi(
         for (h in a.hazs) drawHaz(c, h)
         for (p in a.projs) drawProj(c, p, pal)
         for (am in a.ambushes) if (am.st == 1) drawGate(c, am, pal)
+        for (k in corpses) drawCorpse(c, k)
         drawPlayer(c, a, pal)
         if (a.bibleT > 0f) drawBible(c, a)
+    }
+
+    private fun drawCorpse(c: Canvas, k: Corpse) {
+        val u = (k.t / 0.5f).coerceIn(0f, 1f)
+        val sc = if (u < 0.15f) 1f + 0.35f * (u / 0.15f) else 1.35f * (1f - (u - 0.15f) / 0.85f)
+        val r = 11f * max(0.05f, sc)
+        val al = (255 * (1f - u)).toInt()
+        gloss(c, 0, k.x - r, k.y - r, k.x + r, k.y + r, 0f, k.col, al)
+        Gl.arc(c, k.x, k.y, 8f + 34f * u, 0f, 360f, 2.4f * (1f - u) + 0.4f, Gl.alpha(Color.WHITE, (200 * (1f - u)).toInt()))
+        for (n in 0 until 6) {
+            val an = n * 1.047f + 0.4f
+            val d = 6f + 30f * u
+            val sx = k.x + cos(an) * d
+            val sy = k.y + sin(an) * d + 40f * u * u
+            c.save(); c.rotate(u * 360f + n * 40f, sx, sy)
+            val pp = Gl.p(); pp.color = Gl.alpha(opaque(k.col), (230 * (1f - u)).toInt())
+            c.drawRect(sx - 2.5f, sy - 2.5f, sx + 2.5f, sy + 2.5f, pp)
+            c.restore()
+        }
     }
 
     private fun drawGate(c: Canvas, am: AdvAmbush, pal: IntArray) {
@@ -497,7 +651,7 @@ class AdvUi(
             c.drawRect(x - 8f, 0f, x + 8f, AdvCfg.GROUND, pp)
             for (k in 0 until 6) {
                 val yy = ((time * 80f + k * 50f) % AdvCfg.GROUND)
-                Gl.glow(c, x, yy, 9f, Color.WHITE, 120)
+                glow(c, x, yy, 9f, Color.WHITE, 120)
             }
         }
     }
@@ -506,13 +660,13 @@ class AdvUi(
         gloss(c, 1, j.x - 9f, j.y - 7f, j.x + 9f, j.y, 3f, 0xFF707890.toInt())
         if (j.warn) {
             val f = 6f + 5f * sin(time * 40f)
-            Gl.glow(c, j.x, j.y - 8f, 14f, 0xFFFF8020.toInt(), 110)
+            glow(c, j.x, j.y - 8f, 14f, 0xFFFF8020.toInt(), 110)
             pth.reset(); pth.moveTo(j.x - 4f, j.y - 7f); pth.quadTo(j.x, j.y - 7f - f, j.x + 4f, j.y - 7f); pth.close()
             val pp = Gl.p(); pp.color = 0xFFFFB040.toInt(); c.drawPath(pth, pp)
         }
         if (j.on) {
             val fl = 1f + 0.1f * sin(time * 50f + j.x)
-            Gl.glow(c, j.x, j.y - 36f, 46f, 0xFFFF7020.toInt(), 130)
+            glow(c, j.x, j.y - 36f, 46f, 0xFFFF7020.toInt(), 130)
             pth.reset(); pth.moveTo(j.x - 9f, j.y - 7f); pth.quadTo(j.x - 12f, j.y - 40f * fl, j.x, j.y - 76f * fl); pth.quadTo(j.x + 12f, j.y - 40f * fl, j.x + 9f, j.y - 7f); pth.close()
             var pp = Gl.p(); pp.color = 0xFFFF6A20.toInt(); c.drawPath(pth, pp)
             pth.reset(); pth.moveTo(j.x - 5f, j.y - 7f); pth.quadTo(j.x - 6f, j.y - 30f * fl, j.x, j.y - 56f * fl); pth.quadTo(j.x + 6f, j.y - 30f * fl, j.x + 5f, j.y - 7f); pth.close()
@@ -533,7 +687,7 @@ class AdvUi(
         pth.moveTo(x - 12f, y - 22f); pth.lineTo(x + 12f, y - 22f); pth.lineTo(x + 5f, y - 4f); pth.lineTo(x, y); pth.lineTo(x - 5f, y - 4f); pth.close()
         glossPath(c, x - 12f, y - 22f, x + 12f, y, 0xFF9A8E86.toInt())
         if (r.st == 0 || r.st == 1) line(c, x, y - 22f, x, y - 26f, 2f, Gl.white(60))
-        if (r.st == 1) Gl.glow(c, x, AdvCfg.GROUND - 2f, 22f, 0xFFFF3040.toInt(), 70 + (50 * sin(time * 30f)).toInt())
+        if (r.st == 1) glow(c, x, AdvCfg.GROUND - 2f, 22f, 0xFFFF3040.toInt(), 70 + (50 * sin(time * 30f)).toInt())
     }
 
     private fun drawPend(c: Canvas, p: AdvPend, pal: IntArray) {
@@ -553,7 +707,7 @@ class AdvUi(
         }
         c.restore()
         gloss(c, 0, p.bx - 9f, p.by - 9f, p.bx + 9f, p.by + 9f, 0f, 0xFFA8B0C8.toInt())
-        Gl.glow(c, p.bx, p.by, 20f, pal[1], 40)
+        glow(c, p.bx, p.by, 20f, pal[1], 40)
     }
 
     private fun drawBible(c: Canvas, a: Adv) {
@@ -561,43 +715,50 @@ class AdvUi(
             val an = time * 6.5f + k * 1.5708f
             val x = a.px + cos(an) * 36f
             val y = a.py - 15f + sin(an) * 28f
-            Gl.glow(c, x, y, 16f, 0xFFFFE070.toInt(), 120)
+            glow(c, x, y, 16f, 0xFFFFE070.toInt(), 120)
             gloss(c, 1, x - 6f, y - 7f, x + 6f, y + 7f, 2f, 0xFFE8D8A0.toInt())
             line(c, x, y - 6f, x, y + 6f, 1.2f, 0xFF806030.toInt())
         }
     }
 
     private fun drawItem(c: Canvas, i: AdvItem, pal: IntArray) {
+        val pop = if (i.t < 0.3f) easeBack(i.t / 0.3f) else 1f
+        if (pop != 1f) { c.save(); c.scale(pop, pop, i.x, i.y) }
+        drawItemBody(c, i, pal)
+        if (pop != 1f) c.restore()
+    }
+
+    private fun drawItemBody(c: Canvas, i: AdvItem, pal: IntArray) {
         val bob = sin(i.t * 5f) * 1.5f
         val x = i.x
         val y = i.y + bob
         when (i.kind) {
             Adv.IT_HEART, Adv.IT_BIG -> {
                 val k = if (i.kind == Adv.IT_BIG) 1.6f else 1f
-                Gl.glow(c, x, y, 14f * k, 0xFFFF4070.toInt(), 90)
+                glow(c, x, y, 14f * k, 0xFFFF4070.toInt(), 90)
                 heart(c, x, y, k, 0xFFFF4070.toInt())
             }
             Adv.IT_MEAT -> {
-                Gl.glow(c, x, y, 14f, 0xFFFFA040.toInt(), 70)
+                glow(c, x, y, 14f, 0xFFFFA040.toInt(), 70)
                 gloss(c, 0, x - 7f, y - 6f, x + 7f, y + 6f, 0f, 0xFFD0803A.toInt())
                 line(c, x + 4f, y - 4f, x + 9f, y - 9f, 2.5f, Gl.white(230))
             }
             Adv.IT_BOOTS -> {
-                Gl.glow(c, x, y, 18f, 0xFF60E0FF.toInt(), 110)
+                glow(c, x, y, 18f, 0xFF60E0FF.toInt(), 110)
                 gloss(c, 1, x - 5f, y - 8f, x + 3f, y + 4f, 2f, 0xFF40C0F0.toInt())
                 gloss(c, 1, x - 6f, y + 1f, x + 8f, y + 6f, 2.5f, 0xFF2090D0.toInt())
                 line(c, x + 4f, y - 4f, x + 11f, y - 8f, 1.8f, Color.WHITE)
                 line(c, x + 4f, y - 1f, x + 12f, y - 3f, 1.8f, Color.WHITE)
             }
             Adv.IT_POTION -> {
-                Gl.glow(c, x, y, 18f, 0xFF60FFB0.toInt(), 110)
+                glow(c, x, y, 18f, 0xFF60FFB0.toInt(), 110)
                 gloss(c, 0, x - 6f, y - 3f, x + 6f, y + 8f, 0f, 0xFF40E090.toInt())
                 gloss(c, 1, x - 2.5f, y - 9f, x + 2.5f, y - 2f, 1.5f, 0xFFD0E8F0.toInt())
             }
             Adv.IT_SUB, Adv.IT_WHIP, Adv.IT_ORB -> {
                 val col = if (i.kind == Adv.IT_ORB) pal[((time * 4f).toInt()) % 4] else if (i.kind == Adv.IT_WHIP) 0xFFFFD060.toInt() else 0xFF70C8FF.toInt()
                 val rr = if (i.kind == Adv.IT_ORB) 13f else 8f
-                Gl.glow(c, x, y, rr * 2.6f, col, 120)
+                glow(c, x, y, rr * 2.6f, col, 120)
                 gloss(c, 0, x - rr, y - rr, x + rr, y + rr, 0f, col)
                 val ch = if (i.kind == Adv.IT_WHIP) "L" else if (i.kind == Adv.IT_ORB) "" else AdvCfg.subLetters.substring(i.arg.coerceIn(1, AdvCfg.SUBS), i.arg.coerceIn(1, AdvCfg.SUBS) + 1)
                 if (ch.isNotEmpty()) Gl.text(c, ch, x, y + 4f, 11f, Gl.medium, Color.BLACK)
@@ -620,6 +781,13 @@ class AdvUi(
 
     // ------------------------------------------------------------------ enemigos (opacos, tipo acrílico)
     private fun drawEnemy(c: Canvas, e: AdvEnemy, a: Adv, pal: IntArray) {
+        val pop = if (e.age < 0.35f) easeBack(e.age / 0.35f) else 1f
+        if (pop != 1f) { c.save(); c.scale(pop, pop, e.x, e.y) }
+        drawEnemyBody(c, e, a, pal)
+        if (pop != 1f) c.restore()
+    }
+
+    private fun drawEnemyBody(c: Canvas, e: AdvEnemy, a: Adv, pal: IntArray) {
         val hit = e.flash > 0f
         val base0 = when (e.type) {
             Adv.E_WALKER -> pal[1]; Adv.E_BAT -> pal[2]; Adv.E_THROWER -> pal[3]; Adv.E_HOPPER -> pal[0]
@@ -685,7 +853,7 @@ class AdvUi(
                 c.restore()
                 gloss(c, 0, x - 8f, y - 25f, x + 8f, y - 9f, 0f, col)
                 val charge = (e.t / 2f).coerceIn(0f, 1f)
-                Gl.glow(c, x, y - 17f, 8f + 6f * charge, 0xFFFF4060.toInt(), (60 + 140 * charge).toInt())
+                glow(c, x, y - 17f, 8f + 6f * charge, 0xFFFF4060.toInt(), (60 + 140 * charge).toInt())
             }
             Adv.E_CHARGER -> {
                 val wind = e.st == 1
@@ -697,7 +865,7 @@ class AdvUi(
                 pth.reset(); pth.moveTo(x + f * 12f, y - 16f); pth.lineTo(x + f * 25f, y - 23f); pth.lineTo(x + f * 12f, y - 23f); pth.close()
                 glossPath(c, x - 14f, y - 24f, x + 26f, y - 14f, 0xFFF0F0E8.toInt())
                 eyes(c, x + f * 4f, y - 17f, f, 2.2f, if (wind) 0xFFFF6070.toInt() else 0xFFFFF4C0.toInt())
-                if (wind) for (k in 0 until 2) Gl.glow(c, x - f * 14f, y - 6f - k * 6f, 6f, Gl.white(200), 120)
+                if (wind) for (k in 0 until 2) glow(c, x - f * 14f, y - 6f - k * 6f, 6f, Gl.white(200), 120)
             }
             Adv.E_MEDUSA -> {
                 for (k in -2..2) {
@@ -733,7 +901,7 @@ class AdvUi(
                 val ep = Gl.p(); ep.color = 0xFF2A2440.toInt()
                 c.drawOval(rf.also { it.set(x - 7f, y - 20f, x - 2f, y - 12f) }, ep)
                 c.drawOval(rf.also { it.set(x + 2f, y - 20f, x + 7f, y - 12f) }, ep)
-                if (chase) Gl.glow(c, x, y - 14f, 22f, 0xFFA0B0FF.toInt(), 50)
+                if (chase) glow(c, x, y - 14f, 22f, 0xFFA0B0FF.toInt(), 50)
             }
             else -> { // araña
                 if (e.st == 0 || e.st == 1) line(c, x, 0f, x, y - 6f, 1.2f, Gl.white(130))
@@ -749,19 +917,19 @@ class AdvUi(
 
     private fun drawProj(c: Canvas, p: AdvProj, pal: IntArray) {
         if (!p.mine) {
-            Gl.glow(c, p.x, p.y, p.r * 2.2f, 0xFFFF4060.toInt(), 80)
+            glow(c, p.x, p.y, p.r * 2.2f, 0xFFFF4060.toInt(), 80)
             gloss(c, 0, p.x - p.r, p.y - p.r, p.x + p.r, p.y + p.r, 0f, 0xFFFF6078.toInt())
             return
         }
         when (p.kind) {
-            1 -> { val s = if (p.vx >= 0f) 1f else -1f; line(c, p.x - 9f * s, p.y, p.x + 9f * s, p.y, 3.4f, Color.WHITE); line(c, p.x - 2f * s, p.y - 3f, p.x - 2f * s, p.y + 3f, 2f, 0xFF9AB0D0.toInt()); Gl.glow(c, p.x, p.y, 14f, pal[1], 100) }
-            2 -> { c.save(); c.rotate(p.t * 700f, p.x, p.y); gloss(c, 1, p.x - 7f, p.y - 7f, p.x + 7f, p.y + 7f, 2f, pal[2]); c.restore(); Gl.glow(c, p.x, p.y, 18f, pal[2], 70) }
-            3 -> { Gl.arc(c, p.x, p.y, 8f, p.t * 600f, 250f, 3.4f, Color.WHITE); Gl.glow(c, p.x, p.y, 16f, pal[3], 90) }
-            4 -> { gloss(c, 0, p.x - 5f, p.y - 5f, p.x + 5f, p.y + 5f, 0f, 0xFF60C0FF.toInt()); Gl.glow(c, p.x, p.y, 12f, 0xFF60C0FF.toInt(), 80) }
-            5 -> { Gl.glow(c, p.x, p.y, 16f, 0xFFB080FF.toInt(), 130); gloss(c, 0, p.x - 5f, p.y - 5f, p.x + 5f, p.y + 5f, 0f, 0xFFC8A0FF.toInt()) }
+            1 -> { val s = if (p.vx >= 0f) 1f else -1f; line(c, p.x - 9f * s, p.y, p.x + 9f * s, p.y, 3.4f, Color.WHITE); line(c, p.x - 2f * s, p.y - 3f, p.x - 2f * s, p.y + 3f, 2f, 0xFF9AB0D0.toInt()); glow(c, p.x, p.y, 14f, pal[1], 100) }
+            2 -> { c.save(); c.rotate(p.t * 700f, p.x, p.y); gloss(c, 1, p.x - 7f, p.y - 7f, p.x + 7f, p.y + 7f, 2f, pal[2]); c.restore(); glow(c, p.x, p.y, 18f, pal[2], 70) }
+            3 -> { Gl.arc(c, p.x, p.y, 8f, p.t * 600f, 250f, 3.4f, Color.WHITE); glow(c, p.x, p.y, 16f, pal[3], 90) }
+            4 -> { gloss(c, 0, p.x - 5f, p.y - 5f, p.x + 5f, p.y + 5f, 0f, 0xFF60C0FF.toInt()); glow(c, p.x, p.y, 12f, 0xFF60C0FF.toInt(), 80) }
+            5 -> { glow(c, p.x, p.y, 16f, 0xFFB080FF.toInt(), 130); gloss(c, 0, p.x - 5f, p.y - 5f, p.x + 5f, p.y + 5f, 0f, 0xFFC8A0FF.toInt()) }
             6 -> { c.save(); c.rotate(p.t * 1100f, p.x, p.y)
                 for (k in 0 until 4) { val an = k * 1.5708f; pth.reset(); pth.moveTo(p.x, p.y); pth.lineTo(p.x + cos(an) * 7f, p.y + sin(an) * 7f); pth.lineTo(p.x + cos(an + 0.7f) * 3.5f, p.y + sin(an + 0.7f) * 3.5f); pth.close(); val pp = Gl.p(); pp.color = 0xFFE8F0FF.toInt(); c.drawPath(pth, pp) }
-                c.restore(); Gl.glow(c, p.x, p.y, 10f, pal[1], 80) }
+                c.restore(); glow(c, p.x, p.y, 10f, pal[1], 80) }
         }
     }
 
@@ -782,7 +950,7 @@ class AdvUi(
                 val cx = (h.x0 + h.x1) / 2f
                 pth.moveTo(h.x0, h.y1); pth.quadTo(h.x0 + 4f, h.y1 - (h.y1 - h.y0) * f, cx, h.y1 - (h.y1 - h.y0) * f * 1.3f); pth.quadTo(h.x1 - 4f, h.y1 - (h.y1 - h.y0) * f, h.x1, h.y1); pth.close()
                 pp.color = 0xFFFF8020.toInt(); c.drawPath(pth, pp)
-                Gl.glow(c, cx, h.y1 - 10f, 36f, 0xFFFFB040.toInt(), 110)
+                glow(c, cx, h.y1 - 10f, 36f, 0xFFFFB040.toInt(), 110)
             }
             1 -> { // rayo en zigzag
                 val cx = (h.x0 + h.x1) / 2f
@@ -794,26 +962,26 @@ class AdvUi(
                     line(c, px0, yy, nx, yy + 22f, 4f, col)
                     px0 = nx; yy += 22f
                 }
-                Gl.glow(c, cx, h.y1 - 20f, 40f, if (h.mine) 0xFF80C0FF.toInt() else 0xFFFF6070.toInt(), 110)
+                glow(c, cx, h.y1 - 20f, 40f, if (h.mine) 0xFF80C0FF.toInt() else 0xFFFF6070.toInt(), 110)
             }
             4 -> {
                 pth.reset(); pth.moveTo(h.x0, h.y1); pth.lineTo((h.x0 + h.x1) / 2f, h.y0); pth.lineTo(h.x1, h.y1); pth.close()
                 glossPath(c, h.x0, h.y0, h.x1, h.y1, 0xFFFFD060.toInt())
-                Gl.glow(c, (h.x0 + h.x1) / 2f, h.y1 - 6f, 20f, 0xFFFF8040.toInt(), 90)
+                glow(c, (h.x0 + h.x1) / 2f, h.y1 - 6f, 20f, 0xFFFF8040.toInt(), 90)
             }
             else -> {
                 pp.color = Gl.alpha(Color.WHITE, 235)
                 c.drawRect(h.x0, h.y0, h.x1, h.y1, pp)
-                Gl.glow(c, (h.x0 + h.x1) / 2f, (h.y0 + h.y1) / 2f, max(h.x1 - h.x0, h.y1 - h.y0) * 0.5f + 12f, 0xFFFF6070.toInt(), 80)
+                glow(c, (h.x0 + h.x1) / 2f, (h.y0 + h.y1) / 2f, max(h.x1 - h.x0, h.y1 - h.y0) * 0.5f + 12f, 0xFFFF6070.toInt(), 80)
             }
         }
     }
 
     // ------------------------------------------------------------------ jugador
     private fun drawPlayer(c: Canvas, a: Adv, pal: IntArray) {
+        for (t in trail) glow(c, t.x, t.y, 9f * (t.life / 0.22f) + 3f, pal[0], (95 * t.life / 0.22f).toInt())
         if (a.deadT > 0f) return
         val blink = a.invuln > 0f && a.potionT <= 0f && ((time * 18f).toInt() % 2 == 0)
-        // sombra
         val gy = a.groundBelow(a.px, a.py - 1f)
         if (gy < AdvCfg.H) {
             val k = (1f - ((gy - a.py) / 90f)).coerceIn(0.3f, 1f)
@@ -821,28 +989,38 @@ class AdvUi(
             rf.set(a.px - 9f * k, gy - 2f, a.px + 9f * k, gy + 2f)
             c.drawOval(rf, sp)
         }
+        val atkU = if (a.atkT > 0f) (0.34f - a.atkT) / 0.34f else -1f
         if (!blink) {
             var sy = 1f
             if (!a.onGround) sy = 1f + min(0.22f, abs(a.pvy) / 2400f)
             else if (squash > 0f) sy = 1f - 0.24f * squash
             else if (abs(a.pvx) > 60f) sy = 1f + 0.04f * sin(runPhase * 3f)
             val sx = 1f / sy
+            // anticipación (se encoge hacia atrás), golpe y seguimiento del ataque
+            var ap = 0f
+            if (atkU >= 0f) ap = if (atkU < 0.2f) -atkU / 0.2f else if (atkU < 0.45f) (atkU - 0.2f) / 0.25f else max(0f, 1f - (atkU - 0.45f) / 0.4f)
+            val lean = (a.pvx / 175f).coerceIn(-1.2f, 1.2f) * 7f + a.face * ap * 6f
             c.save()
-            c.translate(a.px, a.py)
-            c.scale(sx, sy)
+            c.translate(a.px + a.face * ap * 2.5f, a.py)
+            c.rotate(lean)
+            c.scale(sx * (1f + 0.07f * abs(ap)), sy * (1f - 0.04f * abs(ap)))
             ball(c, 0f, -11f, 11f, pal[0])
+            val look = if (a.pvy < -80f) -1.5f else if (a.pvy > 120f) 1.5f else 0f
             val ep = Gl.p(); ep.color = Color.WHITE
             c.drawCircle(a.face * 4f, -14f, 2.7f, ep)
             ep.color = Color.BLACK
-            c.drawCircle(a.face * 5f, -14f, 1.3f, ep)
+            c.drawCircle(a.face * 5f, -14f + look * 0.4f, 1.3f, ep)
+            if (a.invuln > 1.0f) { ep.color = Gl.white(150); c.drawCircle(0f, -11f, 11f, ep) }
             c.restore()
-            if (a.potionT > 0f) Gl.glow(c, a.px, a.py - 15f, 28f, 0xFF60FFB0.toInt(), 110)
+            if (a.potionT > 0f) glow(c, a.px, a.py - 15f, 28f, 0xFF60FFB0.toInt(), 110)
             if (a.boots) { line(c, a.px - 8f, a.py + 1f, a.px + 8f, a.py + 1f, 1.6f, 0xFF60E0FF.toInt()) }
         }
-        if (a.atkT > 0f) {
-            val u = (0.34f - a.atkT) / 0.34f
-            val ext = if (u < 0.35f) u / 0.35f else max(0f, 1f - (u - 0.35f) / 0.65f * 0.4f)
-            val len = a.whipReach * min(1f, ext + 0.05f)
+        if (atkU >= 0f) {
+            val u = atkU
+            val ext = if (u < 0.2f) -0.18f * sin(u / 0.2f * 3.1416f)
+            else if (u < 0.5f) { val t = (u - 0.2f) / 0.3f; val q = 1f - t; (1f - q * q * q) * (1f + 0.08f * sin(t * 3.1416f)) }
+            else { val t = (u - 0.5f) / 0.5f; max(0f, 1f - t * t) }
+            val len = a.whipReach * ext
             val x0 = a.px + a.face * 8f
             val y0 = a.py - 18f
             val col = if (a.whip > 0) 0xFFFFD060.toInt() else Color.WHITE
@@ -851,13 +1029,17 @@ class AdvUi(
             for (k in 1..9) {
                 val t = k / 9f
                 val x1 = x0 + a.face * len * t
-                val y1 = y0 + sin(t * 9f - time * 30f) * 3f * (1f - t * 0.4f)
+                val y1 = y0 + sin(t * 9f - time * 30f) * 3f * (1f - t * 0.4f) * (0.4f + abs(ext))
                 Gl.line(c, px0, py0, x1, y1, 4f - 2.6f * t, Gl.alpha(col, 245))
                 Gl.line(c, px0, py0 + 1.5f, x1, y1 + 1.5f, 6.5f - 4f * t, Gl.alpha(pal[1], 70))
                 px0 = x1; py0 = y1
             }
-            Gl.glow(c, px0, py0, 18f, col, 160)
-            if (a.whip >= 2) for (k in 0 until 3) Gl.glow(c, x0 + a.face * len * (0.3f + 0.3f * k), y0, 8f, 0xFFFF9040.toInt(), 90)
+            glow(c, px0, py0, 18f, col, 160)
+            if (u in 0.2f..0.62f) {
+                val fa = (1f - abs(u - 0.38f) / 0.24f).coerceIn(0f, 1f)
+                Gl.arc(c, x0, y0, a.whipReach * 0.92f, if (a.face > 0) -24f else 156f, 48f, 3.2f, Gl.alpha(col, (190 * fa).toInt()))
+            }
+            if (a.whip >= 2) for (k in 0 until 3) glow(c, x0 + a.face * len * (0.3f + 0.3f * k), y0, 8f, 0xFFFF9040.toInt(), 90)
         }
     }
 
@@ -878,12 +1060,29 @@ class AdvUi(
         val sp = Gl.p(); sp.color = Gl.alpha(Color.BLACK, 90)
         rf.set(x - d.w * 0.6f, gy - 3f, x + d.w * 0.6f, gy + 3f)
         c.drawOval(rf, sp)
-        Gl.glow(c, x, gy - d.h / 2f, d.w * 1.4f, acc, (50 * fade).toInt())
-        if (a.bstate == Adv.BS_TELE) Gl.glow(c, x, gy - d.h / 2f, d.w * 1.7f, 0xFFFF3040.toInt(), (70 + 60 * sin(time * 30f)).toInt().coerceIn(0, 140))
-        if (a.benraged) Gl.glow(c, x, gy - d.h / 2f, d.w * 1.2f, 0xFFFF5030.toInt(), 45)
+        glow(c, x, gy - d.h / 2f, d.w * 1.4f, acc, (50 * fade).toInt())
+        if (a.bstate == Adv.BS_TELE) glow(c, x, gy - d.h / 2f, d.w * 1.7f, 0xFFFF3040.toInt(), (70 + 60 * sin(time * 30f)).toInt().coerceIn(0, 140))
+        if (a.benraged) glow(c, x, gy - d.h / 2f, d.w * 1.2f, 0xFFFF5030.toInt(), 45)
+        var bsx = breathe * lunge
+        var bsy = breathe * lunge
+        var rot = 0f
+        if (a.bstate == Adv.BS_TELE) {
+            val pr = (1f - a.bst / max(0.05f, a.bteleMax)).coerceIn(0f, 1f)
+            val ez = pr * pr
+            when (a.bpat) {
+                AdvCfg.P_SLAM, AdvCfg.P_WAVE, AdvCfg.P_ULT -> { bsy *= 1f - 0.17f * ez; bsx *= 1f + 0.11f * ez }
+                AdvCfg.P_CHARGE -> { rot = -a.bface * 9f * ez; bsy *= 1f - 0.08f * ez; bsx *= 1f + 0.06f * ez }
+                else -> { bsy *= 1f + 0.08f * ez; bsx *= 1f - 0.04f * ez }
+            }
+        } else if (a.bstate == Adv.BS_ACT) {
+            if (a.bpat == AdvCfg.P_CHARGE) rot = a.bface * 7f
+            if (a.bpat == AdvCfg.P_SLAM && a.bz > 1f) { bsy *= 1.14f; bsx *= 0.92f }
+        } else if (a.bstate == Adv.BS_STUN) rot = sin(time * 16f) * 4f
+        if (bossSquash > 0f) { bsy *= 1f - 0.18f * bossSquash; bsx *= 1f + 0.12f * bossSquash }
         c.save()
-        c.translate(x + shake, gy)
-        c.scale(breathe * lunge, breathe * lunge)
+        c.translate(x + shake, gy - a.bz)
+        c.rotate(rot)
+        c.scale(bsx, bsy)
         val f = a.bface
         val w = d.w
         val h = d.h
@@ -955,7 +1154,7 @@ class AdvUi(
                 gloss(c, 1, w * 0.38f, -h * 0.7f, w * 0.58f, -h * 0.14f, 6f, Gl.darken(col, 0.8f), al)
                 gloss(c, 1, -w * 0.24f, -h, w * 0.24f, -h * 0.68f, 6f, lighten(col, 0.08f), al)
                 line(c, -w * 0.2f, -h * 0.6f, -w * 0.05f, -h * 0.3f, 2.4f, 0xFFFFB040.toInt()); line(c, w * 0.2f, -h * 0.55f, w * 0.08f, -h * 0.22f, 2.4f, 0xFFFFB040.toInt()); line(c, 0f, -h * 0.7f, w * 0.05f, -h * 0.45f, 2.4f, 0xFFFFB040.toInt())
-                Gl.glow(c, 0f, -h * 0.45f, w * 0.5f, 0xFFFF7020.toInt(), 60)
+                glow(c, 0f, -h * 0.45f, w * 0.5f, 0xFFFF7020.toInt(), 60)
                 eyes(c, f * 2f, -h * 0.84f, f, 2.8f, 0xFFFFE070.toInt())
             }
             8 -> { // ent ancestral
@@ -969,7 +1168,7 @@ class AdvUi(
                 glossPath(c, -w * 0.55f, -h * 0.62f, w * 0.55f, 0f, col, al)
                 gloss(c, 0, -w * 0.2f, -h * 0.94f, w * 0.2f, -h * 0.64f, 0f, 0xFFEAF6FF.toInt(), al)
                 for (k in -2..2) { pth.reset(); pth.moveTo(k * 6f - 3f, -h * 0.9f); pth.lineTo(k * 6f, -h * (1.08f + 0.04f * (2 - abs(k)))); pth.lineTo(k * 6f + 3f, -h * 0.9f); pth.close(); glossPath(c, k * 6f - 3f, -h * 1.16f, k * 6f + 3f, -h * 0.9f, 0xFFBFE8FF.toInt(), al) }
-                line(c, w * 0.5f * f, 0f, w * 0.5f * f, -h * 0.95f, 3f, Gl.alpha(0xFFBFE8FF.toInt(), al)); Gl.glow(c, w * 0.5f * f, -h * 0.97f, 10f, 0xFF80D0FF.toInt(), 130)
+                line(c, w * 0.5f * f, 0f, w * 0.5f * f, -h * 0.95f, 3f, Gl.alpha(0xFFBFE8FF.toInt(), al)); glow(c, w * 0.5f * f, -h * 0.97f, 10f, 0xFF80D0FF.toInt(), 130)
                 eyes(c, f * 1.5f, -h * 0.8f, f, 2.2f, 0xFF60C0FF.toInt())
             }
             10 -> { // oráculo: ojo flotante
@@ -998,46 +1197,46 @@ class AdvUi(
         c.restore()
         if (a.bstate == Adv.BS_STUN) for (k in 0 until 3) {
             val an = time * 6f + k * 2.1f
-            Gl.glow(c, x + cos(an) * 18f, gy - d.h - 6f + sin(an) * 5f, 7f, 0xFFFFE070.toInt(), 200)
+            glow(c, x + cos(an) * 18f, gy - d.h - 6f + sin(an) * 5f, 7f, 0xFFFFE070.toInt(), 200)
         }
     }
 
     // ------------------------------------------------------------------ interfaz
     private fun drawHud(c: Canvas, a: Adv, pal: IntArray) {
-        for (i in 0 until AdvCfg.MAXHP) {
-            if (i < a.hp) gloss(c, 1, 18f + i * 12f, 14f, 18f + i * 12f + 9f, 28f, 3f, 0xFFFF4A60.toInt())
-            else { val pp = Gl.p(); pp.color = Gl.white(40); rf.set(18f + i * 12f, 14f, 18f + i * 12f + 9f, 28f); c.drawRoundRect(rf, 3f, 3f, pp) }
-        }
-        heart(c, 24f, 42f, 0.9f, 0xFFFF4070.toInt())
-        Gl.text(c, "${a.hearts}", 36f, 49f, 15f, Gl.medium, Gl.white(235), 0f, null, 0, Paint.Align.LEFT)
-        // arma secundaria
+        val bwid = AdvCfg.MAXHP * 12f
+        var pp = Gl.p(); pp.color = Gl.white(40)
+        c.drawRoundRect(rf.also { it.set(18f, 14f, 18f + bwid, 28f) }, 5f, 5f, pp)
+        if (hpChip > hpDisp + 0.05f) { pp = Gl.p(); pp.color = 0xFFFFC0C8.toInt(); c.drawRoundRect(rf.also { it.set(18f, 14f, 18f + bwid * hpChip / AdvCfg.MAXHP, 28f) }, 5f, 5f, pp) }
+        if (hpDisp > 0.1f) gloss(c, 1, 18f, 14f, 18f + max(6f, bwid * hpDisp / AdvCfg.MAXHP), 28f, 5f, 0xFFFF4A60.toInt())
+        for (i in 1 until AdvCfg.MAXHP) line(c, 18f + i * 12f, 15f, 18f + i * 12f, 27f, 1f, Gl.alpha(Color.BLACK, 70))
+        val hs = 1f + 0.4f * heartPop
+        heart(c, 24f, 42f, 0.9f * hs, 0xFFFF4070.toInt())
+        Gl.text(c, "${a.hearts}", 36f, 49f, 15f * hs, Gl.medium, Gl.white(235), 0f, null, 0, Paint.Align.LEFT)
         gloss(c, 1, 18f, 58f, 44f, 84f, 7f, if (a.sub == 0) 0xFF505868.toInt() else 0xFF70C8FF.toInt())
         if (a.sub != 0) Gl.text(c, AdvCfg.subLetters.substring(a.sub, a.sub + 1), 31f, 77f, 17f, Gl.medium, Color.BLACK)
         Gl.text(c, if (a.sub == 0) "Sin arma" else "${AdvCfg.subNames[a.sub]} (${AdvCfg.subCost[a.sub]})", 50f, 76f, 12f, Gl.regular, Gl.white(190), 0f, null, 0, Paint.Align.LEFT)
         var ix = 18f
         if (a.boots) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFF40C0F0.toInt()); ix += 28f }
         if (a.whip > 0) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFFFFD060.toInt()); Gl.text(c, "L${a.whip}", ix + 11f, 103f, 11f, Gl.medium, Color.BLACK); ix += 28f }
-        if (a.potionT > 0f) { val pp = Gl.p(); pp.color = Gl.white(40); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f, 102f) }, 4f, 4f, pp); pp.color = 0xFF60FFB0.toInt(); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f * (a.potionT / 9f).coerceIn(0f, 1f), 102f) }, 4f, 4f, pp) }
-        if (a.bibleT > 0f) { val pp = Gl.p(); pp.color = 0xFFFFE070.toInt(); c.drawRoundRect(rf.also { it.set(18f, 110f, 18f + 50f * (a.bibleT / 4.5f).coerceIn(0f, 1f), 116f) }, 3f, 3f, pp) }
-        // progreso del nivel
+        if (a.potionT > 0f) { pp = Gl.p(); pp.color = Gl.white(40); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f, 102f) }, 4f, 4f, pp); pp.color = 0xFF60FFB0.toInt(); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f * (a.potionT / 9f).coerceIn(0f, 1f), 102f) }, 4f, 4f, pp) }
+        if (a.bibleT > 0f) { pp = Gl.p(); pp.color = 0xFFFFE070.toInt(); c.drawRoundRect(rf.also { it.set(18f, 110f, 18f + 50f * (a.bibleT / 4.5f).coerceIn(0f, 1f), 116f) }, 3f, 3f, pp) }
         val bw = min(180f, vw * 0.24f)
         val x0 = vw - 60f - bw
-        var pp = Gl.p(); pp.color = Gl.white(45)
+        pp = Gl.p(); pp.color = Gl.white(45)
         c.drawRoundRect(rf.also { it.set(x0, 26f, x0 + bw, 32f) }, 3f, 3f, pp)
         for (ck in a.checks) { pp = Gl.p(); pp.color = Gl.white(110); c.drawRect(x0 + bw * (ck / a.arenaX).coerceIn(0f, 1f) - 1f, 22f, x0 + bw * (ck / a.arenaX).coerceIn(0f, 1f) + 1f, 36f, pp) }
         val fx = x0 + bw * (a.px / a.arenaX).coerceIn(0f, 1f)
-        Gl.glow(c, fx, 29f, 9f, pal[0], 160)
+        glow(c, fx, 29f, 9f, pal[0], 160)
         pp = Gl.p(); pp.color = Color.WHITE; c.drawCircle(fx, 29f, 4f, pp)
-        // vida del jefe
         if (a.bossStarted && a.bstate != Adv.BS_INTRO) {
             val bb = min(260f, vw * 0.36f)
             val bx0 = vw / 2f - bb / 2f
             Gl.text(c, a.bdef.name, vw / 2f, 15f, 12f, Gl.medium, Gl.white(220))
             pp = Gl.p(); pp.color = Gl.white(40)
             c.drawRoundRect(rf.also { it.set(bx0, 20f, bx0 + bb, 30f) }, 5f, 5f, pp)
-            gloss(c, 1, bx0, 20f, bx0 + max(6f, bb * a.bhp / a.bmax.toFloat()), 30f, 5f, pal[0])
+            if (bossChip > bossDisp + 0.003f) { pp = Gl.p(); pp.color = 0xFFFFE0A0.toInt(); c.drawRoundRect(rf.also { it.set(bx0, 20f, bx0 + bb * bossChip, 30f) }, 5f, 5f, pp) }
+            if (bossDisp > 0.002f) gloss(c, 1, bx0, 20f, bx0 + max(6f, bb * bossDisp), 30f, 5f, pal[0])
         }
-        // pausa
         pp = Gl.p(); pp.color = Gl.white(50)
         c.drawCircle(vw - 30f, 32f, 20f, pp)
         pp.color = Gl.white(220)
@@ -1049,6 +1248,9 @@ class AdvUi(
         for (b in buttons()) {
             if (b.id == "P") continue
             val held = ptrs.containsValue(b.id)
+            c.save()
+            if (held) c.scale(0.92f, 0.92f, b.x, b.y)
+            if (held) glow(c, b.x, b.y, b.r * 1.6f, Color.WHITE, 70)
             var pp = Gl.p()
             pp.color = Gl.white(if (held) 95 else 40)
             c.drawCircle(b.x, b.y, b.r, pp)
@@ -1069,12 +1271,11 @@ class AdvUi(
                 line(c, b.x - r * 0.46f, b.y + r * 0.04f, b.x - r * 0.04f, b.y + r * 0.46f, 3.4f, Gl.white(240))
                 line(c, b.x - r * 0.46f, b.y + r * 0.46f, b.x - r * 0.3f, b.y + r * 0.3f, 3.6f, Gl.white(240))
             } else { pth.close(); c.drawPath(pth, pp) }
+            c.restore()
         }
     }
 
     private fun panelBox(c: Canvas, pal: IntArray, l: Float, t: Float, r: Float, b: Float) {
-        val pp = Gl.p(); pp.color = Gl.alpha(Color.BLACK, 150)
-        c.drawRect(0f, 0f, vw, AdvCfg.H, pp)
         Gl.panel(c, l, t, r, b, 18f, 1f, pal[0])
     }
 
