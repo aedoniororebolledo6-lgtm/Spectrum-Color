@@ -1083,7 +1083,7 @@ class AdvUi(
         Gl.text(c, "MUNDO ${world + 1}: ${Worlds.names[world]}", vw / 2f, 92f, 22f, Gl.medium, Gl.white(245), 0.08f)
         Gl.text(c, "Jefe: ${AdvCfg.bosses[world].name}", vw / 2f, 118f, 15f, Gl.regular, pal[1])
         wrapText(c, AdvCfg.worldIntro[world], vw / 2f, 156f, 500f, 17f, 24f)
-        Gl.text(c, "Látigo ⟶ ataque normal   Estrella ⟶ arma especial (gasta corazones)", vw / 2f, 262f, 12f, Gl.regular, Gl.white(150))
+        Gl.text(c, "Botón espada: ataque normal   Botón estrella: arma especial (gasta corazones)", vw / 2f, 262f, 12f, Gl.regular, Gl.white(150))
         Gl.text(c, "Toca para empezar", vw / 2f, 292f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
     }
 
