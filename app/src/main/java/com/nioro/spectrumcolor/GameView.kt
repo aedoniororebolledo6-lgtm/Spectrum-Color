@@ -899,7 +899,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (advLeaving) {
                     if (height > width || advWait > 3f) { advLeaving = false; scr = Scr.ADV_MENU }
                 } else if (advPending >= 0) {
-                    if (width > height) { advUi.start(advPending, width / (height / AdvCfg.H), false); advPending = -1 }
+                    if (width > height) { advUi.prefs = prefs; advUi.start(advPending, width / (height / AdvCfg.H), false); advPending = -1 }
                     else if (advWait > 3f) { advPending = -1; advExit() }
                 }
             }

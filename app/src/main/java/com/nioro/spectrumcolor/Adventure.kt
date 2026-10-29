@@ -1202,6 +1202,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 if (a.wave == 1 && a.mine.size <= 1) { a.wave = 2; spawnWave(a, 3 + (world / 3)) }
                 else if (a.wave >= 2 && a.mine.isEmpty()) {
                     a.st = 2
+                    rooms[cur].cleared = true
                     ev(EV_CLEAR, px, py - 20f)
                     items.add(AdvItem((a.x0 + a.x1) / 2f, AdvCfg.GROUND - 60f, IT_BIG, 0))
                     items.add(AdvItem((a.x0 + a.x1) / 2f + 24f, AdvCfg.GROUND - 60f, if (rnd.nextBoolean()) IT_SUB else IT_MEAT, 1 + rnd.nextInt(AdvCfg.SUBS)))

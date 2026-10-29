@@ -67,13 +67,15 @@ class AdvUi(
     private val rf2 = RectF()
     private val pp0 = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    var prefs: Prefs? = null
     val active: Boolean get() = adv != null
 
     fun start(w: Int, viewW: Float, god: Boolean) {
         world = w
         vw = viewW
         adv = Adv(w, viewW, god)
-        if (!god && (Prefs.advMask shr w) and 1 == 0) { val sv = Prefs.advSave(w); if (sv.isNotEmpty()) adv?.loadState(sv) }
+        val pf = prefs
+        if (pf != null && !god && (pf.advMask shr w) and 1 == 0) { val sv = pf.advSave(w); if (sv.isNotEmpty()) adv?.loadState(sv) }
         phase = 0
         phT = 0f
         winSent = false
@@ -180,7 +182,7 @@ class AdvUi(
             handleEvents(a)
             animate(a, dt)
             if (a.won && phase == 1) { phase = 3; phT = 0f }
-            if (phase == 3 && !winSent) { winSent = true; savedCount = onWin(world); Prefs.setAdvSave(world, "") }
+            if (phase == 3 && !winSent) { winSent = true; savedCount = onWin(world); prefs?.setAdvSave(world, "") }
         } else inp.clearPressed()
         val it = parts.iterator()
         while (it.hasNext()) {
@@ -251,7 +253,7 @@ class AdvUi(
     private fun handleEvents(a: Adv) {
         val pal = Worlds.colors[world.coerceIn(0, Worlds.colors.size - 1)]
         for (e in a.events) {
-            if (!a.god && !a.won && (e.t == Adv.EV_CHECK || e.t == Adv.EV_UNLOCK || (e.t == Adv.EV_PICK && (e.n == Adv.IT_KEY || e.n == Adv.IT_HPUP || e.n == Adv.IT_BOOTS || e.n == Adv.IT_WHIP)))) Prefs.setAdvSave(world, a.saveState())
+            if (!a.god && !a.won && (e.t == Adv.EV_CHECK || e.t == Adv.EV_UNLOCK || (e.t == Adv.EV_PICK && (e.n == Adv.IT_KEY || e.n == Adv.IT_HPUP || e.n == Adv.IT_BOOTS || e.n == Adv.IT_WHIP)))) prefs?.setAdvSave(world, a.saveState())
             when (e.t) {
                 Adv.EV_JUMP -> { burst(e.x, e.y, Gl.white(200), 5, 45f, 60f); sfx(Sfx.TAP) }
                 Adv.EV_JUMP2 -> { for (k in 0 until 10) { val an = k * 0.628f; parts.add(Pt(e.x, e.y, cos(an) * 80f, sin(an) * 30f, 0xFF80E0FF.toInt(), 2f, 0.4f, 1f, 0f)) }; sfx(Sfx.SWITCH) }
