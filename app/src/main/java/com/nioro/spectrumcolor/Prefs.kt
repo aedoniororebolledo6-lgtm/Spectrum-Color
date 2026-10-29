@@ -138,6 +138,9 @@ class Prefs(context: Context) {
     }
 
     /** Mundos del modo Aventura ya salvados (un bit por mundo). */
+    fun advSave(w: Int): String = sp.getString("advS$w", "") ?: ""
+    fun setAdvSave(w: Int, v: String) { sp.edit().putString("advS$w", v).apply() }
+
     var advMask: Int
         get() = sp.getInt("advMask", 0)
         set(v) { sp.edit().putInt("advMask", v).apply() }

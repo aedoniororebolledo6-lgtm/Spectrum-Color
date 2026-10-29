@@ -65,6 +65,7 @@ class AdvUi(
     private val pth = Path()
     private val rf = RectF()
     private val rf2 = RectF()
+    private val pp0 = Paint(Paint.ANTI_ALIAS_FLAG)
 
     val active: Boolean get() = adv != null
 
@@ -72,6 +73,7 @@ class AdvUi(
         world = w
         vw = viewW
         adv = Adv(w, viewW, god)
+        if (!god && (Prefs.advMask shr w) and 1 == 0) { val sv = Prefs.advSave(w); if (sv.isNotEmpty()) adv?.loadState(sv) }
         phase = 0
         phT = 0f
         winSent = false
@@ -126,8 +128,8 @@ class AdvUi(
                 0 -> if (phT > 0.4f) { phase = 1; phT = 0f; sfx(Sfx.GO) }
                 3 -> if (phT > 1.2f) { stop(); onExit() }
                 2 -> {
-                    if (abs(x - vw / 2f) < 120f && abs(y - 165f) < 26f) phase = 1
-                    else if (abs(x - vw / 2f) < 120f && abs(y - 225f) < 26f) { stop(); onExit() }
+                    if (abs(x - (vw - 130f)) < 100f && abs(y - 145f) < 26f) phase = 1
+                    else if (abs(x - (vw - 130f)) < 100f && abs(y - 215f) < 26f) { stop(); onExit() }
                 }
                 1 -> {
                     val id = hitBtn(x, y)
@@ -178,7 +180,7 @@ class AdvUi(
             handleEvents(a)
             animate(a, dt)
             if (a.won && phase == 1) { phase = 3; phT = 0f }
-            if (phase == 3 && !winSent) { winSent = true; savedCount = onWin(world) }
+            if (phase == 3 && !winSent) { winSent = true; savedCount = onWin(world); Prefs.setAdvSave(world, "") }
         } else inp.clearPressed()
         val it = parts.iterator()
         while (it.hasNext()) {
@@ -249,6 +251,7 @@ class AdvUi(
     private fun handleEvents(a: Adv) {
         val pal = Worlds.colors[world.coerceIn(0, Worlds.colors.size - 1)]
         for (e in a.events) {
+            if (!a.god && !a.won && (e.t == Adv.EV_CHECK || e.t == Adv.EV_UNLOCK || (e.t == Adv.EV_PICK && (e.n == Adv.IT_KEY || e.n == Adv.IT_HPUP || e.n == Adv.IT_BOOTS || e.n == Adv.IT_WHIP)))) Prefs.setAdvSave(world, a.saveState())
             when (e.t) {
                 Adv.EV_JUMP -> { burst(e.x, e.y, Gl.white(200), 5, 45f, 60f); sfx(Sfx.TAP) }
                 Adv.EV_JUMP2 -> { for (k in 0 until 10) { val an = k * 0.628f; parts.add(Pt(e.x, e.y, cos(an) * 80f, sin(an) * 30f, 0xFF80E0FF.toInt(), 2f, 0.4f, 1f, 0f)) }; sfx(Sfx.SWITCH) }
@@ -264,7 +267,12 @@ class AdvUi(
                 Adv.EV_BOSSHIT -> { burst(e.x, e.y, Color.WHITE, 9, 140f); sfx(Sfx.TAP); if (e.n > 0) nums.add(Num(e.x, e.y - 20f, e.n.toString(), 0.7f, 0xFFFFE070.toInt())) }
                 Adv.EV_BOSSDIE -> { for (k in 0 until 5) burst(e.x, e.y, pal[k % 4], 24, 240f); flash = 1f; zoom = 1f; sfx(Sfx.WIN) }
                 Adv.EV_EDIE -> { burst(e.x, e.y, pal[2], 12, 130f); corpses.add(Corpse(e.x, e.y, pal[2], 0f)) }
-                Adv.EV_CHECK -> { burst(e.x, e.y - 10f, 0xFF80FFA0.toInt(), 12, 90f, 0f); sfx(Sfx.STAR); say("Punto de control", 1.4f) }
+                Adv.EV_CHECK -> { burst(e.x, e.y - 30f, 0xFFFF6070.toInt(), 16, 100f, 0f); sfx(Sfx.STAR); say("Progreso guardado", 1.6f) }
+                Adv.EV_UNLOCK -> { burst(e.x, e.y, 0xFFFFD060.toInt(), 18, 130f); sfx(Sfx.WIN); say("Puerta abierta", 1.6f) }
+                Adv.EV_LOCKED -> { sfx(Sfx.TAP); say("Necesitas una llave", 1.4f) }
+                Adv.EV_ROOM -> { trail.clear(); corpses.clear(); parts.clear(); nums.clear() }
+                Adv.EV_FALL -> { burst(e.x, e.y - 20f, 0xFFFF5060.toInt(), 12, 120f); sfx(Sfx.DIE); flash = 1f; nums.add(Num(e.x, e.y - 60f, "-2", 0.9f, 0xFFFF6070.toInt())) }
+                Adv.EV_DOOR -> sfx(Sfx.SWITCH)
                 Adv.EV_SLAM -> { sfx(Sfx.DIE); bossSquash = 1f; burst(e.x, e.y - 2f, Gl.white(170), 8, 90f, 60f) }
                 Adv.EV_ROCK -> { burst(e.x, e.y - 4f, 0xFFB0A090.toInt(), 14, 120f); sfx(Sfx.DIE) }
                 Adv.EV_CRUMBLE -> burst(e.x, e.y, 0xFFB0A090.toInt(), 6, 60f, 120f)
@@ -287,6 +295,8 @@ class AdvUi(
             Adv.IT_POTION -> say("¡Invulnerable un rato!")
             Adv.IT_SUB -> adv?.let { say(AdvCfg.subNames[it.sub], 1.6f) }
             Adv.IT_MEAT -> say("+4 vida", 1.0f)
+            Adv.IT_KEY -> say("¡Llave! Abre una puerta dorada", 2.2f)
+            Adv.IT_HPUP -> say("¡Vida máxima +2!", 2.0f)
         }
     }
 
@@ -473,6 +483,7 @@ class AdvUi(
         if (a.freezeT > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFF60A0FF.toInt(), 36); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
         if (flash > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFFFF3040.toInt(), (70 * flash).toInt()); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
         if (a.potionT > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFF60FFB0.toInt(), 14); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
+        if (a.fade > 0f) { pp = Gl.p(); pp.color = Gl.alpha(Color.BLACK, (255 * a.fade.coerceIn(0f, 1f)).toInt()); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
         drawHud(c, a, pal)
         if (phase != 0) drawControls(c)
         if (bannerT > 0f && phase == 1) {
@@ -596,11 +607,7 @@ class AdvUi(
             }
             glow(c, (sp[0] + sp[1]) / 2f, AdvCfg.GROUND - 8f, 40f, 0xFFFF4050.toInt(), 40)
         }
-        for (ck in a.checks) {
-            if (ck < l || ck > r || ck <= 40f) continue
-            line(c, ck, AdvCfg.GROUND, ck, AdvCfg.GROUND - 34f, 2f, Gl.white(120))
-            glow(c, ck, AdvCfg.GROUND - 38f, 22f, 0xFF80FFA0.toInt(), 120)
-        }
+        drawRoomProps(c, a, pal, l, r)
         for (j in a.jets) if (j.x > l && j.x < r) drawJet(c, j)
         for (rk in a.rocks) if (rk.x > l && rk.x < r) drawRock(c, rk, pal)
         for (cd in a.candles) {
@@ -623,6 +630,81 @@ class AdvUi(
         for (k in corpses) drawCorpse(c, k)
         drawPlayer(c, a, pal)
         if (a.bibleT > 0f) drawBible(c, a)
+    }
+
+    private fun drawWall(c: Canvas, x: Float, left: Boolean, pal: IntArray) {
+        val x0 = if (left) x - 90f else x
+        val x1 = if (left) x else x + 90f
+        val base = Gl.darken(pal[0], 0.5f)
+        val pp = Gl.p()
+        pp.shader = LinearGradient(0f, 0f, 0f, AdvCfg.H, intArrayOf(opaque(Gl.darken(base, 0.3f)), opaque(base), opaque(Gl.darken(base, 0.4f))), null, Shader.TileMode.CLAMP)
+        c.drawRect(x0, -20f, x1, AdvCfg.H + 20f, pp)
+        var y = 0f
+        var k = 0
+        while (y < AdvCfg.H) {
+            line(c, x0, y, x1, y, 1.2f, Gl.white(22))
+            val off = if (k % 2 == 0) 0f else 22f
+            var bx = x0 + off
+            while (bx < x1) { line(c, bx, y, bx, y + 22f, 1.2f, Gl.white(18)); bx += 44f }
+            y += 22f; k++
+        }
+        val ex = if (left) x else x
+        line(c, ex, -20f, ex, AdvCfg.H + 20f, 3f, Gl.alpha(pal[1], 200))
+        line(c, ex + (if (left) -4f else 4f), -20f, ex + (if (left) -4f else 4f), AdvCfg.H + 20f, 1.2f, Gl.white(110))
+    }
+
+    private fun drawKeyGate(c: Canvas, x: Float, left: Boolean, near: Boolean) {
+        val gold = 0xFFFFC840.toInt()
+        val dir = if (left) 1f else -1f
+        for (k in 0 until 4) {
+            val bx = x + dir * (4f + k * 7f)
+            gloss(c, 1, bx - 2.5f, AdvCfg.GROUND - 100f, bx + 2.5f, AdvCfg.GROUND, 1.5f, gold)
+        }
+        val mx = x + dir * 18f
+        glow(c, mx, AdvCfg.GROUND - 52f, 30f, gold, 90 + (40 * sin(time * 4f)).toInt())
+        gloss(c, 0, mx - 9f, AdvCfg.GROUND - 60f, mx + 9f, AdvCfg.GROUND - 42f, 0f, 0xFFFFE070.toInt())
+        Gl.arc(c, mx, AdvCfg.GROUND - 63f, 6f, 180f, 180f, 2.6f, 0xFFFFE070.toInt())
+        pp0.color = 0xFF402800.toInt(); c.drawCircle(mx, AdvCfg.GROUND - 51f, 2.4f, pp0)
+        if (near) Gl.text(c, "Puerta con llave", x + dir * 40f, AdvCfg.GROUND - 112f, 11f, Gl.medium, Gl.white(235))
+    }
+
+    private fun drawRoomProps(c: Canvas, a: Adv, pal: IntArray, l: Float, r: Float) {
+        val room = a.rooms[a.cur]
+        // paredes y puertas de los extremos
+        if (room.nb[Adv.D_W] < 0 || room.lock[Adv.D_W]) { drawWall(c, 0f, true, pal); if (room.lock[Adv.D_W]) drawKeyGate(c, 0f, true, a.px < 120f) }
+        else glow(c, 0f, AdvCfg.GROUND - 30f, 60f, pal[1], 40)
+        if (room.nb[Adv.D_E] < 0 || room.lock[Adv.D_E]) { drawWall(c, a.roomLen, false, pal); if (room.lock[Adv.D_E]) drawKeyGate(c, a.roomLen, false, a.px > a.roomLen - 120f) }
+        else glow(c, a.roomLen, AdvCfg.GROUND - 30f, 60f, pal[1], 40)
+        // estatua de guardado
+        if (a.statueX >= 0f && a.statueX > l - 40f && a.statueX < r + 40f) {
+            val x = a.statueX
+            val pulse = 0.5f + 0.5f * sin(time * 3f)
+            glow(c, x, AdvCfg.GROUND - 34f, 30f + 6f * pulse, 0xFFFF6070.toInt(), 80 + (50 * pulse).toInt() + (if (a.lastSaveFlash > 0f) 90 else 0))
+            gloss(c, 1, x - 13f, AdvCfg.GROUND - 10f, x + 13f, AdvCfg.GROUND, 3f, 0xFFB8C0D0.toInt())
+            gloss(c, 1, x - 8f, AdvCfg.GROUND - 18f, x + 8f, AdvCfg.GROUND - 8f, 2f, 0xFFD0D8E8.toInt())
+            val fy = AdvCfg.GROUND - 36f + sin(time * 2.4f) * 2.5f
+            pth.reset()
+            pth.moveTo(x, fy - 15f); pth.lineTo(x + 9f, fy); pth.lineTo(x, fy + 15f); pth.lineTo(x - 9f, fy); pth.close()
+            glossPath(c, x - 9f, fy - 15f, x + 9f, fy + 15f, 0xFFFF5068.toInt())
+            if (a.lastSaveFlash > 0f) Gl.arc(c, x, fy, 14f + 40f * (1.2f - a.lastSaveFlash), 0f, 360f, 2f, Gl.alpha(Color.WHITE, (220 * a.lastSaveFlash.coerceIn(0f, 1f)).toInt()))
+        }
+        // escaleras
+        for (d in a.doors) {
+            if (d.x < l - 40f || d.x > r + 40f) continue
+            val gy = AdvCfg.GROUND
+            gloss(c, 1, d.x - 17f, gy - 58f, d.x + 17f, gy, 9f, Gl.darken(pal[2], 0.35f))
+            pp0.color = 0xFF0A0A18.toInt()
+            c.drawRoundRect(rf.also { it.set(d.x - 11f, gy - 52f, d.x + 11f, gy) }, 7f, 7f, pp0)
+            val bob = sin(time * 4f) * 2f
+            pth.reset()
+            if (d.up) { pth.moveTo(d.x, gy - 40f + bob); pth.lineTo(d.x + 7f, gy - 28f + bob); pth.lineTo(d.x - 7f, gy - 28f + bob) }
+            else { pth.moveTo(d.x, gy - 24f + bob); pth.lineTo(d.x + 7f, gy - 36f + bob); pth.lineTo(d.x - 7f, gy - 36f + bob) }
+            pth.close()
+            pp0.color = Gl.alpha(pal[1], 230)
+            c.drawPath(pth, pp0)
+            glow(c, d.x, gy - 30f, 26f, pal[1], 60)
+            if (abs(a.px - d.x) < 40f) Gl.text(c, if (d.up) "ATAQUE: subir" else "ATAQUE: bajar", d.x, gy - 66f, 11f, Gl.medium, Gl.white(235))
+        }
     }
 
     private fun drawCorpse(c: Canvas, k: Corpse) {
@@ -724,6 +806,10 @@ class AdvUi(
     private fun drawItem(c: Canvas, i: AdvItem, pal: IntArray) {
         val pop = if (i.t < 0.3f) easeBack(i.t / 0.3f) else 1f
         if (pop != 1f) { c.save(); c.scale(pop, pop, i.x, i.y) }
+        if (i.prize) {
+            glow(c, i.x, i.y, 30f, 0xFFFFC040.toInt(), 90)
+            Gl.arc(c, i.x, i.y, 15f + 2f * sin(time * 4f), time * 120f, 250f, 1.6f, Gl.alpha(0xFFFFE090.toInt(), 200))
+        }
         drawItemBody(c, i, pal)
         if (pop != 1f) c.restore()
     }
@@ -749,6 +835,19 @@ class AdvUi(
                 gloss(c, 1, x - 6f, y + 1f, x + 8f, y + 6f, 2.5f, 0xFF2090D0.toInt())
                 line(c, x + 4f, y - 4f, x + 11f, y - 8f, 1.8f, Color.WHITE)
                 line(c, x + 4f, y - 1f, x + 12f, y - 3f, 1.8f, Color.WHITE)
+            }
+            Adv.IT_KEY -> {
+                glow(c, x, y, 20f, 0xFFFFD060.toInt(), 120)
+                gloss(c, 0, x - 10f, y - 5f, x, y + 5f, 0f, 0xFFFFC840.toInt())
+                line(c, x, y, x + 12f, y, 3f, 0xFFFFE080.toInt())
+                line(c, x + 8f, y, x + 8f, y + 5f, 2.4f, 0xFFFFE080.toInt())
+                line(c, x + 12f, y, x + 12f, y + 4f, 2.4f, 0xFFFFE080.toInt())
+                pp0.color = 0xFF402800.toInt(); c.drawCircle(x - 5f, y, 1.8f, pp0)
+            }
+            Adv.IT_HPUP -> {
+                glow(c, x, y, 22f, 0xFFFF7040.toInt(), 120)
+                heart(c, x, y, 1.5f, 0xFFFF6040.toInt())
+                Gl.text(c, "+", x, y + 4f, 12f, Gl.medium, Color.WHITE)
             }
             Adv.IT_POTION -> {
                 glow(c, x, y, 18f, 0xFF60FFB0.toInt(), 110)
@@ -1203,12 +1302,13 @@ class AdvUi(
 
     // ------------------------------------------------------------------ interfaz
     private fun drawHud(c: Canvas, a: Adv, pal: IntArray) {
-        val bwid = AdvCfg.MAXHP * 12f
+        val mh = a.maxHp
+        val bwid = mh * 12f
         var pp = Gl.p(); pp.color = Gl.white(40)
         c.drawRoundRect(rf.also { it.set(18f, 14f, 18f + bwid, 28f) }, 5f, 5f, pp)
-        if (hpChip > hpDisp + 0.05f) { pp = Gl.p(); pp.color = 0xFFFFC0C8.toInt(); c.drawRoundRect(rf.also { it.set(18f, 14f, 18f + bwid * hpChip / AdvCfg.MAXHP, 28f) }, 5f, 5f, pp) }
-        if (hpDisp > 0.1f) gloss(c, 1, 18f, 14f, 18f + max(6f, bwid * hpDisp / AdvCfg.MAXHP), 28f, 5f, 0xFFFF4A60.toInt())
-        for (i in 1 until AdvCfg.MAXHP) line(c, 18f + i * 12f, 15f, 18f + i * 12f, 27f, 1f, Gl.alpha(Color.BLACK, 70))
+        if (hpChip > hpDisp + 0.05f) { pp = Gl.p(); pp.color = 0xFFFFC0C8.toInt(); c.drawRoundRect(rf.also { it.set(18f, 14f, 18f + bwid * hpChip / mh, 28f) }, 5f, 5f, pp) }
+        if (hpDisp > 0.1f) gloss(c, 1, 18f, 14f, 18f + max(6f, bwid * hpDisp / mh), 28f, 5f, 0xFFFF4A60.toInt())
+        for (i in 1 until mh) line(c, 18f + i * 12f, 15f, 18f + i * 12f, 27f, 1f, Gl.alpha(Color.BLACK, 70))
         val hs = 1f + 0.4f * heartPop
         heart(c, 24f, 42f, 0.9f * hs, 0xFFFF4070.toInt())
         Gl.text(c, "${a.hearts}", 36f, 49f, 15f * hs, Gl.medium, Gl.white(235), 0f, null, 0, Paint.Align.LEFT)
@@ -1218,16 +1318,20 @@ class AdvUi(
         var ix = 18f
         if (a.boots) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFF40C0F0.toInt()); ix += 28f }
         if (a.whip > 0) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFFFFD060.toInt()); Gl.text(c, "L${a.whip}", ix + 11f, 103f, 11f, Gl.medium, Color.BLACK); ix += 28f }
+        if (a.keys > 0) { gloss(c, 1, ix, 90f, ix + 40f, 106f, 4f, 0xFFFFC840.toInt()); Gl.text(c, "Llave x${a.keys}", ix + 20f, 102f, 10f, Gl.medium, Color.BLACK); ix += 46f }
         if (a.potionT > 0f) { pp = Gl.p(); pp.color = Gl.white(40); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f, 102f) }, 4f, 4f, pp); pp.color = 0xFF60FFB0.toInt(); c.drawRoundRect(rf.also { it.set(ix, 94f, ix + 50f * (a.potionT / 9f).coerceIn(0f, 1f), 102f) }, 4f, 4f, pp) }
         if (a.bibleT > 0f) { pp = Gl.p(); pp.color = 0xFFFFE070.toInt(); c.drawRoundRect(rf.also { it.set(18f, 110f, 18f + 50f * (a.bibleT / 4.5f).coerceIn(0f, 1f), 116f) }, 3f, 3f, pp) }
-        val bw = min(180f, vw * 0.24f)
-        val x0 = vw - 60f - bw
-        pp = Gl.p(); pp.color = Gl.white(45)
-        c.drawRoundRect(rf.also { it.set(x0, 26f, x0 + bw, 32f) }, 3f, 3f, pp)
-        for (ck in a.checks) { pp = Gl.p(); pp.color = Gl.white(110); c.drawRect(x0 + bw * (ck / a.arenaX).coerceIn(0f, 1f) - 1f, 22f, x0 + bw * (ck / a.arenaX).coerceIn(0f, 1f) + 1f, 36f, pp) }
-        val fx = x0 + bw * (a.px / a.arenaX).coerceIn(0f, 1f)
-        glow(c, fx, 29f, 9f, pal[0], 160)
-        pp = Gl.p(); pp.color = Color.WHITE; c.drawCircle(fx, 29f, 4f, pp)
+        if (!a.bossStarted) {
+            val cw = 12f; val ch = 7.5f; val gp = 3f
+            var minX = 99; var maxX = -1; var minY = 99; var maxY = -1
+            for (r in a.rooms) if (r.seen) { minX = min(minX, r.gx); maxX = max(maxX, r.gx); minY = min(minY, r.gy); maxY = max(maxY, r.gy) }
+            val mw = (maxX - minX + 1) * (cw + gp) - gp
+            val mhh = (maxY - minY + 1) * (ch + gp) - gp
+            val mx = vw - 62f - mw
+            pp = Gl.p(); pp.color = Gl.alpha(Color.BLACK, 90)
+            c.drawRoundRect(rf.also { it.set(mx - 6f, 6f, mx + mw + 6f, 6f + mhh + 12f) }, 6f, 6f, pp)
+            drawMap(c, a, mx, 12f, cw, ch, gp, minX, minY)
+        }
         if (a.bossStarted && a.bstate != Adv.BS_INTRO) {
             val bb = min(260f, vw * 0.36f)
             val bx0 = vw / 2f - bb / 2f
@@ -1289,12 +1393,85 @@ class AdvUi(
     }
 
     private fun drawPause(c: Canvas, pal: IntArray) {
-        panelBox(c, pal, vw / 2f - 160f, 80f, vw / 2f + 160f, 270f)
-        Gl.text(c, "PAUSA", vw / 2f, 125f, 24f, Gl.medium, Gl.white(245), 0.14f)
-        Gl.panel(c, vw / 2f - 120f, 139f, vw / 2f + 120f, 191f, 26f, 1f, pal[1])
-        Gl.text(c, "Continuar", vw / 2f, 172f, 20f, Gl.medium, Gl.white(245))
-        Gl.panel(c, vw / 2f - 120f, 199f, vw / 2f + 120f, 251f, 26f, 1f, pal[2])
-        Gl.text(c, "Salir", vw / 2f, 232f, 20f, Gl.medium, Gl.white(245))
+        val a = adv ?: return
+        panelBox(c, pal, 16f, 22f, vw - 16f, 338f)
+        Gl.text(c, "MAPA  -  ${Worlds.names[world]}", (16f + vw - 260f) / 2f, 56f, 18f, Gl.medium, Gl.white(245), 0.05f)
+        var minX = 99; var maxX = -1; var minY = 99; var maxY = -1
+        for (r in a.rooms) if (r.seen) { minX = min(minX, r.gx); maxX = max(maxX, r.gx); minY = min(minY, r.gy); maxY = max(maxY, r.gy) }
+        val availW = vw - 300f
+        val n = maxX - minX + 1
+        val pitch = min(46f, availW / n)
+        val cw = pitch * 0.78f
+        val ch = cw * 0.6f
+        val gp = pitch - cw
+        val mw = n * (cw + gp) - gp
+        val mhh = (maxY - minY + 1) * (ch + gp) - gp
+        val cx0 = 16f + (vw - 260f - 16f) / 2f
+        drawMap(c, a, cx0 - mw / 2f, 200f - mhh / 2f, cw, ch, gp, minX, minY)
+        val total = a.rooms.size
+        val vis = a.rooms.count { it.visited }
+        Gl.text(c, "Salas exploradas: $vis/$total", cx0, 296f, 12f, Gl.regular, Gl.white(200))
+        // leyenda
+        val names = arrayOf("Tú", "Visitada", "Guardado", "Tesoro / llave", "Jefe")
+        val cols = intArrayOf(0xFFFFFFFF.toInt(), 0xFF4A8CF0.toInt(), 0xFFE04A5A.toInt(), 0xFFFFA030.toInt(), 0xFFC040E0.toInt())
+        var lx = cx0 - 150f
+        for (i in names.indices) {
+            pp0.color = cols[i]
+            c.drawRoundRect(rf.also { it.set(lx, 312f, lx + 10f, 320f) }, 2f, 2f, pp0)
+            Gl.text(c, names[i], lx + 13f, 320f, 10f, Gl.regular, Gl.white(190), 0f, null, 0, Paint.Align.LEFT)
+            lx += 14f + Gl.textWidth(names[i], 10f, Gl.regular) + 10f
+        }
+        val bx = vw - 130f
+        Gl.panel(c, bx - 100f, 119f, bx + 100f, 171f, 26f, 1f, pal[1])
+        Gl.text(c, "Continuar", bx, 152f, 19f, Gl.medium, Gl.white(245))
+        Gl.panel(c, bx - 100f, 189f, bx + 100f, 241f, 26f, 1f, pal[2])
+        Gl.text(c, "Salir", bx, 222f, 19f, Gl.medium, Gl.white(245))
+        Gl.text(c, "Llaves: ${a.keys}   Vida máx: ${a.maxHp}", bx, 275f, 12f, Gl.regular, Gl.white(200))
+    }
+
+    /** Dibuja las salas vistas. ox/oy = esquina superior izquierda, minX/minY = celda de origen. */
+    private fun drawMap(c: Canvas, a: Adv, ox: Float, oy: Float, cw: Float, ch: Float, gp: Float, minX: Int, minY: Int) {
+        val gold = 0xFFFFC840.toInt()
+        for (r in a.rooms) {
+            if (!r.seen) continue
+            val x = ox + (r.gx - minX) * (cw + gp)
+            val y = oy + (r.gy - minY) * (ch + gp)
+            val e = r.nb[Adv.D_E]; val dn = r.nb[Adv.D_DN]
+            if (e >= 0 && a.rooms[e].seen) {
+                pp0.color = if (r.lock[Adv.D_E]) gold else Gl.white(150)
+                c.drawRect(x + cw - 0.5f, y + ch * 0.35f, x + cw + gp + 0.5f, y + ch * 0.65f, pp0)
+            }
+            if (dn >= 0 && a.rooms[dn].seen) {
+                pp0.color = Gl.white(150)
+                c.drawRect(x + cw * 0.4f, y + ch - 0.5f, x + cw * 0.6f, y + ch + gp + 0.5f, pp0)
+            }
+        }
+        for (r in a.rooms) {
+            if (!r.seen) continue
+            val x = ox + (r.gx - minX) * (cw + gp)
+            val y = oy + (r.gy - minY) * (ch + gp)
+            val col = when {
+                r.kind == Adv.R_BOSS -> 0xFFC040E0.toInt()
+                !r.visited -> Gl.white(70)
+                r.kind == Adv.R_SAVE || r.kind == Adv.R_START -> 0xFFE04A5A.toInt()
+                (r.kind == Adv.R_KEY || r.kind == Adv.R_TREAS) && !r.taken -> 0xFFFFA030.toInt()
+                else -> 0xFF4A8CF0.toInt()
+            }
+            pp0.style = Paint.Style.FILL
+            pp0.color = if (!r.visited && r.kind != Adv.R_BOSS) col else Gl.alpha(col, 235)
+            c.drawRoundRect(rf.also { it.set(x, y, x + cw, y + ch) }, 2f, 2f, pp0)
+            if (r.visited) { pp0.color = Gl.white(90); c.drawRect(x + 1f, y + 0.5f, x + cw - 1f, y + 1.6f, pp0) }
+            // puertas con llave en los lados
+            if (r.lock[Adv.D_E]) { pp0.color = gold; c.drawRect(x + cw - 1.5f, y, x + cw + 1f, y + ch, pp0) }
+            if (r.lock[Adv.D_W]) { pp0.color = gold; c.drawRect(x - 1f, y, x + 1.5f, y + ch, pp0) }
+            if (r.id == a.cur) {
+                val k = (0.5f + 0.5f * sin(uiT * 6f + time * 6f))
+                pp0.color = Gl.alpha(Color.WHITE, (120 + 135 * k).toInt())
+                pp0.style = Paint.Style.STROKE; pp0.strokeWidth = 1.6f
+                c.drawRoundRect(rf.also { it.set(x - 1f, y - 1f, x + cw + 1f, y + ch + 1f) }, 2f, 2f, pp0)
+                pp0.style = Paint.Style.FILL
+            }
+        }
     }
 
     private var savedCount = 0

@@ -108,6 +108,7 @@ object AdvCfg {
 class AdvPlat(val x0: Float, val x1: Float, val y: Float)
 class AdvCandle(val x: Float, val y: Float, val drop: Int, val arg: Int) { var alive = true }
 class AdvItem(var x: Float, var y: Float, val kind: Int, val arg: Int) {
+    var prize = false
     var ox = x
     var oy = y
     var vy = -140f
@@ -184,6 +185,25 @@ class AdvAmbush(val x0: Float, val x1: Float) {
     var wave = 0
     val mine = ArrayList<AdvEnemy>()
 }
+/** Sala del mapa. nb: vecinos W,E,ARRIBA,ABAJO (-1 = sin salida). lock: puerta con llave en ese lado. */
+class AdvRoom(val id: Int, val gx: Int, val gy: Int) {
+    var kind = 0
+    val nb = IntArray(4) { -1 }
+    val lock = BooleanArray(4)
+    var seen = false
+    var visited = false
+    var prize = -1
+    var prizeArg = 0
+    var taken = false
+    var cleared = false
+    var guarded = false
+    var region = 0
+    var depth = 0
+    var len = 0f
+    var seed = 0L
+}
+/** Puerta de piso (escalera) hacia la sala de arriba o de abajo. */
+class AdvDoor(val x: Float, val up: Boolean, val to: Int)
 class AdvInput {
     var left = false
     var right = false
@@ -221,6 +241,11 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val EV_CLEAR = 23
         const val EV_BOLT = 24
         const val EV_POTION = 25
+        const val EV_UNLOCK = 26
+        const val EV_LOCKED = 27
+        const val EV_ROOM = 28
+        const val EV_FALL = 29
+        const val EV_DOOR = 30
 
         const val IT_HEART = 0
         const val IT_BIG = 1
@@ -230,6 +255,20 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val IT_ORB = 5
         const val IT_BOOTS = 6
         const val IT_POTION = 7
+        const val IT_KEY = 8
+        const val IT_HPUP = 9
+
+        // tipos de sala
+        const val R_NORMAL = 0
+        const val R_START = 1
+        const val R_SAVE = 2
+        const val R_BOSS = 3
+        const val R_KEY = 4
+        const val R_TREAS = 5
+        const val D_W = 0
+        const val D_E = 1
+        const val D_UP = 2
+        const val D_DN = 3
 
         // enemigos
         const val E_WALKER = 0
@@ -272,7 +311,27 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     val spikes = ArrayList<FloatArray>()
     val candles = ArrayList<AdvCandle>()
     val enemies = ArrayList<AdvEnemy>()
-    val checks = ArrayList<Float>()
+    val rooms = ArrayList<AdvRoom>()
+    val doors = ArrayList<AdvDoor>()
+    var cols = 9
+    var rows = 5
+    var cur = 0
+    var keys = 0
+    var maxHp = AdvCfg.MAXHP
+    var statueX = -1f
+    var roomLen = 1000f
+    var fade = 0f
+    var lockMsgT = 0f
+    var saveRoom = 0
+    var bossId = 0
+    var lastSaveFlash = 0f
+    private var touchedSave = false
+    private var safeX = 52f
+    private var safeY = AdvCfg.GROUND
+    private var pendRoom = -1
+    private var pendMode = 0
+    private var pendX = 0f
+    private var enterCd = 0f
     val items = ArrayList<AdvItem>()
     val projs = ArrayList<AdvProj>()
     val hazs = ArrayList<AdvHaz>()
@@ -329,7 +388,6 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     private var acc = 0f
     private val swingHit = HashSet<Any>()
     private var bibleTick = 0f
-    private var lastCheck = 40f
 
     // jefe
     val bdef = AdvCfg.bosses[world.coerceIn(0, AdvCfg.WORLDS - 1)]
@@ -355,7 +413,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var shake = 0f
     private var clearPending = false
 
-    init { build() }
+    init { buildWorld(); enterRoom(0, 0, 0f); saveRoom = 0 }
 
     // ------------------------------------------------------------------ construcción del nivel
     private fun ground(x0: Float, x1: Float) { plats.add(AdvPlat(x0, x1, AdvCfg.GROUND)) }
@@ -452,151 +510,462 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         return S_FLAT
     }
 
-    private fun build() {
-        val diff = world / 11f
-        ground(0f, 360f)
-        checks.add(40f)
-        var cx = 360f
-        val target = 3700f + world * 180f
-        var lastCk = 0f
-        var amb = 0
-        var last = -1
-        while (cx < target) {
-            val k = pickSeg(cx, target, amb, last)
-            when (k) {
-                S_FLAT -> {
-                    val len = 260f + rnd.nextInt(180)
-                    ground(cx, cx + len)
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1 + (diff * 2f).toInt() + rnd.nextInt(2))
-                    if (rnd.nextInt(3) == 0) addCandle(cx + 60f + rnd.nextInt(max(1, len.toInt() - 120)), AdvCfg.GROUND)
-                    cx += len
+    /** Añade un tramo y devuelve la nueva x. */
+    private fun addSeg(k: Int, cx0: Float, diff: Float): Float {
+        var cx = cx0
+        when (k) {
+            S_FLAT -> {
+                val len = 260f + rnd.nextInt(180)
+                ground(cx, cx + len)
+                scatter(cx, cx + len, AdvCfg.GROUND, 1 + (diff * 2f).toInt() + rnd.nextInt(2))
+                if (rnd.nextInt(3) == 0) addCandle(cx + 60f + rnd.nextInt(max(1, len.toInt() - 120)), AdvCfg.GROUND)
+                cx += len
+            }
+            S_PIT -> {
+                val gap = 55f + rnd.nextInt(30) + 10f * diff
+                if (rnd.nextBoolean()) {
+                    val pw = 46f
+                    plats.add(AdvPlat(cx + gap / 2f - pw / 2f, cx + gap / 2f + pw / 2f, AdvCfg.GROUND - 55f))
                 }
-                S_PIT -> {
-                    val gap = 55f + rnd.nextInt(30) + 10f * diff
-                    if (rnd.nextBoolean()) {
-                        val pw = 46f
-                        plats.add(AdvPlat(cx + gap / 2f - pw / 2f, cx + gap / 2f + pw / 2f, AdvCfg.GROUND - 55f))
-                    }
-                    cx += gap
-                    val len = 220f + rnd.nextInt(120)
-                    ground(cx, cx + len)
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
-                    cx += len
+                cx += gap
+                val len = 220f + rnd.nextInt(120)
+                ground(cx, cx + len)
+                scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
+                cx += len
+            }
+            S_PLATS -> {
+                val len = 380f
+                ground(cx, cx + len)
+                var px0 = cx + 40f
+                var lvl = 0
+                while (px0 < cx + len - 100f) {
+                    val pw = 80f + rnd.nextInt(60)
+                    val h = AdvCfg.GROUND - (60f + 55f * (lvl % 2) + rnd.nextInt(15))
+                    plats.add(AdvPlat(px0, px0 + pw, h))
+                    if (rnd.nextInt(3) != 0) addCandle(px0 + pw / 2f, h)
+                    if (rnd.nextInt(2) == 0) scatter(px0, px0 + pw, h, 1)
+                    px0 += pw + 30f + rnd.nextInt(30)
+                    lvl++
                 }
-                S_PLATS -> {
-                    val len = 380f
-                    ground(cx, cx + len)
-                    var px0 = cx + 40f
-                    var lvl = 0
-                    while (px0 < cx + len - 100f) {
-                        val pw = 80f + rnd.nextInt(60)
-                        val h = AdvCfg.GROUND - (60f + 55f * (lvl % 2) + rnd.nextInt(15))
-                        plats.add(AdvPlat(px0, px0 + pw, h))
-                        if (rnd.nextInt(3) != 0) addCandle(px0 + pw / 2f, h)
-                        if (rnd.nextInt(2) == 0) scatter(px0, px0 + pw, h, 1)
-                        px0 += pw + 30f + rnd.nextInt(30)
-                        lvl++
-                    }
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
-                    cx += len
-                }
-                S_SPIKES -> {
-                    val len = 320f
-                    ground(cx, cx + len)
-                    val sw = 40f + rnd.nextInt(30)
-                    val sx = cx + len / 2f - sw / 2f
-                    spikes.add(floatArrayOf(sx, sx + sw))
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1)
-                    cx += len
-                }
-                S_TRIAL -> {
-                    val len = 330f
-                    ground(cx, cx + len)
-                    scatter(cx, cx + len, AdvCfg.GROUND, 2 + (diff * 2f).toInt())
-                    addCandle(cx + len / 2f, AdvCfg.GROUND)
-                    cx += len
-                }
-                S_MOVER -> {
-                    val g = 200f + rnd.nextInt(30)
-                    movers.add(AdvMover(cx + 34f, cx + g - 34f, AdvCfg.GROUND, AdvCfg.GROUND, 56f, 0.9f + 0.1f * rnd.nextInt(3), rnd.nextFloat() * 6f))
-                    if (world >= 4 && rnd.nextBoolean()) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
-                    cx += g
-                    val len = 240f
-                    ground(cx, cx + len)
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
-                    addCandle(cx + 120f, AdvCfg.GROUND)
-                    cx += len
-                }
-                S_VMOVER -> {
-                    val g = 110f
-                    val hh = 90f
-                    movers.add(AdvMover(cx + g / 2f, cx + g / 2f, AdvCfg.GROUND, AdvCfg.GROUND - hh, 78f, 0.7f, 0f))
-                    cx += g
-                    val len = 200f
-                    plats.add(AdvPlat(cx, cx + len, AdvCfg.GROUND - hh)) // cornisa alta
-                    addCandle(cx + len / 2f, AdvCfg.GROUND - hh)
-                    scatter(cx, cx + len, AdvCfg.GROUND - hh, 1, true)
-                    cx += len
-                    ground(cx, cx + 240f)
-                    scatter(cx, cx + 240f, AdvCfg.GROUND, 1, true)
-                    cx += 240f
-                }
-                S_CRUMBLE -> {
-                    val n = 4 + rnd.nextInt(2)
-                    val g = n * 54f + 8f
-                    for (i in 0 until n) crumbles.add(AdvCrumble(cx + 8f + i * 54f, cx + 8f + i * 54f + 46f, AdvCfg.GROUND))
-                    if (world >= 4) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
-                    cx += g
-                    val len = 240f
-                    ground(cx, cx + len)
-                    scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
-                    cx += len
-                }
-                S_JETS -> {
-                    val len = 480f
-                    ground(cx, cx + len)
-                    for (i in 0 until 3) jets.add(AdvJet(cx + 130f + i * 120f, AdvCfg.GROUND, 2.7f, rnd.nextFloat() * 2.7f))
-                    addCandle(cx + 40f, AdvCfg.GROUND)
-                    cx += len
-                }
-                S_PEND -> {
-                    val len = 480f
-                    ground(cx, cx + len)
-                    for (i in 0 until 2) pends.add(AdvPend(cx + 170f + i * 160f, AdvCfg.GROUND - 170f, 150f, 1.4f, rnd.nextFloat() * 6f))
-                    addCandle(cx + 40f, AdvCfg.GROUND)
-                    cx += len
-                }
-                S_ROCKS -> {
-                    val len = 460f
-                    ground(cx, cx + len)
-                    for (i in 0 until 2) rocks.add(AdvRock(cx + 170f + i * 130f, AdvCfg.GROUND - 220f))
-                    addCandle(cx + 40f, AdvCfg.GROUND)
-                    scatter(cx, cx + 100f, AdvCfg.GROUND, 0)
-                    cx += len
-                }
-                else -> { // S_AMBUSH
-                    val len = viewW + 60f
-                    ground(cx, cx + len)
-                    ambushes.add(AdvAmbush(cx, cx + viewW))
-                    checks.add(cx + 30f)
-                    amb++
-                    cx += len
+                scatter(cx, cx + len, AdvCfg.GROUND, 1 + rnd.nextInt(2))
+                cx += len
+            }
+            S_SPIKES -> {
+                val len = 320f
+                ground(cx, cx + len)
+                val sw = 40f + rnd.nextInt(30)
+                val sx = cx + len / 2f - sw / 2f
+                spikes.add(floatArrayOf(sx, sx + sw))
+                scatter(cx, cx + len, AdvCfg.GROUND, 1)
+                cx += len
+            }
+            S_TRIAL -> {
+                val len = 330f
+                ground(cx, cx + len)
+                scatter(cx, cx + len, AdvCfg.GROUND, 2 + (diff * 2f).toInt())
+                addCandle(cx + len / 2f, AdvCfg.GROUND)
+                cx += len
+            }
+            S_MOVER -> {
+                val g = 200f + rnd.nextInt(30)
+                movers.add(AdvMover(cx + 34f, cx + g - 34f, AdvCfg.GROUND, AdvCfg.GROUND, 56f, 0.9f + 0.1f * rnd.nextInt(3), rnd.nextFloat() * 6f))
+                if (world >= 4 && rnd.nextBoolean()) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
+                cx += g
+                val len = 240f
+                ground(cx, cx + len)
+                scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
+                addCandle(cx + 120f, AdvCfg.GROUND)
+                cx += len
+            }
+            S_VMOVER -> {
+                val g = 110f
+                val hh = 90f
+                movers.add(AdvMover(cx + g / 2f, cx + g / 2f, AdvCfg.GROUND, AdvCfg.GROUND - hh, 78f, 0.7f, 0f))
+                cx += g
+                val len = 200f
+                plats.add(AdvPlat(cx, cx + len, AdvCfg.GROUND - hh)) // cornisa alta
+                addCandle(cx + len / 2f, AdvCfg.GROUND - hh)
+                scatter(cx, cx + len, AdvCfg.GROUND - hh, 1, true)
+                cx += len
+                ground(cx, cx + 240f)
+                scatter(cx, cx + 240f, AdvCfg.GROUND, 1, true)
+                cx += 240f
+            }
+            S_CRUMBLE -> {
+                val n = 4 + rnd.nextInt(2)
+                val g = n * 54f + 8f
+                for (i in 0 until n) crumbles.add(AdvCrumble(cx + 8f + i * 54f, cx + 8f + i * 54f + 46f, AdvCfg.GROUND))
+                if (world >= 4) addEnemy(E_BAT, cx + g / 2f, AdvCfg.GROUND, cx, cx + g)
+                cx += g
+                val len = 240f
+                ground(cx, cx + len)
+                scatter(cx, cx + len, AdvCfg.GROUND, 1, true)
+                cx += len
+            }
+            S_JETS -> {
+                val len = 480f
+                ground(cx, cx + len)
+                for (i in 0 until 3) jets.add(AdvJet(cx + 130f + i * 120f, AdvCfg.GROUND, 2.7f, rnd.nextFloat() * 2.7f))
+                addCandle(cx + 40f, AdvCfg.GROUND)
+                cx += len
+            }
+            S_PEND -> {
+                val len = 480f
+                ground(cx, cx + len)
+                for (i in 0 until 2) pends.add(AdvPend(cx + 170f + i * 160f, AdvCfg.GROUND - 170f, 150f, 1.4f, rnd.nextFloat() * 6f))
+                addCandle(cx + 40f, AdvCfg.GROUND)
+                cx += len
+            }
+            S_ROCKS -> {
+                val len = 460f
+                ground(cx, cx + len)
+                for (i in 0 until 2) rocks.add(AdvRock(cx + 170f + i * 130f, AdvCfg.GROUND - 220f))
+                addCandle(cx + 40f, AdvCfg.GROUND)
+                scatter(cx, cx + 100f, AdvCfg.GROUND, 0)
+                cx += len
+            }
+            else -> { // S_AMBUSH
+                val len = viewW + 60f
+                ground(cx, cx + len)
+                if (!rooms[cur].cleared) ambushes.add(AdvAmbush(cx, cx + viewW))
+                cx += len
+            }
+        }
+        return cx
+    }
+
+    // ------------------------------------------------------------------ mapa del mundo
+    private fun cellOf(x: Int, y: Int): AdvRoom? { for (r in rooms) if (r.gx == x && r.gy == y) return r; return null }
+
+    private fun link(a: AdvRoom, d: Int, b: AdvRoom) { a.nb[d] = b.id; b.nb[d xor 1] = a.id }
+
+    private fun bfsDepth(): IntArray {
+        val par = IntArray(rooms.size) { -2 }
+        val q = ArrayList<Int>()
+        q.add(0); par[0] = -1; rooms[0].depth = 0
+        var h = 0
+        while (h < q.size) {
+            val a = rooms[q[h++]]
+            for (d in 0..3) {
+                val n = a.nb[d]
+                if (n >= 0 && par[n] == -2) { par[n] = a.id; rooms[n].depth = a.depth + 1; q.add(n) }
+            }
+        }
+        return par
+    }
+
+    private fun deg(r: AdvRoom): Int { var n = 0; for (d in 0..3) if (r.nb[d] >= 0) n++; return n }
+
+    private fun buildWorld() {
+        val gr = Random(world * 104729L + 17L)
+        val n = 14 + world
+        rooms.clear()
+        val s = AdvRoom(0, 1, 1 + gr.nextInt(rows - 2))
+        s.kind = R_START
+        rooms.add(s)
+        val dx = intArrayOf(-1, 1, 0, 0)
+        val dy = intArrayOf(0, 0, -1, 1)
+        var tries = 0
+        while (rooms.size < n - 1 && tries < 6000) {
+            tries++
+            val a = rooms[gr.nextInt(rooms.size)]
+            val d = if (gr.nextInt(100) < 62) gr.nextInt(2) else 2 + gr.nextInt(2)
+            val gx = a.gx + dx[d]
+            val gy = a.gy + dy[d]
+            if (gx < 0 || gx >= cols || gy < 0 || gy >= rows || cellOf(gx, gy) != null) continue
+            val b = AdvRoom(rooms.size, gx, gy)
+            rooms.add(b)
+            link(a, d, b)
+        }
+        var par = bfsDepth()
+        // jefe: al este de la sala más lejana que tenga el hueco libre
+        val cand = rooms.sortedByDescending { it.depth }
+        var boss: AdvRoom? = null
+        for (a in cand) {
+            if (a.nb[D_E] == -1 && a.gx + 1 < cols && cellOf(a.gx + 1, a.gy) == null) {
+                val b = AdvRoom(rooms.size, a.gx + 1, a.gy)
+                b.kind = R_BOSS
+                rooms.add(b)
+                link(a, D_E, b)
+                boss = b
+                break
+            }
+        }
+        if (boss == null) { // no debería pasar: ampliar la rejilla
+            cols++
+            val last = rooms.filter { it.nb[D_E] == -1 }.maxByOrNull { it.gx }!!
+            val b2 = AdvRoom(rooms.size, last.gx + 1, last.gy)
+            b2.kind = R_BOSS
+            rooms.add(b2)
+            link(last, D_E, b2)
+            cols = max(cols, last.gx + 2)
+            boss = b2
+        }
+        bossId = boss.id
+        par = bfsDepth()
+        // camino principal inicio -> jefe
+        val path = ArrayList<AdvRoom>()
+        var c = boss.id
+        while (c != -1) { path.add(0, rooms[c]); c = par[c] }
+        // 1) la sala previa al jefe es de guardado
+        if (path.size >= 3) path[path.size - 2].kind = R_SAVE
+        // 2) puertas con llave en tramos horizontales del camino
+        val horiz = ArrayList<Int>()
+        for (i in 1 until path.size - 1) if (path[i].nb[D_E] == path[i + 1].id || path[i].nb[D_W] == path[i + 1].id) horiz.add(i)
+        val wantLocks = min(horiz.size, 1 + world / 4)
+        val lockIdx = ArrayList<Int>()
+        for (j in 1..wantLocks) {
+            val tgt = (path.size * j / (wantLocks + 1)).coerceAtLeast(1)
+            val pick = horiz.filter { it !in lockIdx }.minByOrNull { abs(it - tgt) } ?: break
+            lockIdx.add(pick)
+        }
+        lockIdx.sort()
+        for (i in lockIdx) {
+            val a = path[i]; val b = path[i + 1]
+            val d = if (a.nb[D_E] == b.id) D_E else D_W
+            a.lock[d] = true; b.lock[d xor 1] = true
+        }
+        // regiones (tras cruzar cada puerta con llave)
+        val reg = IntArray(rooms.size) { -1 }
+        run {
+            val q = ArrayList<Int>(); q.add(0); reg[0] = 0
+            var h = 0
+            while (h < q.size) {
+                val a = rooms[q[h++]]
+                for (d in 0..3) {
+                    val nn = a.nb[d]
+                    if (nn >= 0 && reg[nn] == -1) { reg[nn] = reg[a.id] + (if (a.lock[d]) 1 else 0); q.add(nn) }
                 }
             }
-            last = k
-            if (cx - lastCk > 1000f) { checks.add(cx - 120f); lastCk = cx }
         }
-        // entrada a la arena del jefe
-        ground(cx, cx + 140f)
-        checks.add(cx + 40f)
-        arenaX = cx + 140f
-        ground(arenaX, arenaX + viewW + 80f)
-        endX = arenaX + viewW
-        bx = arenaX + viewW * 0.78f
-        enemies.removeAll { it.x < 220f }
-        px = 40f
+        for (r in rooms) r.region = max(0, reg[r.id])
+        // 3) llaves: una por puerta, en una sala de la región anterior
+        fun free(r: AdvRoom) = r.kind == R_NORMAL && r.prize < 0
+        val lockCount = lockIdx.size
+        for (i in 1..lockCount) {
+            var cs = rooms.filter { free(it) && it.region == i - 1 }
+            var leaves = cs.filter { deg(it) == 1 }
+            if (leaves.isNotEmpty()) cs = leaves
+            if (cs.isEmpty()) cs = rooms.filter { free(it) && it.region < i }
+            if (cs.isEmpty()) { // sin sitio: quitar esa puerta
+                val ix = lockIdx[i - 1]
+                val a = path[ix]; val b = path[ix + 1]
+                val d = if (a.nb[D_E] == b.id) D_E else D_W
+                a.lock[d] = false; b.lock[d xor 1] = false
+                continue
+            }
+            val kr = cs[gr.nextInt(cs.size)]
+            kr.kind = R_KEY; kr.prize = IT_KEY; kr.guarded = true
+        }
+        // 4) tesoros: vida máxima x3, botas, látigo
+        val treas = intArrayOf(IT_HPUP, IT_HPUP, IT_HPUP, IT_BOOTS, IT_WHIP)
+        for (t in treas) {
+            var cs = rooms.filter { free(it) && deg(it) == 1 }
+            if (cs.isEmpty()) cs = rooms.filter { free(it) }
+            if (cs.isEmpty()) break
+            val tr = cs[gr.nextInt(cs.size)]
+            tr.kind = R_TREAS; tr.prize = t; tr.guarded = true
+        }
+        // 5) estatuas de guardado cada ~4 salas del camino
+        var i = 4
+        while (i < path.size - 2) { if (path[i].kind == R_NORMAL) path[i].kind = R_SAVE; i += 4 }
+        // más estatuas: que ninguna sala quede a más de 4 pasos de una
+        for (iter in 0 until 8) {
+            val dist = IntArray(rooms.size) { -1 }
+            val q = ArrayList<Int>()
+            for (r in rooms) if (r.kind == R_START || r.kind == R_SAVE) { dist[r.id] = 0; q.add(r.id) }
+            var h = 0
+            while (h < q.size) {
+                val a = rooms[q[h++]]
+                for (d in 0..3) { val nn = a.nb[d]; if (nn >= 0 && dist[nn] == -1) { dist[nn] = dist[a.id] + 1; q.add(nn) } }
+            }
+            val far = rooms.filter { it.kind != R_BOSS && dist[it.id] >= 5 }.maxByOrNull { dist[it.id] } ?: break
+            // cadena hacia la estatua más cercana: elegir una sala normal a distancia <= 3
+            var c = far
+            var pick: AdvRoom? = null
+            while (true) {
+                if (dist[c.id] <= 3 && c.kind == R_NORMAL && dist[c.id] >= 1) { pick = c; break }
+                var nx: AdvRoom? = null
+                for (d in 0..3) { val nn = c.nb[d]; if (nn >= 0 && dist[nn] == dist[c.id] - 1) { nx = rooms[nn]; break } }
+                if (nx == null || dist[c.id] <= 1) break
+                c = nx
+            }
+            if (pick == null) break
+            pick.kind = R_SAVE
+        }
+        for (r in rooms) if (r.kind == R_NORMAL && world >= 1 && gr.nextInt(100) < 20) r.guarded = true
+        // 6) lazos: conexiones extra dentro de una misma región
+        for (a in rooms) {
+            if (a.kind == R_BOSS) continue
+            for (d in intArrayOf(D_E, D_DN)) {
+                if (a.nb[d] != -1) continue
+                val b = cellOf(a.gx + (if (d == D_E) 1 else 0), a.gy + (if (d == D_DN) 1 else 0)) ?: continue
+                if (b.kind == R_BOSS || b.region != a.region || b.nb[d xor 1] != -1) continue
+                if (gr.nextInt(100) < 45) link(a, d, b)
+            }
+        }
+        for (r in rooms) r.seed = world * 1000003L + r.id * 7717L + 11L
+        rooms[0].seen = true
+        rooms[0].visited = true
+    }
+
+    private fun clearRoom() {
+        plats.clear(); spikes.clear(); candles.clear(); enemies.clear(); items.clear(); projs.clear(); hazs.clear()
+        movers.clear(); crumbles.clear(); jets.clear(); pends.clear(); rocks.clear(); ambushes.clear(); doors.clear()
+        statueX = -1f
+        riding = null
+    }
+
+    private fun hub(cx: Float, r: AdvRoom): Float {
+        val len = 340f
+        ground(cx, cx + len)
+        if (r.nb[D_UP] >= 0) doors.add(AdvDoor(cx + 55f, true, r.nb[D_UP]))
+        if (r.nb[D_DN] >= 0) doors.add(AdvDoor(cx + len - 55f, false, r.nb[D_DN]))
+        if (r.kind == R_SAVE || r.kind == R_START) statueX = cx + len / 2f
+        else if (r.prize >= 0 && !r.taken) {
+            val it = AdvItem(cx + len / 2f, AdvCfg.GROUND - 40f, r.prize, r.prizeArg)
+            it.prize = true
+            items.add(it)
+        }
+        return cx + len
+    }
+
+    private fun buildRoom(r: AdvRoom) {
+        clearRoom()
+        rnd.setSeed(r.seed)
+        val diff = world / 11f
+        ground(0f, 360f)
+        var cx = 360f
+        arenaX = 1e9f
+        if (r.kind == R_BOSS) {
+            var last = -1
+            while (cx < 560f) { val k = pickSeg(cx, 560f, 2, last); cx = addSeg(k, cx, diff); last = k }
+            ground(cx, cx + 140f)
+            cx += 140f
+            arenaX = cx
+            ground(arenaX, arenaX + viewW + 80f)
+            endX = arenaX + viewW
+            bx = arenaX + viewW * 0.78f
+            roomLen = endX
+            r.len = roomLen
+            return
+        }
+        val hubNeeded = r.nb[D_UP] >= 0 || r.nb[D_DN] >= 0 || r.kind != R_NORMAL
+        val target = when (r.kind) {
+            R_START -> 560f
+            R_SAVE -> 500f
+            else -> 800f + rnd.nextInt(520) + world * 30f
+        }
+        var mid = false
+        var last = -1
+        while (cx < target) {
+            if (!mid && cx >= target * 0.5f) {
+                mid = true
+                if (r.guarded && !r.cleared && r.kind != R_START && r.kind != R_SAVE) cx = addSeg(S_AMBUSH, cx, diff)
+                if (hubNeeded) cx = hub(cx, r)
+                continue
+            }
+            val k = pickSeg(cx, target, 2, last)
+            cx = addSeg(k, cx, diff)
+            last = k
+        }
+        if (!mid) {
+            if (r.guarded && !r.cleared && r.kind != R_START && r.kind != R_SAVE) cx = addSeg(S_AMBUSH, cx, diff)
+            if (hubNeeded) cx = hub(cx, r)
+        }
+        ground(cx, cx + 260f)
+        cx += 260f
+        roomLen = max(cx, viewW + 80f)
+        if (roomLen > cx) ground(cx, roomLen)
+        endX = roomLen
+        r.len = roomLen
+        if (r.kind == R_START || r.kind == R_SAVE) enemies.clear()
+    }
+
+    /** Progreso del mundo como texto (para guardarlo): mapa explorado, llaves, mejoras y última estatua. */
+    fun saveState(): String {
+        val sb = StringBuilder()
+        sb.append("1,").append(rooms.size).append(',').append(saveRoom).append(',').append(keys).append(',').append(maxHp)
+            .append(',').append(sub).append(',').append(whip).append(',').append(if (boots) 1 else 0).append(',').append(hearts).append(',')
+        for ((i, r) in rooms.withIndex()) {
+            var v = 0
+            if (r.seen) v = v or 1
+            if (r.visited) v = v or 2
+            if (r.taken) v = v or 4
+            if (r.cleared) v = v or 8
+            if (r.lock[D_W]) v = v or 16
+            if (r.lock[D_E]) v = v or 32
+            if (i > 0) sb.append('.')
+            sb.append(v)
+        }
+        return sb.toString()
+    }
+
+    fun loadState(str: String): Boolean {
+        try {
+            val p = str.split(",")
+            if (p.size < 10 || p[0] != "1" || p[1].toInt() != rooms.size) return false
+            val flags = p[9].split(".")
+            if (flags.size != rooms.size) return false
+            for ((i, r) in rooms.withIndex()) {
+                val v = flags[i].toInt()
+                r.seen = v and 1 != 0; r.visited = v and 2 != 0; r.taken = v and 4 != 0; r.cleared = v and 8 != 0
+                r.lock[D_W] = v and 16 != 0; r.lock[D_E] = v and 32 != 0
+            }
+            saveRoom = p[2].toInt().coerceIn(0, rooms.size - 1)
+            keys = p[3].toInt().coerceIn(0, 9)
+            maxHp = p[4].toInt().coerceIn(AdvCfg.MAXHP, 40)
+            sub = p[5].toInt().coerceIn(0, AdvCfg.SUBS)
+            whip = p[6].toInt().coerceIn(0, 2)
+            boots = p[7].toInt() != 0
+            hearts = p[8].toInt().coerceIn(0, AdvCfg.MAXHEARTS)
+            hp = maxHp
+            enterRoom(saveRoom, 3, 0f)
+            return true
+        } catch (e: Exception) { return false }
+    }
+
+    /** Para pruebas: teletransporta a una sala (0 = entrada oeste, 1 = entrada este). */
+    fun warp(id: Int, mode: Int) { enterRoom(id, mode, 0f) }
+
+    /** Entra a una sala. mode: 0 = por el oeste, 1 = por el este, 2 = en la x dada (escalera), 3 = junto a la estatua. */
+    private fun enterRoom(id: Int, mode: Int, x: Float) {
+        val from = cur
+        cur = id
+        val r = rooms[id]
+        r.visited = true
+        r.seen = true
+        for (d in 0..3) if (r.nb[d] >= 0) rooms[r.nb[d]].seen = true
+        buildRoom(r)
+        px = when (mode) {
+            0 -> 52f
+            1 -> roomLen - 52f
+            3 -> if (statueX >= 0f) statueX else 52f
+            4, 5 -> doors.firstOrNull { it.to == from }?.x ?: 52f
+            else -> x
+        }
         py = AdvCfg.GROUND
-        lastCheck = 40f
+        if (mode == 0) face = 1 else if (mode == 1) face = -1
+        pvx = 0f; pvy = 0f
+        onGround = true
+        riding = null
+        bibleT = 0f
+        atkT = 0f
+        hitstun = 0f
+        bossStarted = false
+        if (r.kind == R_BOSS && bstate != BS_DEAD) resetBoss()
+        enemies.removeAll { abs(it.x - px) < 170f }
+        val maxCam = max(0f, endX - viewW)
+        camX = (px - viewW * (0.5f - 0.12f * face)).coerceIn(0f, maxCam)
+        ocam = camX
+        opx = px; opy = py
+        safeX = px; safeY = py
+        fade = 1f
+        enterCd = 0.3f
+        touchedSave = mode == 3
+        pendRoom = -1
+        ev(EV_ROOM, px, py, id)
+        rnd.setSeed(r.seed xor (time * 1000f).toLong() xor 0x5DEECE66DL)
     }
 
     // ------------------------------------------------------------------ utilidades
@@ -636,28 +1005,29 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     private fun lastAmbushActive(): AdvAmbush? { for (a in ambushes) if (a.st == 1) return a; return null }
 
     private fun respawn() {
-        hp = AdvCfg.MAXHP
+        hp = maxHp
         hearts = max(hearts, 5)
-        px = lastCheck
-        py = AdvCfg.GROUND
-        pvx = 0f; pvy = 0f
         invuln = 1.5f
-        hitstun = 0f
         deadT = 0f
+        potionT = 0f
+        enterRoom(saveRoom, 3, 0f)
+        invuln = 1.5f
+        fade = 1f
+    }
+
+    /** Caída a un foso: daño y vuelta al último suelo firme de la sala. */
+    private fun fall() {
+        if (!god) hp -= 2
+        ev(EV_FALL, px, AdvCfg.H - 10f)
+        if (hp <= 0) { hp = 0; die(); return }
+        px = safeX; py = safeY
+        pvx = 0f; pvy = 0f
+        onGround = true
         riding = null
-        bibleT = 0f
-        projs.removeAll { !it.mine }
-        hazs.removeAll { !it.mine }
-        // una emboscada a medias se reinicia
-        for (a in ambushes) if (a.st == 1) {
-            for (e in a.mine) e.dead = true
-            a.mine.clear()
-            a.st = 0
-            a.wave = 0
-            a.t = 0f
-        }
-        if (bossStarted && bstate != BS_DEAD) resetBoss()
-        for (e in enemies) if (e.type != E_BAT && e.type != E_MEDUSA && abs(e.x - px) < 100f) e.x += 130f
+        invuln = 1.3f
+        hitstun = 0f
+        shake = 3f
+        opx = px; opy = py
     }
 
     private fun resetBoss() {
@@ -691,13 +1061,17 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     private fun lockedMin(): Float {
         val a = lastAmbushActive()
         if (a != null) return a.x0 + AdvCfg.PHALF + 2f
-        return if (bossStarted) arenaX + AdvCfg.PHALF + 2f else AdvCfg.PHALF
+        if (bossStarted) return arenaX + AdvCfg.PHALF + 2f
+        val r = rooms[cur]
+        return if (r.nb[D_W] >= 0 && !r.lock[D_W]) -30f else if (r.lock[D_W]) 20f else AdvCfg.PHALF
     }
 
     private fun lockedMax(): Float {
         val a = lastAmbushActive()
         if (a != null) return a.x1 - AdvCfg.PHALF - 2f
-        return if (bossStarted) arenaX + viewW - AdvCfg.PHALF - 2f else endX + 200f
+        if (bossStarted) return arenaX + viewW - AdvCfg.PHALF - 2f
+        val r = rooms[cur]
+        return if (r.nb[D_E] >= 0 && !r.lock[D_E]) roomLen + 30f else if (r.lock[D_E]) roomLen - 20f else roomLen - AdvCfg.PHALF
     }
 
     private fun snapshot() {
@@ -710,7 +1084,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
 
     private fun tick(dt: Float, inp: AdvInput) {
         time += dt
+        if (pendRoom >= 0) enterRoom(pendRoom, pendMode, pendX)
         snapshot()
+        if (fade > 0f) fade = max(0f, fade - dt * 3.2f)
+        enterCd = max(0f, enterCd - dt)
+        lockMsgT = max(0f, lockMsgT - dt)
+        lastSaveFlash = max(0f, lastSaveFlash - dt)
         if (shake > 0f) shake = max(0f, shake - dt * 30f)
         if (deadT > 0f) {
             deadT -= dt
@@ -734,7 +1113,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
 
     private fun updateCam(dt: Float) {
         val a = lastAmbushActive()
-        val target = if (bossStarted) arenaX else if (a != null) a.x0 else (px - viewW * 0.38f + face * 30f)
+        val target = if (bossStarted) arenaX else if (a != null) a.x0 else (px - viewW * (0.5f - 0.12f * face))
         val maxCam = max(0f, endX - viewW)
         val t = target.coerceIn(0f, maxCam)
         camX += (t - camX) * min(1f, dt * 6f)
@@ -921,16 +1300,19 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             pvy = 0f
             onGround = true
         } else { onGround = false; riding = null }
-        if (py > AdvCfg.H + 40f) {
-            hp = max(0, hp - 3)
-            if (god) hp = AdvCfg.MAXHP
-            die()
-            return
+        if (py > AdvCfg.H + 40f) { fall(); return }
+        if (onGround && riding == null) {
+            for (p in plats) if (abs(p.y - py) < 1f && px > p.x0 + 16f && px < p.x1 - 16f) {
+                var ok = true
+                for (s in spikes) if (px + 36f > s[0] && px - 36f < s[1]) ok = false
+                if (ok) { safeX = px; safeY = py }
+                break
+            }
         }
         if (onGround && invuln <= 0f) {
             for (s in spikes) if (px + 6f > s[0] && px - 6f < s[1] && py >= AdvCfg.GROUND - 2f) playerHurt(2, (s[0] + s[1]) / 2f)
         }
-        for (c in checks) if (c > lastCheck && px >= c && !bossStarted) { lastCheck = c; ev(EV_CHECK, c, AdvCfg.GROUND) }
+        roomLogic(inp)
         if (!bossStarted && px > arenaX + 60f && bstate != BS_DEAD) {
             bossStarted = true
             bstate = BS_INTRO
@@ -949,6 +1331,56 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         }
         if (control && inp.spPressed) useSub()
         if (bibleT > 0f) updateBible(dt)
+    }
+
+    /** Estatuas, puertas, salidas y puertas con llave. */
+    private fun roomLogic(inp: AdvInput) {
+        val r = rooms[cur]
+        if (deadT > 0f || won) return
+        // estatua de guardado
+        if (statueX >= 0f) {
+            if (abs(px - statueX) < 20f && onGround && !touchedSave && !bossStarted) {
+                touchedSave = true
+                saveRoom = cur
+                hp = maxHp
+                hearts = max(hearts, 10)
+                lastSaveFlash = 1.2f
+                ev(EV_CHECK, statueX, AdvCfg.GROUND)
+            } else if (abs(px - statueX) > 70f) touchedSave = false
+        }
+        // puertas con llave en los bordes
+        if (!bossStarted && lastAmbushActive() == null) {
+            if (r.lock[D_E] && px >= roomLen - 24f) unlockEdge(r, D_E)
+            if (r.lock[D_W] && px <= 24f) unlockEdge(r, D_W)
+        }
+        // salidas laterales
+        if (enterCd <= 0f && pendRoom < 0 && !bossStarted && lastAmbushActive() == null) {
+            if (px <= 3f && r.nb[D_W] >= 0 && !r.lock[D_W]) { pendRoom = r.nb[D_W]; pendMode = 1; pendX = 0f }
+            else if (px >= roomLen - 3f && r.nb[D_E] >= 0 && !r.lock[D_E]) { pendRoom = r.nb[D_E]; pendMode = 0; pendX = 0f }
+        }
+        // escaleras: ATAQUE junto a la puerta
+        if (inp.atkPressed && onGround && enterCd <= 0f && pendRoom < 0 && !bossStarted && lastAmbushActive() == null) {
+            for (d in doors) if (abs(px - d.x) < 24f) {
+                pendRoom = d.to
+                pendMode = if (d.up) 4 else 5
+                pendX = 0f
+                inp.atkPressed = false
+                ev(EV_DOOR, d.x, AdvCfg.GROUND - 20f, if (d.up) 1 else 0)
+                break
+            }
+        }
+    }
+
+    private fun unlockEdge(r: AdvRoom, d: Int) {
+        if (keys > 0) {
+            keys--
+            r.lock[d] = false
+            rooms[r.nb[d]].lock[d xor 1] = false
+            ev(EV_UNLOCK, if (d == D_E) roomLen - 12f else 12f, AdvCfg.GROUND - 20f)
+        } else if (lockMsgT <= 0f) {
+            lockMsgT = 1.6f
+            ev(EV_LOCKED, px, py - 30f)
+        }
     }
 
     val whipReach: Float get() = 60f + 18f * whip
@@ -1115,13 +1547,16 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 when (i.kind) {
                     IT_HEART -> hearts = min(AdvCfg.MAXHEARTS, hearts + 1)
                     IT_BIG -> hearts = min(AdvCfg.MAXHEARTS, hearts + 5)
-                    IT_MEAT -> hp = min(AdvCfg.MAXHP, hp + 4)
+                    IT_MEAT -> hp = min(maxHp, hp + 4)
                     IT_SUB -> sub = i.arg.coerceIn(1, AdvCfg.SUBS)
                     IT_WHIP -> whip = min(2, whip + 1)
                     IT_BOOTS -> boots = true
                     IT_POTION -> potionT = 9f
-                    IT_ORB -> { hp = AdvCfg.MAXHP; won = true; ev(EV_WIN, px, py - 20f) }
+                    IT_KEY -> keys++
+                    IT_HPUP -> { maxHp += 2; hp = maxHp }
+                    IT_ORB -> { hp = maxHp; won = true; ev(EV_WIN, px, py - 20f) }
                 }
+                if (i.prize) rooms[cur].taken = true
                 ev(EV_PICK, i.x, i.y, i.kind)
                 it.remove()
             }
