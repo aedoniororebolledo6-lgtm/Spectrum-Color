@@ -239,7 +239,7 @@ object AdvStructs {
             // cavidad interior
             c.box(x0 + 1, x0 + cav, 1, 2, '.')
             for (q in 1..cav) c.set(x0 + q, 1, 'R')
-            c.set(x0, 1, 'X')
+            c.set(x0, 1, 'X'); c.set(x0, 2, 'X')
             if (mode == 1) c.set(x0 + w - 2, h + 1, 'c') else c.set(x0 + w + 1, 1, '?')
             add(F_SECRET, "Alcoba $w/$cav", if (mode == 1) 0 else 1, c)
         }
