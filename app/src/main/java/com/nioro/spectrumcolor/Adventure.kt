@@ -197,10 +197,19 @@ class AdvRoom(val id: Int, val gx: Int, val gy: Int) {
     var taken = false
     var cleared = false
     var guarded = false
+    var secret = false
     var region = 0
     var depth = 0
     var len = 0f
     var seed = 0L
+}
+/** Bloque sólido (paredes, techos, pilares). Los rompibles (brk) se destruyen con el látigo. */
+class AdvBlock(val x0: Float, val x1: Float, val y0: Float, val y1: Float, val brk: Boolean) {
+    var plat: AdvPlat? = null
+}
+/** Resorte: al caer sobre él lanza hacia arriba. */
+class AdvSpring(val x0: Float, val x1: Float, val y: Float) {
+    var t = 0f
 }
 /** Puerta de piso (escalera) hacia la sala de arriba o de abajo. */
 class AdvDoor(val x: Float, val up: Boolean, val to: Int)
@@ -246,6 +255,8 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val EV_ROOM = 28
         const val EV_FALL = 29
         const val EV_DOOR = 30
+        const val EV_BREAK = 31
+        const val EV_SPRING = 32
 
         const val IT_HEART = 0
         const val IT_BIG = 1
@@ -313,6 +324,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     val enemies = ArrayList<AdvEnemy>()
     val rooms = ArrayList<AdvRoom>()
     val doors = ArrayList<AdvDoor>()
+    val blocks = ArrayList<AdvBlock>()
+    val springs = ArrayList<AdvSpring>()
+    private val secretSpots = ArrayList<FloatArray>()
+    private val recent = ArrayList<Int>()
     var cols = 9
     var rows = 5
     var cur = 0
@@ -809,9 +824,218 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         rooms[0].visited = true
     }
 
+    // ------------------------------------------------------------------ estructuras (planos de casillas)
+    private fun groundedTypes(): IntArray {
+        val g = allowed().filter { it == E_WALKER || it == E_HOPPER || it == E_CHARGER || it == E_KNIGHT || it == E_THROWER || it == E_TURRET }
+        return if (g.isEmpty()) intArrayOf(E_WALKER) else g.toIntArray()
+    }
+
+    private fun flyerTypes(): IntArray = allowed().filter { it == E_BAT || it == E_MEDUSA || it == E_GHOST }.toIntArray()
+
+    /** Tramo horizontal libre alrededor de x sobre el suelo fy, limitado por bloques y por la estructura. */
+    private fun patrol(x: Float, fy: Float, lim0: Float, lim1: Float): FloatArray {
+        var lo = x
+        var hi = x
+        for (p in plats) if (abs(p.y - fy) < 1f && x >= p.x0 - 0.5f && x <= p.x1 + 0.5f) { lo = p.x0; hi = p.x1 }
+        var ch = true
+        while (ch) {
+            ch = false
+            for (p in plats) if (abs(p.y - fy) < 1f) {
+                if (p.x1 >= lo - 1f && p.x0 < lo - 0.5f) { lo = p.x0; ch = true }
+                if (p.x0 <= hi + 1f && p.x1 > hi + 0.5f) { hi = p.x1; ch = true }
+            }
+        }
+        for (b in blocks) if (b.y1 > fy - 28f && b.y0 < fy - 1f) {
+            if (b.x1 <= x && b.x1 > lo) lo = b.x1
+            if (b.x0 >= x && b.x0 < hi) hi = b.x0
+        }
+        lo = max(lo, lim0); hi = min(hi, lim1)
+        if (hi - lo < 36f) return floatArrayOf(x - 14f, x + 14f)
+        return floatArrayOf(lo + 8f, hi - 8f)
+    }
+
+    /** Coloca un plano en x = cx0 y devuelve la x final. */
+    private fun placeBp(bp: AdvStructs.Bp, cx: Float): Float {
+        val rowsN = bp.rows.size
+        val w = bp.w
+        fun row(j: Int): String = bp.rows[rowsN - 1 - j]
+        fun top(j: Int) = AdvCfg.GROUND - 20f * j
+        val secretDone = rooms[cur].secret
+        val g = row(0)
+        var x = 0
+        while (x < w) {
+            if (g[x] == '_' || g[x] == 'S') {
+                var e = x
+                while (e + 1 < w && (g[e + 1] == '_' || g[e + 1] == 'S')) e++
+                ground(cx + x * 20f, cx + (e + 1) * 20f)
+                for (q in x..e) if (g[q] == 'S') springs.add(AdvSpring(cx + q * 20f, cx + (q + 1) * 20f, AdvCfg.GROUND))
+                x = e + 1
+            } else x++
+        }
+        var mFirst = -1
+        var mLast = -1
+        var mFast = false
+        var q = 0
+        while (q < w) {
+            val ch = g[q]
+            if (ch == 'M' || ch == 'N') { if (mFirst < 0) mFirst = q; mLast = q; mFast = ch == 'N' }
+            if (ch == 'k') {
+                var e = q
+                if (e + 1 < w && g[e + 1] == 'k') e++
+                crumbles.add(AdvCrumble(cx + q * 20f + 1f, cx + (e + 1) * 20f - 1f, AdvCfg.GROUND))
+                q = e
+            }
+            q++
+        }
+        if (mFirst >= 0) movers.add(AdvMover(cx + (mFirst + 0.5f) * 20f, cx + (mLast + 0.5f) * 20f, AdvCfg.GROUND, AdvCfg.GROUND, 56f, if (mFast) 1.3f else 0.95f, rnd.nextFloat() * 6f))
+        // geometría
+        for (j in 1 until rowsN) {
+            val r = row(j)
+            val up = if (j + 1 < rowsN) row(j + 1) else ".".repeat(w)
+            var c = 0
+            while (c < w) {
+                val ch = r[c]
+                if (ch == '#' || ch == 'X' || ch == '=' || ch == 'k') {
+                    var e = c
+                    while (e + 1 < w && r[e + 1] == ch) e++
+                    val x0 = cx + c * 20f
+                    val x1 = cx + (e + 1) * 20f
+                    val y0 = top(j)
+                    when (ch) {
+                        '#' -> {
+                            blocks.add(AdvBlock(x0, x1, y0, y0 + 20f, false))
+                            var sI = c
+                            while (sI <= e) {
+                                if (up[sI] != '#' && up[sI] != 'X') {
+                                    var t = sI
+                                    while (t + 1 <= e && up[t + 1] != '#' && up[t + 1] != 'X') t++
+                                    plats.add(AdvPlat(cx + sI * 20f, cx + (t + 1) * 20f, y0))
+                                    sI = t + 1
+                                } else sI++
+                            }
+                        }
+                        'X' -> if (!secretDone) {
+                            val b = AdvBlock(x0, x1, y0, y0 + 20f, true)
+                            val p = AdvPlat(x0, x1, y0)
+                            b.plat = p
+                            blocks.add(b)
+                            plats.add(p)
+                        }
+                        '=' -> plats.add(AdvPlat(x0, x1, y0))
+                        else -> {
+                            var sI = c
+                            while (sI <= e) {
+                                val t = min(e, sI + 1)
+                                crumbles.add(AdvCrumble(cx + sI * 20f + 1f, cx + (t + 1) * 20f - 1f, y0))
+                                sI = t + 1
+                            }
+                        }
+                    }
+                    c = e + 1
+                } else c++
+            }
+        }
+        // objetos y enemigos
+        val lim0 = cx + 40f
+        val lim1 = cx + (w - 2) * 20f
+        for (j in 1 until rowsN) {
+            val r = row(j)
+            for (c in 0 until w) {
+                val ch = r[c]
+                val xx = cx + (c + 0.5f) * 20f
+                val fy = top(j) + 20f
+                when (ch) {
+                    'c' -> addCandle(xx, fy)
+                    '^' -> if (c == 0 || r[c - 1] != '^') {
+                        var e = c
+                        while (e + 1 < w && r[e + 1] == '^') e++
+                        spikes.add(floatArrayOf(cx + c * 20f + 1f, cx + (e + 1) * 20f - 1f))
+                    }
+                    'j' -> jets.add(AdvJet(xx, AdvCfg.GROUND, 2.7f, rnd.nextFloat() * 2.7f))
+                    'p' -> { val len = AdvCfg.GROUND - 20f - top(j); if (len >= 60f) pends.add(AdvPend(xx, top(j), len, 1.4f, rnd.nextFloat() * 6f)) }
+                    'r' -> rocks.add(AdvRock(xx, top(j)))
+                    'R' -> if (bp.hasX) { if (!secretDone) secretSpots.add(floatArrayOf(xx, fy - 6f)) } else {
+                        val rr = rnd.nextInt(100)
+                        var arg = 0
+                        val kind = when { rr < 40 -> IT_BIG; rr < 60 -> IT_MEAT; rr < 92 -> { arg = 1 + rnd.nextInt(AdvCfg.SUBS); IT_SUB }; else -> IT_POTION }
+                        items.add(AdvItem(xx, fy - 6f, kind, arg))
+                    }
+                    '?' -> {
+                        val al = groundedTypes()
+                        val pr = patrol(xx, fy, lim0, lim1)
+                        addEnemy(al[rnd.nextInt(al.size)], xx, fy, pr[0], pr[1])
+                    }
+                    'f' -> {
+                        val al = flyerTypes()
+                        if (al.isNotEmpty()) addEnemy(al[rnd.nextInt(al.size)], xx, fy, max(lim0 - 20f, xx - 100f), min(lim1 + 20f, xx + 100f))
+                    }
+                }
+            }
+        }
+        return cx + w * 20f
+    }
+
+    private val minWorld = intArrayOf(0, 0, 0, 0, 1, 2, 1, 2, 1, 0, 0, 1, 1, 3, 4, 5, 0, 0, 1, 3, 2, 3, 0, 3, 2, 4)
+    private val boost = arrayOf(
+        intArrayOf(0, 5), intArrayOf(0, 4), intArrayOf(0, 4, 8), intArrayOf(0, 2, 7, 9), intArrayOf(1, 2, 6, 9, 10),
+        intArrayOf(2, 7, 8), intArrayOf(2, 6, 10), intArrayOf(3, 4, 7, 9), intArrayOf(3, 4, 8), intArrayOf(1, 5, 8),
+        intArrayOf(1, 5, 11), intArrayOf(4, 8, 11), intArrayOf(6, 9, 10), intArrayOf(3, 7, 11), intArrayOf(4, 10, 11),
+        intArrayOf(6, 8, 11), intArrayOf(0, 3, 10), intArrayOf(5, 11), intArrayOf(5, 10), intArrayOf(3, 10),
+        intArrayOf(2, 9), intArrayOf(4, 7), intArrayOf(0, 5), intArrayOf(10, 11), intArrayOf(3, 8), intArrayOf(10, 11)
+    )
+    private val safeFams = intArrayOf(AdvStructs.F_STAIRS, AdvStructs.F_WALL, AdvStructs.F_PILLARS, AdvStructs.F_ALTAR, AdvStructs.F_TOWER, AdvStructs.F_CHICANE)
+
+    private fun pickStruct(tierMax: Int, lastFam: Int, safe: Boolean): AdvStructs.Bp {
+        val list = AdvStructs.all
+        var tot = 0
+        val wts = IntArray(list.size)
+        for (b in list) {
+            if (b.tier > tierMax || world < minWorld[b.fam]) continue
+            if (safe && (b.tier > 0 || b.fam !in safeFams)) continue
+            if (recent.contains(b.id)) continue
+            var w = 10
+            if (b.tier == tierMax) w += 8 else if (b.tier == 0 && world >= 3) w = 3
+            if (world in boost[b.fam]) w *= 3
+            if (b.fam == lastFam) w = max(1, w / 5)
+            wts[b.id] = w
+            tot += w
+        }
+        if (tot == 0) return list[0]
+        var r = rnd.nextInt(tot)
+        for (b in list) { if (r < wts[b.id]) { recent.add(b.id); if (recent.size > 10) recent.removeAt(0); return b }; r -= wts[b.id] }
+        return list[0]
+    }
+
+    /** Para pruebas: sala con una sola estructura. side 0 = entrar por la izquierda, 1 = por la derecha. */
+    fun testStruct(id: Int, side: Int) {
+        clearRoom()
+        rnd.setSeed(1234L + id)
+        cur = 0
+        arenaX = 1e9f
+        bossStarted = false
+        ground(0f, 360f)
+        val end = placeBp(AdvStructs.all[id], 360f)
+        ground(end, end + 360f)
+        roomLen = max(end + 360f, viewW + 80f)
+        endX = roomLen
+        rooms[0].len = roomLen
+        px = if (side == 0) 52f else roomLen - 52f
+        py = AdvCfg.GROUND
+        pvx = 0f; pvy = 0f
+        onGround = true
+        face = if (side == 0) 1 else -1
+        enemies.removeAll { abs(it.x - px) < 100f }
+        camX = (px - viewW * 0.4f).coerceIn(0f, max(0f, endX - viewW)); ocam = camX
+        opx = px; opy = py
+        pendRoom = -1
+        enterCd = 5f
+        rooms[0].secret = false
+    }
+
     private fun clearRoom() {
         plats.clear(); spikes.clear(); candles.clear(); enemies.clear(); items.clear(); projs.clear(); hazs.clear()
         movers.clear(); crumbles.clear(); jets.clear(); pends.clear(); rocks.clear(); ambushes.clear(); doors.clear()
+        blocks.clear(); springs.clear(); secretSpots.clear()
         statueX = -1f
         riding = null
     }
@@ -851,26 +1075,42 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             return
         }
         val hubNeeded = r.nb[D_UP] >= 0 || r.nb[D_DN] >= 0 || r.kind != R_NORMAL
+        val safe = r.kind == R_START || r.kind == R_SAVE
         val target = when (r.kind) {
-            R_START -> 560f
-            R_SAVE -> 500f
-            else -> 800f + rnd.nextInt(520) + world * 30f
+            R_START -> 700f
+            R_SAVE -> 640f
+            else -> 1100f + rnd.nextInt(700) + world * 40f
         }
+        val tierMax = min(3, world / 3 + 1)
+        recent.clear()
         var mid = false
         var last = -1
+        var lastFam = -1
         while (cx < target) {
             if (!mid && cx >= target * 0.5f) {
                 mid = true
-                if (r.guarded && !r.cleared && r.kind != R_START && r.kind != R_SAVE) cx = addSeg(S_AMBUSH, cx, diff)
+                if (r.guarded && !r.cleared && !safe) cx = addSeg(S_AMBUSH, cx, diff)
                 if (hubNeeded) cx = hub(cx, r)
                 continue
             }
-            val k = pickSeg(cx, target, 2, last)
-            cx = addSeg(k, cx, diff)
-            last = k
+            if (!safe && rnd.nextInt(100) < 18) {
+                val k = pickSeg(cx, target, 2, last)
+                cx = addSeg(k, cx, diff)
+                last = k
+                lastFam = -1
+            } else {
+                val bp = pickStruct(tierMax, lastFam, safe)
+                cx = placeBp(bp, cx)
+                lastFam = bp.fam
+                last = -1
+            }
+            val gap = 40f + rnd.nextInt(100)
+            ground(cx, cx + gap)
+            if (rnd.nextInt(4) == 0) addCandle(cx + gap / 2f, AdvCfg.GROUND)
+            cx += gap
         }
         if (!mid) {
-            if (r.guarded && !r.cleared && r.kind != R_START && r.kind != R_SAVE) cx = addSeg(S_AMBUSH, cx, diff)
+            if (r.guarded && !r.cleared && !safe) cx = addSeg(S_AMBUSH, cx, diff)
             if (hubNeeded) cx = hub(cx, r)
         }
         ground(cx, cx + 260f)
@@ -895,6 +1135,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             if (r.cleared) v = v or 8
             if (r.lock[D_W]) v = v or 16
             if (r.lock[D_E]) v = v or 32
+            if (r.secret) v = v or 64
             if (i > 0) sb.append('.')
             sb.append(v)
         }
@@ -910,7 +1151,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             for ((i, r) in rooms.withIndex()) {
                 val v = flags[i].toInt()
                 r.seen = v and 1 != 0; r.visited = v and 2 != 0; r.taken = v and 4 != 0; r.cleared = v and 8 != 0
-                r.lock[D_W] = v and 16 != 0; r.lock[D_E] = v and 32 != 0
+                r.lock[D_W] = v and 16 != 0; r.lock[D_E] = v and 32 != 0; r.secret = v and 64 != 0
             }
             saveRoom = p[2].toInt().coerceIn(0, rooms.size - 1)
             keys = p[3].toInt().coerceIn(0, 9)
@@ -1122,6 +1363,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
 
     // ------------------------------------------------------------------ plataformas
     private fun updateMovers(dt: Float) {
+        for (sp in springs) if (sp.t > 0f) sp.t = max(0f, sp.t - dt)
         for (m in movers) {
             val u = 0.5f + 0.5f * sin(time * m.speed + m.phase)
             val nx = m.x0 + (m.x1 - m.x0) * u
@@ -1288,18 +1530,32 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (jumping && !inp.jumpHeld && pvy < -190f) { pvy = -190f; jumping = false }
         if (pvy >= 0f) jumping = false
         pvy = min(900f, pvy + AdvCfg.GRAV * dt)
+        val oldPx = px
         px = (px + pvx * dt).coerceIn(lockedMin(), lockedMax())
+        if (blocks.isNotEmpty()) collideX(oldPx)
         val prev = py
         py += pvy * dt
+        if (pvy < 0f && blocks.isNotEmpty()) {
+            for (b in blocks) if (px + 8f > b.x0 && px - 8f < b.x1 && prev - 30f >= b.y1 - 1f && py - 30f < b.y1) { py = b.y1 + 30f; pvy = 0f; jumping = false }
+        }
         var landed = false
         if (pvy >= 0f) {
             val y = landing(prev, py)
             if (!y.isNaN()) { py = y; landed = true }
         }
         if (landed) {
-            if (!onGround) ev(EV_LAND, px, py)
+            val wasAir = !onGround
+            val fall = pvy
+            if (wasAir) ev(EV_LAND, px, py)
             pvy = 0f
             onGround = true
+            if (wasAir && fall > 100f) {
+                for (sp in springs) if (px + 6f > sp.x0 && px - 6f < sp.x1 && abs(py - sp.y) < 2f) {
+                    pvy = -830f; onGround = false; jumping = false; coyote = 0f; sp.t = 0.35f
+                    ev(EV_SPRING, (sp.x0 + sp.x1) / 2f, sp.y)
+                    break
+                }
+            }
         } else { onGround = false; riding = null }
         if (py > AdvCfg.H + 40f) { fall(); return }
         if (onGround && riding == null) {
@@ -1384,6 +1640,33 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         }
     }
 
+    private fun collideX(oldPx: Float) {
+        for (b in blocks) {
+            if (py > b.y0 + 0.5f && py - 30f < b.y1 - 0.5f && px + 10f > b.x0 && px - 10f < b.x1) {
+                px = if (oldPx <= (b.x0 + b.x1) / 2f) b.x0 - 10f else b.x1 + 10f
+                pvx = 0f
+            }
+        }
+    }
+
+    private fun breakBlock(b: AdvBlock) {
+        blocks.remove(b)
+        b.plat?.let { plats.remove(it) }
+        ev(EV_BREAK, (b.x0 + b.x1) / 2f, (b.y0 + b.y1) / 2f)
+        shake = max(shake, 2.5f)
+        if (!rooms[cur].secret) {
+            rooms[cur].secret = true
+            for (sp in secretSpots) {
+                val kind: Int
+                var arg = 0
+                val r = rnd.nextInt(100)
+                kind = when { r < 40 -> IT_BIG; r < 60 -> IT_MEAT; r < 92 -> { arg = 1 + rnd.nextInt(AdvCfg.SUBS); IT_SUB }; else -> IT_POTION }
+                items.add(AdvItem(sp[0], sp[1], kind, arg))
+            }
+            secretSpots.clear()
+        }
+    }
+
     val whipReach: Float get() = 60f + 18f * whip
     val whipDmg: Int get() = if (whip == 0) 1 else 2
 
@@ -1400,6 +1683,9 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 swingHit.add(e)
                 hurtEnemy(e, whipDmg, px, whip >= 2)
             }
+        }
+        if (blocks.isNotEmpty()) for (b in ArrayList(blocks)) {
+            if (b.brk && overlap(w[0], w[1], w[2], w[3], b.x0, b.y0, b.x1, b.y1)) breakBlock(b)
         }
         for (c in candles) {
             if (!c.alive || swingHit.contains(c)) continue

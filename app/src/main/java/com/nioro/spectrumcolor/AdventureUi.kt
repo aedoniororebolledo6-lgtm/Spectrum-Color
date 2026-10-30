@@ -275,6 +275,8 @@ class AdvUi(
                 Adv.EV_ROOM -> { trail.clear(); corpses.clear(); parts.clear(); nums.clear() }
                 Adv.EV_FALL -> { burst(e.x, e.y - 20f, 0xFFFF5060.toInt(), 12, 120f); sfx(Sfx.DIE); flash = 1f; nums.add(Num(e.x, e.y - 60f, "-2", 0.9f, 0xFFFF6070.toInt())) }
                 Adv.EV_DOOR -> sfx(Sfx.SWITCH)
+                Adv.EV_BREAK -> { burst(e.x, e.y, 0xFFC0A888.toInt(), 16, 150f, 300f); sfx(Sfx.DIE); say("¡Pasadizo secreto!", 1.6f) }
+                Adv.EV_SPRING -> { burst(e.x, e.y - 4f, 0xFFFF80A0.toInt(), 10, 120f, 0f); sfx(Sfx.SWITCH); squash = 1f }
                 Adv.EV_SLAM -> { sfx(Sfx.DIE); bossSquash = 1f; burst(e.x, e.y - 2f, Gl.white(170), 8, 90f, 60f) }
                 Adv.EV_ROCK -> { burst(e.x, e.y - 4f, 0xFFB0A090.toInt(), 14, 120f); sfx(Sfx.DIE) }
                 Adv.EV_CRUMBLE -> burst(e.x, e.y, 0xFFB0A090.toInt(), 6, 60f, 120f)
@@ -560,6 +562,7 @@ class AdvUi(
                 glow(c, bx, AdvCfg.H - 10f + sin(time * 2f + k) * 4f, 16f, pitCol, 90)
             }
         }
+        drawDecor(c, a, pal, l, r)
         for (p in a.plats) {
             if (p.x1 < l || p.x0 > r) continue
             val thick = if (p.y >= AdvCfg.GROUND) AdvCfg.H - p.y else 14f
@@ -584,6 +587,8 @@ class AdvUi(
             pp.color = Gl.alpha(Gl.darken(baseCol, 0.25f), 220)
             c.drawRect(p.x0, p.y, p.x1, p.y + thick, pp)
         }
+        for (b in a.blocks) if (b.x1 >= l && b.x0 <= r) drawBlock(c, b, pal)
+        for (sp in a.springs) if (sp.x1 >= l && sp.x0 <= r) drawSpring(c, sp)
         for (cr in a.crumbles) {
             if (cr.st == 2 || cr.x1 < l || cr.x0 > r) continue
             val sx = if (cr.st == 1) sin(time * 70f) * 1.4f else 0f
@@ -632,6 +637,110 @@ class AdvUi(
         for (k in corpses) drawCorpse(c, k)
         drawPlayer(c, a, pal)
         if (a.bibleT > 0f) drawBible(c, a)
+    }
+
+    private fun hash(a: Int, b: Int): Int {
+        var h = a * 73856093 xor (b * 19349663)
+        h = h xor (h ushr 13)
+        h *= 1274126177
+        return (h xor (h ushr 16)) and 0x7fffffff
+    }
+
+    private fun drawBlock(c: Canvas, b: AdvBlock, pal: IntArray) {
+        val ice = adv?.ice == true
+        val base = if (b.brk) 0xFF8C7458.toInt() else if (ice) 0xFF8FB8D8.toInt() else opaque(Gl.darken(pal[0], 0.5f))
+        gloss(c, 1, b.x0, b.y0, b.x1, b.y1, 2.5f, base)
+        // juntas de ladrillo
+        val w = b.x1 - b.x0
+        var x = b.x0 + 10f
+        while (x < b.x1 - 1f) { line(c, x, b.y0 + 1f, x, b.y1 - 1f, 1f, Gl.alpha(Color.BLACK, 45)); x += 20f }
+        line(c, b.x0 + 1f, b.y0 + 1.5f, b.x1 - 1f, b.y0 + 1.5f, 1.4f, Gl.white(150))
+        if (b.brk) {
+            val k = 0.5f + 0.5f * sin(time * 3f + b.x0)
+            glow(c, (b.x0 + b.x1) / 2f, (b.y0 + b.y1) / 2f, 18f, 0xFFFFD890.toInt(), (20 + 30 * k).toInt())
+            line(c, b.x0 + w * 0.3f, b.y0 + 2f, b.x0 + w * 0.5f, b.y0 + 9f, 1.4f, Gl.alpha(Color.BLACK, 170))
+            line(c, b.x0 + w * 0.5f, b.y0 + 9f, b.x0 + w * 0.4f, b.y1 - 2f, 1.4f, Gl.alpha(Color.BLACK, 170))
+            line(c, b.x0 + w * 0.5f, b.y0 + 9f, b.x0 + w * 0.75f, b.y0 + 14f, 1.2f, Gl.alpha(Color.BLACK, 150))
+        }
+    }
+
+    private fun drawSpring(c: Canvas, sp: AdvSpring) {
+        val cx = (sp.x0 + sp.x1) / 2f
+        val ext = if (sp.t > 0f) 6f * (sp.t / 0.35f) else 0f
+        val h = 9f + ext
+        var yy = sp.y
+        for (i in 0 until 4) {
+            val xa = if (i % 2 == 0) cx - 7f else cx + 7f
+            val xb = if (i % 2 == 0) cx + 7f else cx - 7f
+            line(c, xa, yy - 1f - i * (h / 4f), xb, yy - 1f - (i + 1) * (h / 4f), 2f, 0xFFD0D8E8.toInt())
+        }
+        gloss(c, 1, sp.x0 + 2f, sp.y - h - 4f, sp.x1 - 2f, sp.y - h, 2f, 0xFFFF6090.toInt())
+        if (sp.t > 0f) glow(c, cx, sp.y - h, 18f, 0xFFFF80A0.toInt(), (140 * sp.t / 0.35f).toInt())
+    }
+
+    /** Ambientación de fondo según el mundo: columnas, estalactitas, cadenas, cristales, lianas, antorchas. */
+    private fun drawDecor(c: Canvas, a: Adv, pal: IntArray, l: Float, r: Float) {
+        val seed = a.rooms[a.cur].seed.toInt()
+        val style = world % 6
+        val step = 150f
+        var gx = (l / step).toInt() - 1
+        val dark = Gl.alpha(Gl.darken(pal[(world + 1) % 4], 0.55f), 120)
+        val lit = Gl.alpha(pal[1], 70)
+        while (gx * step < r) {
+            val h = hash(gx, seed)
+            val x = gx * step + (h % 60)
+            if (h % 5 != 4) when (style) {
+                0 -> { // columnas con arco
+                    val hh = 120f + (h % 60)
+                    gloss(c, 0, x - 9f, AdvCfg.GROUND - hh, x + 9f, AdvCfg.GROUND, 2f, 0xFF3A3F58.toInt(), 120)
+                    gloss(c, 0, x - 13f, AdvCfg.GROUND - hh - 6f, x + 13f, AdvCfg.GROUND - hh, 2f, 0xFF4A506C.toInt(), 120)
+                    Gl.arc(c, x + 75f, AdvCfg.GROUND - hh, 66f, 180f, 180f, 3f, dark)
+                }
+                1 -> { // estalactitas
+                    val n = 2 + h % 3
+                    for (i in 0 until n) {
+                        val sx = x + i * 14f
+                        val len = 26f + ((h shr (i * 3)) % 40)
+                        pth.reset(); pth.moveTo(sx - 7f, 0f); pth.lineTo(sx + 7f, 0f); pth.lineTo(sx, len); pth.close()
+                        val pp = Gl.p(); pp.color = dark; c.drawPath(pth, pp)
+                    }
+                }
+                2 -> { // cadenas colgantes
+                    val len = 60f + (h % 90)
+                    var yy = 0f
+                    while (yy < len) { Gl.arc(c, x, yy + 5f, 4f, 0f, 360f, 1.6f, Gl.alpha(0xFFB0B8C8.toInt(), 110)); yy += 8f }
+                    glow(c, x, len + 6f, 10f, pal[1], 70)
+                }
+                3 -> { // cristales en el suelo
+                    for (i in 0 until 3) {
+                        val sx = x + i * 11f
+                        val hh = 22f + ((h shr (i * 4)) % 30)
+                        pth.reset(); pth.moveTo(sx - 5f, AdvCfg.GROUND); pth.lineTo(sx, AdvCfg.GROUND - hh); pth.lineTo(sx + 5f, AdvCfg.GROUND); pth.close()
+                        val pp = Gl.p(); pp.color = Gl.alpha(pal[(i + 1) % 4], 90); c.drawPath(pth, pp)
+                    }
+                    glow(c, x + 11f, AdvCfg.GROUND - 18f, 28f, pal[2], 40)
+                }
+                4 -> { // lianas
+                    val len = 50f + (h % 100)
+                    var py0 = 0f
+                    var px0 = x
+                    while (py0 < len) {
+                        val nx = x + sin(py0 * 0.07f + h) * 6f
+                        line(c, px0, py0, nx, py0 + 8f, 1.8f, Gl.alpha(0xFF50A060.toInt(), 110))
+                        px0 = nx; py0 += 8f
+                    }
+                    glow(c, px0, len, 8f, 0xFF80FFA0.toInt(), 50)
+                }
+                else -> { // antorchas
+                    val ty = AdvCfg.GROUND - 120f - (h % 30)
+                    line(c, x, ty, x, ty + 22f, 3f, 0xFF605040.toInt())
+                    val fl = 1f + 0.25f * sin(time * 11f + x)
+                    glow(c, x, ty - 6f, 26f * fl, 0xFFFFA030.toInt(), 110)
+                    glow(c, x, ty - 5f, 9f * fl, 0xFFFFE080.toInt(), 200)
+                }
+            }
+            gx++
+        }
     }
 
     private fun drawWall(c: Canvas, x: Float, left: Boolean, pal: IntArray) {
@@ -1392,7 +1501,7 @@ class AdvUi(
         wrapText(c, AdvCfg.worldIntro[world], vw / 2f, 156f, 500f, 17f, 24f)
         Gl.text(c, "Botón espada: ataque normal   Botón estrella: arma especial (gasta corazones)", vw / 2f, 246f, 12f, Gl.regular, Gl.white(150))
         Gl.text(c, "Explora las salas del mapa (pausa = mapa completo). Ataca junto a una escalera para subir o bajar.", vw / 2f, 264f, 11f, Gl.regular, Gl.white(150))
-        Gl.text(c, "Las llaves abren puertas doradas. Las estatuas rojas curan y guardan tu progreso.", vw / 2f, 280f, 11f, Gl.regular, Gl.white(150))
+        Gl.text(c, "Llaves = puertas doradas. Estatuas rojas = curar y guardar. Muros agrietados: rómpelos con el látigo.", vw / 2f, 280f, 11f, Gl.regular, Gl.white(150))
         Gl.text(c, "Toca para empezar", vw / 2f, 301f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
     }
 

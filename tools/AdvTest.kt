@@ -92,7 +92,7 @@ fun bot(a: Adv, inp: AdvInput, t: Int, g: Goal) {
     for (j in a.jets) { val dd = (j.x - a.px) * d; if (dd in 14f..90f && (j.warn || j.on)) go = false }
     for (r in a.rocks) { val dd = (r.x - a.px) * d; if (dd in -15f..110f && (r.st == 1 || r.st == 2)) go = false }
     for (p in a.pends) if (Math.abs(p.bx - a.px) < 45f && p.by > AdvCfg.GROUND - 95f && a.onGround) inp.jumpPressed = true
-    val pit = !supportAt(a, a.px + 26f * d) && a.onGround
+    val pit = !supportAt(a, a.px + 9f * d) && a.onGround
     if (pit) {
         val m = a.movers.filter { (it.x + it.w / 2f - a.px) * d > -5f && (it.x - it.w / 2f - a.px) * d < 260f }.minByOrNull { Math.abs(it.x - a.px) }
         if (m != null) {
@@ -112,11 +112,18 @@ fun bot(a: Adv, inp: AdvInput, t: Int, g: Goal) {
             go = gap < 20f && Math.abs(far.y - r.y) < 6f
         }
     }
+    // en el aire: si hay suelo justo debajo y estamos cayendo, frenar para aterrizar en plataformas pequeñas
+    if (!a.onGround && a.pvy > 0f && a.riding == null) {
+        var bp: AdvPlat? = null
+        for (q in a.plats) if (a.px >= q.x0 && a.px <= q.x1 && q.y >= a.py - 1f && (bp == null || q.y < bp.y) && a.blocks.none { b -> Math.abs(b.y0 - q.y) < 1f && q.x0 >= b.x0 - 1f && q.x1 <= b.x1 + 1f }) bp = q
+        if (bp != null && (bp.y < AdvCfg.GROUND - 8f || bp.x1 - bp.x0 < 110f)) go = false
+    }
     if (go) go(d) else if (a.ice && a.pvx * d > 30f && a.onGround) go(-d)
     inp.jumpHeld = true
     for (e in a.enemies) if (!e.dead && Math.abs(e.x - a.px) < 75f && Math.abs(e.y - a.py) < 60f) inp.atkPressed = true
     for (e in a.enemies) if (!e.dead && Math.abs(e.x - a.px) < 90f && e.y < a.py - 40f && e.y > a.py - 130f && a.onGround && a.riding == null) { inp.jumpPressed = true; inp.atkPressed = true }
     for (c in a.candles) if (c.alive && (c.x - a.px) * d in 0f..60f) inp.atkPressed = true
+    for (b in a.blocks) { val dd = if (d > 0) b.x0 - a.px else a.px - b.x1; if (dd in -2f..40f && b.y0 < a.py - 2f && b.y1 > a.py - 30f && a.onGround) inp.jumpPressed = true }
     for (s in a.spikes) { val dd = if (d > 0) s[0] - a.px else a.px - s[1]; if (dd in 0f..50f && a.onGround) inp.jumpPressed = true }
     if (a.sub != 0 && a.hearts >= AdvCfg.subCost[a.sub] + 3 && t % 90 == 0) inp.spPressed = true
 }
@@ -164,6 +171,35 @@ fun main(args: Array<String>) {
             val b = Adv(w, vwl, false)
             if (!b.loadState(a0.saveState()) || b.keys != 1 || b.maxHp != 16 || !b.rooms[1 % b.rooms.size].visited) { println("  guardado/carga FALLA"); okAll = false }
             a0.keys = 0; a0.maxHp = 12; a0.rooms[1 % a0.rooms.size].visited = false
+        }
+        if (mode == "structs") {
+            if (w > 0) continue
+            var bad = 0
+            val byFam = IntArray(AdvStructs.FAMS)
+            for (bp in AdvStructs.all) for (side in 0..1) for (wd in intArrayOf(5, 8, 11)) {
+                val a = Adv(wd, vwl, true)
+                a.whip = 2
+                a.testStruct(bp.id, side)
+                val inp = AdvInput()
+                var t = 0
+                var done = false
+                val g = Goal(if (side == 0) 1e6f else -1e6f, false)
+                try {
+                    while (t < 120 * 90 && !done) {
+                        bot(a, inp, t / 4, g)
+                        a.step(1f / 30f, inp)
+                        a.events.clear(); inp.clearPressed()
+                        t += 4
+                        if (side == 0 && a.px > a.roomLen - 300f) done = true
+                        if (side == 1 && a.px < 300f) done = true
+                    }
+                } catch (e: Exception) { e.printStackTrace(); okAll = false }
+                if (!done) { bad++; byFam[bp.fam]++; if (bad <= 80) println("  ${bp.id} ${bp.name} lado=$side mundo=$wd NO: px=${a.px.toInt()} t=${"%.0f".format(a.time)}") }
+            }
+            println("estructuras=${AdvStructs.all.size} malas(en alguna prueba)=$bad")
+            println(byFam.withIndex().filter { it.value > 0 }.joinToString { "${AdvStructs.famNames[it.index]}=${it.value}" })
+            if (bad > 0) okAll = false
+            continue
         }
         if (mode == "rooms") {
             // cada sala, en los dos sentidos
