@@ -1104,9 +1104,13 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 lastFam = bp.fam
                 last = -1
             }
-            val gap = 40f + rnd.nextInt(100)
+            val gap = 110f + rnd.nextInt(130)
             ground(cx, cx + gap)
             if (rnd.nextInt(4) == 0) addCandle(cx + gap / 2f, AdvCfg.GROUND)
+            if (!safe) {
+                val n = (if (rnd.nextInt(100) < 55) 1 else 0) + (if (diff > 0.35f && rnd.nextInt(100) < 40) 1 else 0)
+                if (n > 0) scatter(cx, cx + gap, AdvCfg.GROUND, n, true)
+            }
             cx += gap
         }
         if (!mid) {
