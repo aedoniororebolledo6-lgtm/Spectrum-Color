@@ -615,10 +615,17 @@ class AdvUi(
             glow(c, (sp[0] + sp[1]) / 2f, AdvCfg.GROUND - 8f, 40f, 0xFFFF4050.toInt(), 40)
         }
         drawRoomProps(c, a, pal, l, r)
+        for (t in a.traps) drawTrap(c, a, t, l, r, pal)
         for (j in a.jets) if (j.x > l && j.x < r) drawJet(c, j)
         for (rk in a.rocks) if (rk.x > l && rk.x < r) drawRock(c, rk, pal)
         for (cd in a.candles) {
             if (!cd.alive || cd.x < l || cd.x > r) continue
+            if (cd.hang) {
+                line(c, cd.x, 0f, cd.x, cd.y - 32f, 1.6f, Gl.white(90))
+                var yy = 6f
+                while (yy < cd.y - 36f) { rf.set(cd.x - 2.2f, yy, cd.x + 2.2f, yy + 6f); val cp = Gl.p(); cp.color = 0xFF9AA2B8.toInt(); cp.style = Paint.Style.STROKE; cp.strokeWidth = 1.2f; c.drawOval(rf, cp); yy += 8f }
+                gloss(c, 1, cd.x - 8f, cd.y - 34f, cd.x + 8f, cd.y - 28f, 2f, 0xFF8890A8.toInt())
+            }
             line(c, cd.x, cd.y, cd.x, cd.y - 18f, 3f, 0xFFB09070.toInt())
             line(c, cd.x - 6f, cd.y, cd.x + 6f, cd.y, 3f, 0xFF806040.toInt())
             val fl = 1f + 0.2f * sin(time * 12f + cd.x)
@@ -849,6 +856,135 @@ class AdvUi(
         }
     }
 
+
+    private fun saw(c: Canvas, x: Float, y: Float, rad: Float, spin: Float) {
+        c.save()
+        c.rotate(spin, x, y)
+        for (k in 0 until 10) {
+            val an = k * 0.6283f
+            pth.reset()
+            pth.moveTo(x + cos(an - 0.18f) * rad * 0.78f, y + sin(an - 0.18f) * rad * 0.78f)
+            pth.lineTo(x + cos(an + 0.08f) * (rad + 3.5f), y + sin(an + 0.08f) * (rad + 3.5f))
+            pth.lineTo(x + cos(an + 0.2f) * rad * 0.78f, y + sin(an + 0.2f) * rad * 0.78f)
+            pth.close()
+            val pp = Gl.p(); pp.color = 0xFFE0E8F8.toInt(); c.drawPath(pth, pp)
+        }
+        c.restore()
+        gloss(c, 0, x - rad * 0.8f, y - rad * 0.8f, x + rad * 0.8f, y + rad * 0.8f, 0f, 0xFFA8B0C8.toInt())
+        gloss(c, 0, x - 3f, y - 3f, x + 3f, y + 3f, 0f, 0xFF505870.toInt())
+        glow(c, x, y, rad * 1.8f, 0xFFFF5060.toInt(), 45)
+    }
+
+    private fun orb(c: Canvas, x: Float, y: Float, rad: Float, col: Int) {
+        glow(c, x, y, rad * 2.6f, col, 120)
+        gloss(c, 0, x - rad, y - rad, x + rad, y + rad, 0f, col)
+        glow(c, x - rad * 0.3f, y - rad * 0.3f, rad * 0.7f, 0xFFFFFFFF.toInt(), 150)
+    }
+
+    private fun drawTrap(c: Canvas, a: Adv, t: AdvTrap, l: Float, r: Float, pal: IntArray) {
+        val g = AdvCfg.GROUND
+        val x0 = when (t.kind) { Adv.TR_SAW, Adv.TR_ZAP, Adv.TR_CONV, Adv.TR_ICE -> t.x; Adv.TR_RAIL -> min(t.x, t.a); else -> t.x - 70f }
+        val x1 = when (t.kind) { Adv.TR_SAW, Adv.TR_ZAP, Adv.TR_CONV, Adv.TR_ICE -> t.a; Adv.TR_RAIL -> max(t.x, t.a); else -> t.x + 70f }
+        if (x1 < l || x0 > r) return
+        when (t.kind) {
+            Adv.TR_SAW -> {
+                line(c, t.x, g - 1f, t.a, g - 1f, 2f, Gl.white(60))
+                saw(c, t.cx, t.cy, 11f, time * 700f)
+            }
+            Adv.TR_RAIL -> {
+                line(c, t.x, t.y, t.a, t.b, 2f, Gl.white(55))
+                gloss(c, 1, t.x - 4f, t.y - 4f, t.x + 4f, t.y + 4f, 2f, 0xFF707890.toInt())
+                gloss(c, 1, t.a - 4f, t.b - 4f, t.a + 4f, t.b + 4f, 2f, 0xFF707890.toInt())
+                saw(c, t.cx, t.cy, 11f, time * 640f)
+            }
+            Adv.TR_BOB -> {
+                line(c, t.x, t.y - 36f, t.x, t.y + 36f, 1.6f, Gl.white(40))
+                orb(c, t.cx, t.cy, 9f, 0xFFFF6A8A.toInt())
+            }
+            Adv.TR_ORBIT -> {
+                gloss(c, 1, t.x - 8f, t.y - 8f, t.x + 8f, t.y + 8f, 3f, 0xFF707890.toInt())
+                Gl.arc(c, t.x, t.y, t.a, 0f, 360f, 1.2f, Gl.white(35))
+                val n = max(1, t.c.toInt())
+                val o = FloatArray(2)
+                for (k in 0 until n) {
+                    a.orbitPos(t, k, o)
+                    line(c, t.x, t.y, o[0], o[1], 1.8f, Gl.white(70))
+                    orb(c, o[0], o[1], 8f, 0xFFFFA040.toInt())
+                }
+            }
+            Adv.TR_CRUSH -> {
+                val hw = t.a / 2f
+                val sx = if (t.warn) sin(time * 70f) * 1.6f else 0f
+                // guía y carcasa en el techo
+                line(c, t.x - hw + 6f, 0f, t.x - hw + 6f, g, 1f, Gl.white(18))
+                line(c, t.x + hw - 6f, 0f, t.x + hw - 6f, g, 1f, Gl.white(18))
+                gloss(c, 1, t.x - hw - 4f + sx, 0f, t.x + hw + 4f + sx, 14f, 3f, 0xFF707890.toInt())
+                gloss(c, 1, t.x - 5f + sx, 8f, t.x + 5f + sx, t.cy - 12f, 2f, 0xFF8890A8.toInt())
+                gloss(c, 1, t.x - hw + sx, t.cy - 22f, t.x + hw + sx, t.cy, 4f, 0xFF9098B0.toInt())
+                var xx = t.x - hw + 6f
+                while (xx < t.x + hw - 2f) {
+                    pth.reset(); pth.moveTo(xx - 4f, t.cy); pth.lineTo(xx, t.cy + 7f); pth.lineTo(xx + 4f, t.cy); pth.close()
+                    val pp = Gl.p(); pp.color = 0xFFD8E0F0.toInt(); c.drawPath(pth, pp)
+                    xx += 10f
+                }
+                if (t.warn || t.on) {
+                    val k = if (t.on) 0.5f else 0.25f + 0.2f * sin(time * 30f)
+                    val pp = Gl.p(); pp.color = Gl.alpha(0xFFFF3040.toInt(), (60 * k * 2f).toInt())
+                    c.drawRect(t.x - hw, g - 5f, t.x + hw, g, pp)
+                }
+            }
+            Adv.TR_LASER -> {
+                gloss(c, 1, t.x - 8f, 0f, t.x + 8f, 11f, 3f, 0xFF707890.toInt())
+                gloss(c, 1, t.x - 7f, g - 3f, t.x + 7f, g + 2f, 2f, 0xFF606878.toInt())
+                if (t.warn) {
+                    val k = 0.4f + 0.4f * sin(time * 40f)
+                    line(c, t.x, 11f, t.x, g - 3f, 1.4f, Gl.alpha(0xFFFF4060.toInt(), (110 * k).toInt()))
+                    glow(c, t.x, 12f, 12f, 0xFFFF4060.toInt(), 120)
+                }
+                if (t.on) {
+                    val w = 5f + sin(time * 90f)
+                    glow(c, t.x, g / 2f, 150f, 0xFFFF4060.toInt(), 50)
+                    line(c, t.x, 11f, t.x, g - 3f, w + 5f, Gl.alpha(0xFFFF3050.toInt(), 130))
+                    line(c, t.x, 11f, t.x, g - 3f, w, Color.WHITE)
+                }
+            }
+            Adv.TR_ZAP -> {
+                var xx = t.x
+                while (xx < t.a - 4f) {
+                    gloss(c, 1, xx + 1f, g - 3f, min(xx + 15f, t.a) , g + 1f, 1f, 0xFF606878.toInt())
+                    xx += 17f
+                }
+                if (t.warn) { val pp = Gl.p(); pp.color = Gl.alpha(0xFF80D0FF.toInt(), 50 + (50 * sin(time * 40f)).toInt()); c.drawRect(t.x, g - 6f, t.a, g, pp) }
+                if (t.on) {
+                    var xx2 = t.x + 4f
+                    while (xx2 < t.a - 2f) {
+                        line(c, xx2, g - 1f, xx2 + (a.rndF() - 0.5f) * 8f, g - 14f - a.rndF() * 10f, 2f, Color.WHITE)
+                        xx2 += 9f
+                    }
+                    glow(c, (t.x + t.a) / 2f, g - 8f, (t.a - t.x) * 0.55f + 14f, 0xFF80D0FF.toInt(), 120)
+                }
+            }
+            Adv.TR_CONV -> {
+                val dir = if (t.b >= 0f) 1f else -1f
+                gloss(c, 1, t.x, g - 5f, t.a, g + 1f, 2f, 0xFF4A5068.toInt())
+                var xx = t.x + 6f + ((time * 40f * dir) % 18f + 18f) % 18f
+                while (xx < t.a - 6f) {
+                    pth.reset(); pth.moveTo(xx - 3f * dir, g - 4.5f); pth.lineTo(xx + 3f * dir, g - 2.5f); pth.lineTo(xx - 3f * dir, g - 0.5f); pth.close()
+                    val pp = Gl.p(); pp.color = Gl.alpha(0xFFFFD060.toInt(), 220); c.drawPath(pth, pp)
+                    xx += 18f
+                }
+                gloss(c, 0, t.x - 2f, g - 7f, t.x + 6f, g + 1f, 0f, 0xFF8890A8.toInt())
+                gloss(c, 0, t.a - 6f, g - 7f, t.a + 2f, g + 1f, 0f, 0xFF8890A8.toInt())
+            }
+            Adv.TR_ICE -> {
+                val pp = Gl.p(); pp.color = Gl.alpha(0xFFC8F0FF.toInt(), 150)
+                c.drawRect(t.x, g - 3f, t.a, g + 1f, pp)
+                var xx = t.x + 10f
+                while (xx < t.a - 14f) { line(c, xx, g - 1.5f, xx + 14f, g - 1.5f, 1.4f, Gl.white(200)); xx += 46f }
+            }
+        }
+    }
+
     private fun drawJet(c: Canvas, j: AdvJet) {
         gloss(c, 1, j.x - 9f, j.y - 7f, j.x + 9f, j.y, 3f, 0xFF707890.toInt())
         if (j.warn) {
@@ -1002,7 +1138,8 @@ class AdvUi(
         val base0 = when (e.type) {
             Adv.E_WALKER -> pal[1]; Adv.E_BAT -> pal[2]; Adv.E_THROWER -> pal[3]; Adv.E_HOPPER -> pal[0]
             Adv.E_TURRET -> 0xFF7A88A8.toInt(); Adv.E_CHARGER -> pal[2]; Adv.E_MEDUSA -> 0xFF50C878.toInt()
-            Adv.E_KNIGHT -> 0xFF8898B8.toInt(); Adv.E_GHOST -> 0xFFE8EEFF.toInt(); else -> 0xFF6A3A8A.toInt()
+            Adv.E_KNIGHT -> 0xFF8898B8.toInt(); Adv.E_GHOST -> 0xFFE8EEFF.toInt()
+            Adv.E_POP -> 0xFFC0705A.toInt(); Adv.E_CEIL -> 0xFF7A8AA0.toInt(); else -> 0xFF6A3A8A.toInt()
         }
         val col = if (hit) Color.WHITE else opaque(base0)
         val x = e.x
@@ -1010,7 +1147,7 @@ class AdvUi(
         val f = e.face
         val tt = time * 6f + e.x * 0.05f
         // sombra de contacto
-        if (e.type != Adv.E_BAT && e.type != Adv.E_GHOST && e.type != Adv.E_MEDUSA) {
+        if (e.type != Adv.E_BAT && e.type != Adv.E_GHOST && e.type != Adv.E_MEDUSA && e.type != Adv.E_CEIL && e.type != Adv.E_POP) {
             val sp = Gl.p(); sp.color = Gl.alpha(Color.BLACK, 70)
             rf.set(x - 10f, e.floor - 2f, x + 10f, e.floor + 2f)
             c.drawOval(rf, sp)
@@ -1051,6 +1188,41 @@ class AdvUi(
                 eyes(c, x + f * 2f, y - 15f * sy, f, 2.4f, 0xFFFFF4C0.toInt())
                 val mp = Gl.p(); mp.color = Gl.darken(col, 0.3f); mp.style = Paint.Style.STROKE; mp.strokeWidth = 1.6f
                 rf.set(x - 4f, y - 11f * sy, x + 4f, y - 5f * sy); c.drawArc(rf, 0f, 180f, false, mp)
+            }
+            Adv.E_POP -> {
+                val g = e.floor
+                // tubo en el piso
+                gloss(c, 1, x - 15f, g - 4f, x + 15f, g + 3f, 2f, 0xFF606878.toInt())
+                if (e.st != 0) {
+                    c.save()
+                    c.clipRect(x - 24f, g - 60f, x + 24f, g - 1f)
+                    val ang = Math.toDegrees(Math.atan2(((a.py - 15f) - (y - 18f)).toDouble(), (a.px - x).toDouble())).toFloat()
+                    gloss(c, 0, x - 11f, y - 20f, x + 11f, y + 2f, 0f, col)
+                    c.save(); c.rotate(ang, x, y - 17f)
+                    gloss(c, 1, x, y - 20f, x + 16f, y - 14f, 2f, Gl.darken(col, 0.6f))
+                    c.restore()
+                    eyes(c, x + f * 2f, y - 8f, f, 2.2f, 0xFFFFF4C0.toInt())
+                    val ch = if (e.st == 1) 0.4f else if (e.st == 2) (1f - ((e.t * 3f) % 1f)) else 0f
+                    glow(c, x, y - 17f, 8f + 6f * ch, 0xFFFF4060.toInt(), (60 + 140 * ch).toInt())
+                    c.restore()
+                } else {
+                    val k = (e.t / 1.5f).coerceIn(0f, 1f)
+                    glow(c, x, g - 3f, 12f, 0xFFFF4060.toInt(), (20 + 80 * k * k).toInt())
+                }
+                gloss(c, 1, x - 17f, g - 1f, x + 17f, g + 4f, 2f, 0xFF7A8296.toInt())
+            }
+            Adv.E_CEIL -> {
+                // cadena y gárgola colgante
+                line(c, x, 0f, x, y - 22f, 2.4f, 0xFF8890A8.toInt())
+                val ch = if (e.st == 1) (e.t / 0.55f).coerceIn(0f, 1f) else 0f
+                pth.reset(); pth.moveTo(x - 13f, y - 22f); pth.lineTo(x + 13f, y - 22f); pth.lineTo(x + 6f, y); pth.lineTo(x - 6f, y); pth.close()
+                glossPath(c, x - 13f, y - 22f, x + 13f, y, col)
+                pth.reset(); pth.moveTo(x - 13f, y - 20f); pth.lineTo(x - 24f, y - 12f); pth.lineTo(x - 11f, y - 12f); pth.close()
+                glossPath(c, x - 24f, y - 20f, x - 11f, y - 12f, Gl.darken(col, 0.7f))
+                pth.reset(); pth.moveTo(x + 13f, y - 20f); pth.lineTo(x + 24f, y - 12f); pth.lineTo(x + 11f, y - 12f); pth.close()
+                glossPath(c, x + 11f, y - 20f, x + 24f, y - 12f, Gl.darken(col, 0.7f))
+                eyes(c, x, y - 14f, f, 2.4f, if (e.st == 1) 0xFFFF6070.toInt() else 0xFFFFF4C0.toInt())
+                glow(c, x, y + 2f, 6f + 8f * ch, 0xFF80FF60.toInt(), (40 + 160 * ch).toInt())
             }
             Adv.E_TURRET -> {
                 val tx = a.px - x

@@ -92,7 +92,7 @@ fun bot(a: Adv, inp: AdvInput, t: Int, g: Goal) {
     for (j in a.jets) { val dd = (j.x - a.px) * d; if (dd in 14f..90f && (j.warn || j.on)) go = false }
     for (r in a.rocks) { val dd = (r.x - a.px) * d; if (dd in -15f..110f && (r.st == 1 || r.st == 2)) go = false }
     for (p in a.pends) if (Math.abs(p.bx - a.px) < 45f && p.by > AdvCfg.GROUND - 95f && a.onGround) inp.jumpPressed = true
-    val pit = !supportAt(a, a.px + 9f * d) && a.onGround
+    val pit = !supportAt(a, a.px + 3f * d) && a.onGround
     if (pit) {
         val m = a.movers.filter { (it.x + it.w / 2f - a.px) * d > -5f && (it.x - it.w / 2f - a.px) * d < 260f }.minByOrNull { Math.abs(it.x - a.px) }
         if (m != null) {
@@ -122,7 +122,7 @@ fun bot(a: Adv, inp: AdvInput, t: Int, g: Goal) {
     inp.jumpHeld = true
     for (e in a.enemies) if (!e.dead && Math.abs(e.x - a.px) < 75f && Math.abs(e.y - a.py) < 60f) inp.atkPressed = true
     for (e in a.enemies) if (!e.dead && Math.abs(e.x - a.px) < 90f && e.y < a.py - 40f && e.y > a.py - 130f && a.onGround && a.riding == null) { inp.jumpPressed = true; inp.atkPressed = true }
-    for (c in a.candles) if (c.alive && (c.x - a.px) * d in 0f..60f) inp.atkPressed = true
+    if (!(a.onGround && !supportAt(a, a.px + 40f * d))) for (c in a.candles) if (c.alive && (c.x - a.px) * d in 0f..60f) inp.atkPressed = true
     for (b in a.blocks) { val dd = if (d > 0) b.x0 - a.px else a.px - b.x1; if (dd in -2f..40f && b.y0 < a.py - 2f && b.y1 > a.py - 30f && a.onGround) inp.jumpPressed = true }
     for (s in a.spikes) { val dd = if (d > 0) s[0] - a.px else a.px - s[1]; if (dd in 0f..50f && a.onGround) inp.jumpPressed = true }
     if (a.sub != 0 && a.hearts >= AdvCfg.subCost[a.sub] + 3 && t % 90 == 0) inp.spPressed = true
@@ -220,6 +220,7 @@ fun main(args: Array<String>) {
                         a.step(1f / 30f, inp)
                         a.events.clear(); inp.clearPressed()
                         t += 4
+                        if (System.getProperty("trace") == "${w}:${r.id}:$side" && t % 60 == 0) println("   t=${t} px=${a.px.toInt()} py=${a.py.toInt()} gr=${a.onGround} tm=${a.time} pvy=${a.pvy} pvx=${a.pvx} hp=${a.hp} cur=${a.cur}")
                         if (r.kind == Adv.R_BOSS) { if (a.won) done = true }
                         else if (a.cur != r.id || (side == 0 && a.px > a.roomLen - 25f) || (side == 1 && a.px < 25f)) done = true
                     }

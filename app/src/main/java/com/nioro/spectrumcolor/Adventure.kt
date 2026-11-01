@@ -106,7 +106,7 @@ object AdvCfg {
 }
 
 class AdvPlat(val x0: Float, val x1: Float, val y: Float)
-class AdvCandle(val x: Float, val y: Float, val drop: Int, val arg: Int) { var alive = true }
+class AdvCandle(val x: Float, val y: Float, val drop: Int, val arg: Int) { var alive = true; var hang = false }
 class AdvItem(var x: Float, var y: Float, val kind: Int, val arg: Int) {
     var prize = false
     var ox = x
@@ -211,6 +211,15 @@ class AdvBlock(val x0: Float, val x1: Float, val y0: Float, val y1: Float, val b
 class AdvSpring(val x0: Float, val x1: Float, val y: Float) {
     var t = 0f
 }
+/** Trampa o zona de relleno. kind: ver Adv.TR_*; a, b, c dependen del tipo. */
+class AdvTrap(val kind: Int, val x: Float, val y: Float, val a: Float, val b: Float, val c: Float) {
+    var cx = x
+    var cy = y
+    var warn = false
+    var on = false
+    var ph = 0f
+    var hitCd = 0f
+}
 /** Puerta de piso (escalera) hacia la sala de arriba o de abajo. */
 class AdvDoor(val x: Float, val up: Boolean, val to: Int)
 class AdvInput {
@@ -292,6 +301,18 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val E_KNIGHT = 7
         const val E_GHOST = 8
         const val E_SPIDER = 9
+        const val E_POP = 10   // torreta que emerge del piso
+        const val E_CEIL = 11  // gárgola colgante del techo
+        const val TR_SAW = 0    // sierra rodante en el piso: x..a, velocidad b
+        const val TR_RAIL = 1   // sierra en riel: (x,y)->(a,b), velocidad c
+        const val TR_BOB = 2    // orbe que sube y baja: centro (x,y), amplitud a, velocidad b
+        const val TR_ORBIT = 3  // orbes que giran: pivote (x,y), radio a, velocidad b, cantidad c
+        const val TR_CRUSH = 4  // prensa de techo: x, ancho a, periodo b
+        const val TR_LASER = 5  // rayo vertical: x, periodo b
+        const val TR_ZAP = 6    // piso eléctrico: x..a, periodo b
+        const val TR_CONV = 7   // cinta transportadora: x..a, velocidad b
+        const val TR_ICE = 8    // piso resbaloso: x..a
+        const val CRUSH_UP = 60f
 
         const val BS_INTRO = 0
         const val BS_WALK = 1
@@ -300,7 +321,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         const val BS_STUN = 4
         const val BS_DEAD = 5
 
-        private val ehp = intArrayOf(2, 1, 3, 2, 3, 4, 1, 5, 2, 2)
+        private val ehp = intArrayOf(2, 1, 3, 2, 3, 4, 1, 5, 2, 2, 3, 3)
 
         // tipos de tramo
         private const val S_FLAT = 0
@@ -356,6 +377,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     val jets = ArrayList<AdvJet>()
     val pends = ArrayList<AdvPend>()
     val rocks = ArrayList<AdvRock>()
+    val traps = ArrayList<AdvTrap>()
     val ambushes = ArrayList<AdvAmbush>()
     var arenaX = 0f
     var endX = 0f
@@ -428,7 +450,6 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     var shake = 0f
     private var clearPending = false
 
-    init { buildWorld(); enterRoom(0, 0, 0f); saveRoom = 0 }
 
     // ------------------------------------------------------------------ construcción del nivel
     private fun ground(x0: Float, x1: Float) { plats.add(AdvPlat(x0, x1, AdvCfg.GROUND)) }
@@ -448,7 +469,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     private fun addEnemy(type: Int, x: Float, y: Float, x0: Float, x1: Float): AdvEnemy {
-        val hp = ehp[type] + (if (world >= 6) 1 else 0) + (if (world >= 10) 1 else 0)
+        val hp = ehp[type] + world / 4
         val ey = when (type) {
             E_BAT -> y - 70f - rnd.nextInt(30)
             E_MEDUSA -> y - 55f - rnd.nextInt(30)
@@ -1032,9 +1053,146 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         rooms[0].secret = false
     }
 
+
+    // ------------------------------------------------------------------ rellenos (trampas, torretas y plataformas en los tramos vacíos)
+    private val fMin = intArrayOf(150, 240, 130, 230, 150, 270, 120, 240, 100, 260, 120, 240, 150, 130, 170, 230, 170, 240, 140, 270, 230, 180, 200, 200, 170, 160, 120, 230, 180, 190, 270, 270, 270, 270, 230, 120, 210, 230, 230, 270, 250, 270, 230)
+    private val fTier = intArrayOf(0, 1, 0, 1, 0, 2, 0, 1, 0, 1, 0, 1, 1, 0, 0, 2, 0, 2, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 2, 2, 3, 2, 2, 1, 1, 1, 1, 3, 3, 3, 2)
+    private val fWorld = intArrayOf(1, 3, 1, 3, 2, 5, 2, 4, 3, 5, 1, 4, 3, 4, 2, 5, 1, 6, 2, 5, 0, 0, 1, 0, 0, 3, 0, 4, 2, 0, 6, 7, 8, 5, 4, 3, 3, 2, 2, 7, 9, 8, 7)
+    /** Tramos que no hacen daño en el suelo (permitidos en salas seguras y bajo las puertas). */
+    private val fAir = booleanArrayOf(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
+        true, true, true, true, true, false, true, false, false, false, false, false, false, false, false, false, false, false, true, false, false, false, false)
+    private val fRecent = ArrayList<Int>()
+    val fillCount: Int get() = fMin.size
+
+    private fun fBoost(i: Int): Boolean = when (world) {
+        7 -> i == 25 || i == 33 || i == 15 || i == 30
+        9 -> i == 16 || i == 17 || i == 42 || i == 18
+        8 -> i == 28 || i == 27 || i == 37
+        10, 11 -> i == 40 || i == 41 || i == 32 || i == 39
+        3 -> i == 2 || i == 3 || i == 39
+        5 -> i == 12 || i == 11 || i == 36
+        6 -> i == 4 || i == 5 || i == 37
+        4 -> i == 6 || i == 7 || i == 13
+        2 -> i == 8 || i == 18 || i == 1
+        1 -> i == 10 || i == 14 || i == 0
+        else -> i == 0 || i == 10 || i == 20
+    }
+
+    /** Rellena un tramo plano [x0,x1] con un elemento. Devuelve su número o -1. air = solo elementos sin daño de suelo. */
+    private fun fillSpan(x0: Float, x1: Float, air: Boolean, blocksOk: Boolean = true): Int {
+        val w = x1 - x0
+        val tierMax = min(3, 1 + world / 3)
+        val wts = IntArray(fMin.size)
+        var tot = 0
+        for (i in fMin.indices) {
+            if (fMin[i] > w || fTier[i] > tierMax || world < fWorld[i] || fRecent.contains(i)) continue
+            if (air && !fAir[i]) continue
+            if (!blocksOk && i == 23) continue
+            var q = 10
+            if (fTier[i] == tierMax) q += 8
+            if (fBoost(i)) q *= 3
+            wts[i] = q
+            tot += q
+        }
+        if (tot == 0) return -1
+        var r = rnd.nextInt(tot)
+        var id = 0
+        for (i in wts.indices) { if (r < wts[i]) { id = i; break }; r -= wts[i] }
+        fRecent.add(id)
+        if (fRecent.size > 8) fRecent.removeAt(0)
+        placeFill(id, x0, x1)
+        return id
+    }
+
+    private fun trap(kind: Int, x: Float, y: Float, a: Float, b: Float, c: Float = 0f): AdvTrap {
+        val t = AdvTrap(kind, x, y, a, b, c)
+        t.ph = rnd.nextFloat() * 6f
+        traps.add(t)
+        return t
+    }
+
+    private fun hangCandle(x: Float, y: Float) { addCandle(x, y); candles[candles.size - 1].hang = true }
+    private fun ledge(x0: Float, x1: Float, y: Float) { plats.add(AdvPlat(x0, x1, y)) }
+    private fun popAt(x: Float): AdvEnemy { val e = addEnemy(E_POP, x, AdvCfg.GROUND, x - 20f, x + 20f); e.y = AdvCfg.GROUND + 26f; return e }
+    private fun ceilAt(x: Float, a: Float, b: Float): AdvEnemy { val e = addEnemy(E_CEIL, x, AdvCfg.GROUND, a, b); e.y = AdvCfg.GROUND - 135f; e.baseY = e.y; return e }
+    private fun blockCol(x0: Float, x1: Float, h: Float) {
+        blocks.add(AdvBlock(x0, x1, AdvCfg.GROUND - h, AdvCfg.GROUND, false))
+        plats.add(AdvPlat(x0, x1, AdvCfg.GROUND - h))
+    }
+
+    private fun placeFill(id: Int, x0: Float, x1: Float) {
+        val g = AdvCfg.GROUND
+        val w = x1 - x0
+        val m = (x0 + x1) / 2f
+        fun at(f: Float) = x0 + w * f
+        val sp = 1.5f + world * 0.06f
+        when (id) {
+            0 -> trap(TR_SAW, x0 + 12f, g, x1 - 12f, sp)
+            1 -> { trap(TR_SAW, x0 + 12f, g, m - 10f, sp + 0.2f); trap(TR_SAW, m + 10f, g, x1 - 12f, sp + 0.2f) }
+            2 -> popAt(m)
+            3 -> { popAt(at(0.25f)); popAt(at(0.75f)) }
+            4 -> { ceilAt(m, x0 + 20f, x1 - 20f); ledge(m - 30f, m + 30f, g - 85f); addCandle(m, g - 85f) }
+            5 -> { ceilAt(at(0.28f), x0 + 20f, m - 10f); ceilAt(at(0.72f), m + 10f, x1 - 20f) }
+            6 -> trap(TR_CRUSH, m, 0f, 44f, 3.2f)
+            7 -> { val a = trap(TR_CRUSH, m - 55f, 0f, 44f, 3.4f); a.ph = 0f; val b = trap(TR_CRUSH, m + 55f, 0f, 44f, 3.4f); b.ph = 1.7f }
+            8 -> trap(TR_LASER, m, 0f, 0f, 2.8f)
+            9 -> { val a = trap(TR_LASER, at(0.3f), 0f, 0f, 2.9f); a.ph = 0f; val b = trap(TR_LASER, at(0.7f), 0f, 0f, 2.9f); b.ph = 1.45f }
+            10 -> trap(TR_BOB, m, g - 42f, 36f, 2.3f)
+            11 -> for (k in 0..2) { val t = trap(TR_BOB, at(0.2f + 0.3f * k), g - 42f, 36f, 2.3f); t.ph = k * 1.1f }
+            12 -> { val t = trap(TR_ORBIT, m, g - 72f, 46f, 2.1f, 2f); t.ph = 0f; ledge(m - 22f, m + 22f, g - 130f) }
+            13 -> pends.add(AdvPend(m, 50f, 215f, 1.4f, rnd.nextFloat() * 6f))
+            14 -> { trap(TR_CONV, x0 + 4f, g, x1 - 4f, if (rnd.nextBoolean()) 70f else -70f); scatter(x0, x1, g, 1, true) }
+            15 -> { trap(TR_CONV, x0 + 4f, g, x1 - 4f, if (rnd.nextBoolean()) 65f else -65f); trap(TR_SAW, m - 25f, g, m + 25f, 2.2f) }
+            16 -> { trap(TR_ICE, x0, g, x1, 0f); scatter(x0, x1, g, 1, true) }
+            17 -> { trap(TR_ICE, x0, g, x1, 0f); spikes.add(floatArrayOf(m - 22f, m + 22f)) }
+            18 -> trap(TR_ZAP, m - min(55f, w / 2f - 12f), g, m + min(55f, w / 2f - 12f), 2.6f)
+            19 -> { trap(TR_ZAP, x0 + 14f, g, x1 - 14f, 2.8f); ledge(x0 + 8f, x1 - 8f, g - 80f); addCandle(m, g - 80f) }
+            20 -> {
+                val st = (w - 60f) / 2f
+                for (k in 0..2) ledge(x0 + 8f + k * st, x0 + 8f + k * st + 60f, g - 70f - 60f * k)
+                addCandle(x0 + 38f + st, g - 130f)
+                items.add(AdvItem(x0 + 38f + 2f * st, g - 200f, IT_HEART, 0))
+            }
+            21 -> { ledge(x0 + 14f, x1 - 14f, g - 80f); addCandle(at(0.3f), g - 80f); addCandle(at(0.7f), g - 80f); scatter(x0, x1, g, 1, true) }
+            22 -> { movers.add(AdvMover(x0 + 40f, x1 - 40f, g - 85f, g - 85f, 56f, 0.9f, rnd.nextFloat() * 6f)); hangCandle(at(0.3f), g - 120f); hangCandle(at(0.7f), g - 150f) }
+            23 -> {
+                val hs = floatArrayOf(20f, 40f, 40f, 20f)
+                for (k in 0..3) blockCol(m - 80f + k * 40f, m - 40f + k * 40f, hs[k])
+                addCandle(m - 20f, g - 40f)
+            }
+            24 -> {
+                springs.add(AdvSpring(m - 30f, m - 10f, g))
+                ledge(m - 50f, m + 90f, g - 150f)
+                items.add(AdvItem(m + 30f, g - 160f, IT_BIG, 0)); addCandle(m + 70f, g - 150f)
+            }
+            25 -> { jets.add(AdvJet(m, g, 2.7f, rnd.nextFloat() * 2.7f)); ledge(m - 40f, m + 40f, g - 92f); addCandle(m, g - 92f) }
+            26 -> { hangCandle(at(0.2f), g - 60f); hangCandle(at(0.5f), g - 95f); hangCandle(at(0.8f), g - 75f) }
+            27 -> for (k in -1..1) rocks.add(AdvRock(m + k * 60f, 30f))
+            28 -> { addEnemy(E_SPIDER, at(0.3f), g, x0, x1); addEnemy(E_SPIDER, at(0.7f), g, x0, x1) }
+            29 -> { scatter(x0, x1, g, 2, true); addCandle(m, g); hangCandle(at(0.3f), g - 90f) }
+            30 -> { popAt(at(0.18f)); trap(TR_SAW, at(0.4f), g, x1 - 12f, sp) }
+            31 -> { pends.add(AdvPend(at(0.3f), 50f, 215f, 1.4f, rnd.nextFloat() * 6f)); popAt(at(0.78f)) }
+            32 -> { trap(TR_CRUSH, at(0.25f), 0f, 44f, 3.3f); trap(TR_LASER, at(0.72f), 0f, 0f, 2.9f) }
+            33 -> for (k in 0..2) jets.add(AdvJet(at(0.22f + 0.28f * k), g, 2.7f, k * 0.9f))
+            34 -> { trap(TR_RAIL, m - 70f, g - 52f, m + 70f, g - 52f, 1.8f); scatter(m - 70f, m + 70f, g, 1, true) }
+            35 -> trap(TR_RAIL, m, g - 125f, m, g - 12f, 1.7f)
+            36 -> { addEnemy(E_KNIGHT, m, g, x0 + 10f, x1 - 10f); hangCandle(at(0.25f), g - 90f); hangCandle(at(0.75f), g - 90f) }
+            37 -> for (k in 0..2) addEnemy(E_BAT, at(0.2f + 0.3f * k), g, x0 - 40f, x1 + 40f)
+            38 -> {
+                val n = ((w - 20f) / 52f).toInt().coerceAtMost(5)
+                for (k in 0 until n) crumbles.add(AdvCrumble(x0 + 10f + k * 52f, x0 + 46f + k * 52f, g - 75f))
+                addCandle(x0 + 28f + (n - 1) * 52f, g - 75f)
+            }
+            39 -> { ceilAt(at(0.3f), x0 + 20f, m); popAt(at(0.75f)) }
+            40 -> { trap(TR_ORBIT, at(0.25f), g - 72f, 44f, 2.3f, 2f); trap(TR_SAW, at(0.52f), g, x1 - 12f, sp + 0.2f) }
+            41 -> { trap(TR_ZAP, x0 + 14f, g, x0 + 105f, 2.7f); trap(TR_LASER, at(0.75f), 0f, 0f, 2.9f) }
+            42 -> { trap(TR_ICE, x0, g, x1, 0f); trap(TR_SAW, x0 + 30f, g, x1 - 30f, 1.3f) }
+        }
+    }
+
     private fun clearRoom() {
         plats.clear(); spikes.clear(); candles.clear(); enemies.clear(); items.clear(); projs.clear(); hazs.clear()
-        movers.clear(); crumbles.clear(); jets.clear(); pends.clear(); rocks.clear(); ambushes.clear(); doors.clear()
+        movers.clear(); crumbles.clear(); jets.clear(); pends.clear(); rocks.clear(); traps.clear(); ambushes.clear(); doors.clear()
         blocks.clear(); springs.clear(); secretSpots.clear()
         statueX = -1f
         riding = null
@@ -1058,9 +1216,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         clearRoom()
         rnd.setSeed(r.seed)
         val diff = world / 11f
-        ground(0f, 360f)
-        var cx = 360f
+        val boss0 = r.kind == R_BOSS
+        val ent = if (boss0) 360f else 440f
+        ground(0f, ent)
+        var cx = ent
         arenaX = 1e9f
+        fRecent.clear()
         if (r.kind == R_BOSS) {
             var last = -1
             while (cx < 560f) { val k = pickSeg(cx, 560f, 2, last); cx = addSeg(k, cx, diff); last = k }
@@ -1081,16 +1242,21 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             R_SAVE -> 640f
             else -> 1100f + rnd.nextInt(700) + world * 40f
         }
-        val tierMax = min(3, world / 3 + 1)
+        val tierMax = min(3, world / 2 + 1)
         recent.clear()
         var mid = false
         var last = -1
         var lastFam = -1
+        fillSpan(210f, ent - 28f, safe)
         while (cx < target) {
             if (!mid && cx >= target * 0.5f) {
                 mid = true
                 if (r.guarded && !r.cleared && !safe) cx = addSeg(S_AMBUSH, cx, diff)
-                if (hubNeeded) cx = hub(cx, r)
+                if (hubNeeded) {
+                    val hx = cx
+                    cx = hub(cx, r)
+                    fillSpan(hx + 30f, cx - 30f, true, false)
+                }
                 continue
             }
             if (!safe && rnd.nextInt(100) < 18) {
@@ -1104,21 +1270,29 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 lastFam = bp.fam
                 last = -1
             }
-            val gap = 110f + rnd.nextInt(130)
+            val gap = if (safe) 110f + rnd.nextInt(130) else 190f + rnd.nextInt(150)
             ground(cx, cx + gap)
-            if (rnd.nextInt(4) == 0) addCandle(cx + gap / 2f, AdvCfg.GROUND)
-            if (!safe) {
-                val n = (if (rnd.nextInt(100) < 55) 1 else 0) + (if (diff > 0.35f && rnd.nextInt(100) < 40) 1 else 0)
-                if (n > 0) scatter(cx, cx + gap, AdvCfg.GROUND, n, true)
+            var fid = -1
+            if (rnd.nextInt(100) < (if (safe) 55 else 90)) fid = fillSpan(cx + 34f, cx + gap - 34f, safe)
+            val airF = fid >= 0 && fAir[fid]
+            if (fid < 0 && rnd.nextInt(4) == 0) addCandle(cx + gap / 2f, AdvCfg.GROUND)
+            if (!safe && (fid < 0 || airF)) {
+                val n = (if (rnd.nextInt(100) < 70) 1 else 0) + (if (world >= 3 && rnd.nextInt(100) < 45) 1 else 0) + (if (world >= 7 && rnd.nextInt(100) < 35) 1 else 0)
+                if (n > 0) scatter(cx + 20f, cx + gap - 20f, AdvCfg.GROUND, n, true)
             }
             cx += gap
         }
         if (!mid) {
             if (r.guarded && !r.cleared && !safe) cx = addSeg(S_AMBUSH, cx, diff)
-            if (hubNeeded) cx = hub(cx, r)
+            if (hubNeeded) {
+                val hx = cx
+                cx = hub(cx, r)
+                fillSpan(hx + 30f, cx - 30f, true, false)
+            }
         }
-        ground(cx, cx + 260f)
-        cx += 260f
+        ground(cx, cx + 440f)
+        fillSpan(cx + 28f, cx + 250f, safe)
+        cx += 440f
         roomLen = max(cx, viewW + 80f)
         if (roomLen > cx) ground(cx, roomLen)
         endX = roomLen
@@ -1432,6 +1606,91 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                 3 -> { r.t -= dt; if (r.t <= 0f && abs(px - r.x) > 300f) { r.st = 0; r.y = r.y0 } }
             }
         }
+        updateFillTraps(dt)
+    }
+
+    private fun onIceZone(): Boolean {
+        for (t in traps) if (t.kind == TR_ICE && px > t.x && px < t.a) return true
+        return false
+    }
+
+    /** Posición del orbe k de una trampa orbital. */
+    fun orbitPos(t: AdvTrap, k: Int, out: FloatArray) {
+        val n = max(1, t.c.toInt())
+        val an = time * t.b + t.ph + k * 6.2831855f / n
+        out[0] = t.x + cos(an) * t.a
+        out[1] = t.y + sin(an) * t.a
+    }
+
+    private val orbTmp = FloatArray(2)
+    fun rndF(): Float = Math.random().toFloat()
+
+    private fun hitCircle(cx: Float, cy: Float, r: Float, dmg: Int) {
+        if (invuln > 0f || deadT > 0f) return
+        val dx = max(abs(cx - px) - 8f, 0f)
+        val dy = max(abs(cy - (py - 15f)) - 14f, 0f)
+        if (dx * dx + dy * dy < r * r) playerHurt(dmg, cx)
+    }
+
+    /** Ciclo de una trampa con aviso: devuelve 0 apagada, 1 aviso, 2 activa. */
+    private fun cyc(t: AdvTrap): Int {
+        val per = t.b
+        val c = (time + t.ph) % per
+        return if (c >= per - 0.65f) 2 else if (c >= per - 1.3f) 1 else 0
+    }
+
+    private fun updateFillTraps(dt: Float) {
+        val gy = AdvCfg.GROUND
+        for (t in traps) {
+            if (abs(t.x - px) > 900f && t.kind != TR_SAW && t.kind != TR_RAIL) continue
+            when (t.kind) {
+                TR_SAW -> {
+                    val u = 0.5f + 0.5f * sin(time * t.b + t.ph)
+                    t.cx = t.x + (t.a - t.x) * u; t.cy = gy - 11f
+                    hitCircle(t.cx, t.cy, 11f, 2)
+                }
+                TR_RAIL -> {
+                    val u = 0.5f + 0.5f * sin(time * t.c + t.ph)
+                    t.cx = t.x + (t.a - t.x) * u; t.cy = t.y + (t.b - t.y) * u
+                    hitCircle(t.cx, t.cy, 11f, 2)
+                }
+                TR_BOB -> {
+                    t.cx = t.x; t.cy = t.y + sin(time * t.b + t.ph) * t.a
+                    hitCircle(t.cx, t.cy, 9f, 2)
+                }
+                TR_ORBIT -> {
+                    for (k in 0 until max(1, t.c.toInt())) { orbitPos(t, k, orbTmp); hitCircle(orbTmp[0], orbTmp[1], 8f, 2) }
+                }
+                TR_CRUSH -> {
+                    val per = t.b
+                    val c = (time + t.ph) % per
+                    val prev = t.cy
+                    t.warn = c >= per - 1.5f && c < per - 0.9f
+                    t.cy = when {
+                        c < per - 0.9f -> CRUSH_UP
+                        c < per - 0.75f -> CRUSH_UP + (gy - CRUSH_UP) * ((c - (per - 0.9f)) / 0.15f)
+                        c < per - 0.3f -> gy
+                        else -> gy - (gy - CRUSH_UP) * ((c - (per - 0.3f)) / 0.3f)
+                    }
+                    t.on = t.cy > gy - 40f
+                    if (prev < gy - 1f && t.cy >= gy - 1f && abs(t.x - px) < 360f) { shake = max(shake, 5f); ev(EV_ROCK, t.x, gy) }
+                    if (t.cy > py - 29f && invuln <= 0f && deadT <= 0f && abs(px - t.x) < t.a / 2f + 8f) playerHurt(3, t.x)
+                }
+                TR_LASER -> {
+                    val s = cyc(t)
+                    t.warn = s == 1; t.on = s == 2
+                    if (t.on && invuln <= 0f && deadT <= 0f && abs(px - t.x) < 11f) playerHurt(2, t.x)
+                }
+                TR_ZAP -> {
+                    val s = cyc(t)
+                    t.warn = s == 1; t.on = s == 2
+                    if (t.on && invuln <= 0f && deadT <= 0f && onGround && py >= gy - 2f && px > t.x && px < t.a) playerHurt(2, px)
+                }
+                TR_CONV -> if (onGround && py >= gy - 2f && px > t.x && px < t.a && deadT <= 0f && hitstun <= 0f) {
+                    px = (px + t.b * dt).coerceIn(lockedMin(), lockedMax())
+                }
+            }
+        }
     }
 
     private fun updateAmbush(dt: Float) {
@@ -1509,7 +1768,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         if (control) {
             if (dir != 0) face = dir
             val tv = dir * AdvCfg.RUN * (if (atkT > 0f && onGround) 0.55f else 1f)
-            val k = if (onGround) (if (ice) 9f else 22f) else 12f
+            val k = if (onGround) (if (ice || onIceZone()) 9f else 22f) else 12f
             pvx += (tv - pvx) * min(1f, dt * k)
         } else {
             pvx *= (1f - min(1f, dt * 2f))
@@ -1767,11 +2026,12 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     // ------------------------------------------------------------------ daños
-    fun ew(e: AdvEnemy) = when (e.type) { E_BAT -> 18f; E_TURRET -> 22f; E_CHARGER -> 28f; E_MEDUSA -> 18f; E_KNIGHT -> 26f; E_GHOST -> 22f; E_SPIDER -> 18f; else -> 22f }
-    fun eh(e: AdvEnemy) = when (e.type) { E_BAT -> 14f; E_TURRET -> 24f; E_CHARGER -> 26f; E_MEDUSA -> 16f; E_KNIGHT -> 38f; E_GHOST -> 26f; E_SPIDER -> 14f; else -> 28f }
+    fun ew(e: AdvEnemy) = when (e.type) { E_POP -> 22f; E_CEIL -> 24f; E_BAT -> 18f; E_TURRET -> 22f; E_CHARGER -> 28f; E_MEDUSA -> 18f; E_KNIGHT -> 26f; E_GHOST -> 22f; E_SPIDER -> 18f; else -> 22f }
+    fun eh(e: AdvEnemy) = when (e.type) { E_POP -> 26f; E_CEIL -> 26f; E_BAT -> 14f; E_TURRET -> 24f; E_CHARGER -> 26f; E_MEDUSA -> 16f; E_KNIGHT -> 38f; E_GHOST -> 26f; E_SPIDER -> 14f; else -> 28f }
 
     private fun hurtEnemy(e: AdvEnemy, dmg: Int, srcX: Float, armor: Boolean) {
         if (e.dead) return
+        if (e.type == E_POP && e.st == 0) return
         if (e.type == E_KNIGHT && !armor && (srcX - e.x) * e.face > 0f) {
             e.flash = 0.05f
             ev(EV_BLOCK, e.x + e.face * 12f, e.y - 22f)
@@ -1866,6 +2126,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             if (abs(e.x - px) > 700f) continue
             if (!frozen) enemyAi(e, dt)
             if (e.dead) continue
+            if (e.type == E_POP && e.st == 0) continue
             if (invuln <= 0f && deadT <= 0f &&
                 overlap(px - 9f, py - 29f, px + 9f, py - 1f, e.x - ew(e) / 2f, e.y - eh(e), e.x + ew(e) / 2f, e.y)) {
                 playerHurt(if (e.type == E_BAT || e.type == E_MEDUSA) 1 else 2, e.x)
@@ -1955,9 +2216,47 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             E_TURRET -> {
                 e.face = toP
                 if (abs(px - e.x) < 340f) e.t += dt
-                if (e.t > 2.0f) {
+                if (e.t > max(1.3f, 2.0f - world * 0.06f)) {
                     e.t = 0f
-                    projs.add(AdvProj(e.x, e.y - 14f, 160f * toP, 0f, 0, 2, false, 5f).also { it.life = 3f })
+                    projs.add(AdvProj(e.x, e.y - 14f, (160f + world * 5f) * toP, 0f, 0, 2, false, 5f).also { it.life = 3f })
+                }
+            }
+            E_POP -> {
+                e.face = toP
+                when (e.st) {
+                    0 -> { e.t += dt; e.y = e.floor + 26f; if (e.t > 1.5f && abs(px - e.x) < 330f && abs(px - e.x) > 34f) { e.st = 1; e.t = 0f } }
+                    1 -> { e.t += dt; e.y = e.floor + 26f * (1f - min(1f, e.t / 0.3f)); if (e.t >= 0.3f) { e.st = 2; e.t = 0f; e.vy = 0f } }
+                    2 -> {
+                        e.t += dt
+                        e.y = e.floor
+                        val shots = if (world >= 6) 3 else 2
+                        if (e.vy < shots && e.t > 0.35f + 0.6f * e.vy) {
+                            e.vy += 1f
+                            projs.add(AdvProj(e.x, e.floor - 16f, (165f + world * 5f) * toP, 0f, 0, 2, false, 5f).also { it.life = 2.6f })
+                        }
+                        if (e.t > 0.75f + 0.6f * shots) { e.st = 3; e.t = 0f }
+                    }
+                    else -> { e.t += dt; e.y = e.floor + 26f * min(1f, e.t / 0.3f); if (e.t >= 0.3f) { e.st = 0; e.t = 0f; e.vy = 0f } }
+                }
+            }
+            E_CEIL -> {
+                e.face = toP
+                when (e.st) {
+                    0 -> {
+                        if (abs(px - e.x) < 300f) {
+                            e.t += dt
+                            val tx = px.coerceIn(e.x0 + 10f, e.x1 - 10f)
+                            e.x += (tx - e.x).coerceIn(-1f, 1f) * min(abs(tx - e.x), 55f * dt)
+                            if (e.t > max(1.5f, 2.3f - world * 0.07f)) { e.st = 1; e.t = 0f }
+                        }
+                    }
+                    else -> {
+                        e.t += dt
+                        if (e.t > 0.55f) {
+                            projs.add(AdvProj(e.x, e.y + 4f, 0f, 120f, 0, 2, false, 5f).also { it.grav = 520f; it.life = 2.2f })
+                            e.st = 0; e.t = 0f
+                        }
+                    }
                 }
             }
             E_CHARGER -> {
@@ -2316,4 +2615,6 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
         }
         if (bpat != AdvCfg.P_CHARGE && bpat != AdvCfg.P_SLAM) bx = bx.coerceIn(arenaX + bdef.w / 2f + 4f, arenaX + viewW - bdef.w / 2f - 4f)
     }
+
+    init { buildWorld(); enterRoom(0, 0, 0f); saveRoom = 0 }
 }
