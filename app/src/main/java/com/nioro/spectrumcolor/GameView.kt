@@ -1784,17 +1784,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
         }
         when (th) {
-            0 -> { // clásico: orbes de colores que giran, destellos y estrella fugaz
-                for (i in 0 until 4) {
-                    val an = t * 0.7f + i * 1.5708f
-                    for (k in 5 downTo 0) {
-                        val a2 = an - k * 0.11f
-                        val x = 540f + cos(a2) * 450f
-                        val y = ty + 60f + sin(a2) * 130f
-                        dot(c, x, y, 13f - k * 1.6f, pal[i], 255 - k * 42)
-                    }
-                    Gl.glow(c, 540f + cos(an) * 450f, ty + 60f + sin(an) * 130f, 50f, pal[i], 90)
-                }
+            0 -> { // clásico: destellos y estrella fugaz
                 for (i in 0 until 16) {
                     val a = (110 + 110 * sin(t * (1.5f + fxH(i) * 1.5f) + i * 2f)).toInt().coerceIn(0, 220)
                     sparkle(c, fxH(i + 40) * W, topI + 80f + fxH(i + 90) * (vh - topI - 380f), 6f + fxH(i + 7) * 8f, if (i % 3 == 0) pal[i % 4] else Color.WHITE, a)
