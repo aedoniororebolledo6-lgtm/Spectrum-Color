@@ -145,7 +145,7 @@ object I18n {
             "Agujero de Gusano|Wormhole|Червоточина", "Ecos del Big Bang|Big Bang Echoes|Эхо Большого взрыва",
             "Bioluminiscencia|Bioluminescence|Биолюминесценция", "ADN Giratorio|Spinning DNA|Вращающаяся ДНК",
             "Hámster|Hamster|Хомяк", "Telaraña Estelar|Starweb|Звёздная паутина", "Runas Antiguas|Ancient Runes|Древние руны",
-            "Alquimia|Alchemy|Алхимия", "Gema del Tiempo|Time Gem|Камень времени"
+            "Alquimia|Alchemy|Алхимия", "Gema del Tiempo|Time Gem|Камень времени", "Stickman|Stickman|Стикмен"
         )
         for (s in sk) { val a = s.split("|"); d(a[0], a[1], a[2]) }
         // --- partida ---

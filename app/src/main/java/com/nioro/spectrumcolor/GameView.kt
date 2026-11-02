@@ -2981,7 +2981,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
-            in 60..77 -> drawAnimIcon2(c, x, y, r, skin, tm)
+            in 60..78 -> drawAnimIcon2(c, x, y, r, skin, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -3543,7 +3543,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun hf(n: Float): Float = frac(sin(n * 12.9898f) * 43758.547f)
 
-    /** Apariencias animadas 60..77: fenómenos, ciencia y magia (también recortadas a la bola). */
+    /** Apariencias animadas 60..78: fenómenos, ciencia y magia (también recortadas a la bola). */
     private fun drawAnimIcon2(c: Canvas, x: Float, y: Float, r: Float, skin: Int, tm: Float) {
         val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100, 45)
         val ua = under[skin - 60]
@@ -3858,6 +3858,70 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 val a2 = tm * 0.4f
                 Gl.line(c, x, y, x + sin(a2) * r * 0.2f, y - cos(a2) * r * 0.2f, r * 0.06f, Gl.alpha(0xFFFFF59D.toInt(), 230))
                 dot(c, x, y, r * 0.05f, Color.WHITE, 255)
+            }
+            78 -> { // stickman caminando dentro de su bola
+                c.save()
+                c.rotate(Math.toDegrees((tm * 1.8f).toDouble()).toFloat(), x, y)
+                Gl.rect.set(x - r * 0.97f, y - r * 0.2f, x + r * 0.97f, y + r * 0.2f)
+                c.drawOval(Gl.rect, ps(95, r * 0.035f).also { it.color = Gl.white(95) })
+                Gl.rect.set(x - r * 0.2f, y - r * 0.97f, x + r * 0.2f, y + r * 0.97f)
+                c.drawOval(Gl.rect, ps(70, r * 0.03f).also { it.color = Gl.white(70) })
+                for (k in 0 until 6) {
+                    val a = k * pi / 3f
+                    dot(c, x + cos(a) * r * 0.82f, y + sin(a) * r * 0.82f, r * 0.035f, Color.WHITE, 120)
+                }
+                c.restore()
+                val ph = tm * 9f
+                val floor = y + r * 0.66f
+                for (k in 0 until 3) {
+                    val u = frac(tm * 1.6f + k * 0.33f)
+                    dot(c, x - r * 0.1f - u * r * 0.34f, floor - r * 0.01f, r * (0.02f + 0.025f * u), Color.WHITE, (110 * (1f - u)).toInt())
+                }
+                val bob = abs(sin(ph)) * r * 0.014f
+                val hipY = floor - r * 0.37f - bob
+                val shY = hipY - r * 0.3f
+                val shX = x + r * 0.035f
+                val l1 = r * 0.19f
+                // una pasada con sombra oscura y otra clara para que se lea sobre cualquier fondo
+                for (pass in 0..1) {
+                    val col = if (pass == 0) Gl.alpha(0xFF101020.toInt(), 150) else Color.WHITE
+                    val w = if (pass == 0) r * 0.085f else r * 0.052f
+                    // piernas a contratiempo
+                    for (i in 0..1) {
+                        val phi = ph + (if (i == 0) 0f else pi)
+                        val a = sin(phi) * 0.7f
+                        val b = a - 0.55f * max(0f, cos(phi))
+                        val kx = x + sin(a) * l1
+                        val ky = hipY + cos(a) * l1
+                        val fx = kx + sin(b) * l1
+                        val fy = min(floor, ky + cos(b) * l1)
+                        Gl.line(c, x, hipY, kx, ky, w, col)
+                        Gl.line(c, kx, ky, fx, fy, w, col)
+                        Gl.line(c, fx, fy, fx + r * 0.06f, fy, w, col)
+                    }
+                    // torso
+                    Gl.line(c, x, hipY, shX, shY, w, col)
+                    // brazos opuestos a las piernas
+                    for (i in 0..1) {
+                        val phi = ph + (if (i == 0) pi else 0f)
+                        val a = sin(phi) * 0.65f
+                        val ex = shX + sin(a) * r * 0.15f
+                        val ey = shY + r * 0.02f + cos(a) * r * 0.15f
+                        val hx = ex + sin(a + 0.5f) * r * 0.13f
+                        val hy = ey + cos(a + 0.5f) * r * 0.13f
+                        Gl.line(c, shX, shY + r * 0.02f, ex, ey, w, col)
+                        Gl.line(c, ex, ey, hx, hy, w, col)
+                    }
+                    // cabeza
+                    val hr = r * 0.11f
+                    val hcx = shX + r * 0.02f
+                    val hcy = shY - hr - r * 0.015f
+                    if (pass == 0) c.drawCircle(hcx, hcy, hr + r * 0.012f, pk(col))
+                    else {
+                        c.drawCircle(hcx, hcy, hr, ps(255, r * 0.05f).also { it.color = Color.WHITE })
+                        dot(c, hcx + hr * 0.45f, hcy - hr * 0.1f, r * 0.016f, Color.WHITE, 255)
+                    }
+                }
             }
             77 -> { // hámster corriendo dentro de su bola
                 // la bola: costura y respiraderos que giran al rodar
