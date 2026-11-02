@@ -1673,6 +1673,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Spooky.bat(c, Cfg.W - ((time * 70f + 400f) % (Cfg.W + 400f)) + 200f, topI + 640f + sin(time * 1.7f) * 26f, 36f, time + 1f)
         }
 
+        drawHomeFx(c, pal, prefs.theme)
+
         val bob = sin(time * 1.6f) * 6f
         Gl.glow(c, 950f, vh - 260f + bob, 120f, pal[1], 70)
         iconButton(c, "skins", 950f, vh - 260f + bob, 66f) { cc, x, y, r ->
@@ -1692,6 +1694,274 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
             540f, vh - 130f, 38f, Gl.regular, Gl.white(170)
         )
+    }
+
+
+    // ---- efectos animados del menú principal, uno por tema ----
+    private val fxPath = android.graphics.Path()
+
+    private fun fxH(i: Int): Float {
+        var h = i * 374761393 + 668265263
+        h = (h xor (h ushr 13)) * 1274126177
+        return ((h xor (h ushr 16)) and 0xffff) / 65535f
+    }
+
+    private fun sparkle(c: Canvas, x: Float, y: Float, r: Float, col: Int, a: Int) {
+        if (a <= 0) return
+        Gl.glow(c, x, y, r * 2.2f, col, a / 3)
+        Gl.line(c, x - r, y, x + r, y, max(1.4f, r * 0.14f), Gl.alpha(col, a))
+        Gl.line(c, x, y - r, x, y + r, max(1.4f, r * 0.14f), Gl.alpha(col, a))
+        Gl.line(c, x - r * 0.45f, y - r * 0.45f, x + r * 0.45f, y + r * 0.45f, 1.2f, Gl.alpha(col, a / 2))
+        Gl.line(c, x - r * 0.45f, y + r * 0.45f, x + r * 0.45f, y - r * 0.45f, 1.2f, Gl.alpha(col, a / 2))
+    }
+
+    private fun heartFx(c: Canvas, x: Float, y: Float, r: Float, col: Int, a: Int) {
+        val p = fxPath
+        p.reset()
+        p.moveTo(x, y + r * 0.9f)
+        p.cubicTo(x - r * 1.4f, y - r * 0.1f, x - r * 0.7f, y - r * 1.1f, x, y - r * 0.35f)
+        p.cubicTo(x + r * 0.7f, y - r * 1.1f, x + r * 1.4f, y - r * 0.1f, x, y + r * 0.9f)
+        p.close()
+        val pp = Gl.p()
+        pp.color = Gl.alpha(col, a)
+        c.drawPath(p, pp)
+        Gl.line(c, x - r * 0.55f, y - r * 0.35f, x - r * 0.2f, y - r * 0.6f, r * 0.12f, Gl.white(a))
+    }
+
+    private fun pawFx(c: Canvas, x: Float, y: Float, s: Float, col: Int, a: Int) {
+        val pp = Gl.p()
+        pp.color = Gl.alpha(col, a)
+        Gl.rect.set(x - s * 0.55f, y - s * 0.05f, x + s * 0.55f, y + s * 0.7f)
+        c.drawOval(Gl.rect, pp)
+        c.drawCircle(x - s * 0.62f, y - s * 0.28f, s * 0.2f, pp)
+        c.drawCircle(x - s * 0.22f, y - s * 0.62f, s * 0.22f, pp)
+        c.drawCircle(x + s * 0.22f, y - s * 0.62f, s * 0.22f, pp)
+        c.drawCircle(x + s * 0.62f, y - s * 0.28f, s * 0.2f, pp)
+    }
+
+    private fun boneFx(c: Canvas, x: Float, y: Float, len: Float, rot: Float, a: Int) {
+        c.save()
+        c.rotate(rot, x, y)
+        val col = Gl.alpha(0xFFF4EBDD.toInt(), a)
+        val w = len * 0.2f
+        Gl.line(c, x - len / 2f, y, x + len / 2f, y, w, col)
+        val pp = Gl.p()
+        pp.color = col
+        for (sx in intArrayOf(-1, 1)) {
+            c.drawCircle(x + sx * len / 2f, y - w * 0.55f, w * 0.62f, pp)
+            c.drawCircle(x + sx * len / 2f, y + w * 0.55f, w * 0.62f, pp)
+        }
+        c.restore()
+    }
+
+    private fun ghostFx(c: Canvas, x: Float, y: Float, r: Float, a: Int) {
+        val pp = Gl.p()
+        pp.color = Gl.alpha(0xFFE8F0FF.toInt(), a)
+        Gl.glow(c, x, y, r * 2.4f, 0xFFB8C8FF.toInt(), a / 3)
+        c.drawCircle(x, y - r * 0.1f, r, pp)
+        Gl.rect.set(x - r, y - r * 0.1f, x + r, y + r * 1.1f)
+        c.drawRect(Gl.rect, pp)
+        for (k in 0 until 3) c.drawCircle(x - r * 0.667f + k * r * 0.667f, y + r * 1.1f + sin(time * 5f + k) * r * 0.06f, r * 0.34f, pp)
+        val ep = Gl.p()
+        ep.color = Gl.alpha(0xFF10101C.toInt(), min(255, a * 3))
+        c.drawCircle(x - r * 0.36f, y - r * 0.15f, r * 0.14f, ep)
+        c.drawCircle(x + r * 0.36f, y - r * 0.15f, r * 0.14f, ep)
+        Gl.rect.set(x - r * 0.12f, y + r * 0.15f, x + r * 0.12f, y + r * 0.42f)
+        c.drawOval(Gl.rect, ep)
+    }
+
+    private fun drawHomeFx(c: Canvas, pal: IntArray, th: Int) {
+        val t = time
+        val W = Cfg.W
+        val ty = topI + 260f
+        // brillo que cruza el título (todos los temas)
+        run {
+            val u = ((t * 0.2f) % 1.7f) - 0.35f
+            val sx = u * (W + 300f)
+            if (sx > -100f && sx < W + 100f) {
+                Gl.glow(c, sx, ty + 40f, 150f, Color.WHITE, 34)
+                Gl.glow(c, sx, ty + 130f, 150f, Color.WHITE, 26)
+            }
+        }
+        when (th) {
+            0 -> { // clásico: orbes de colores que giran, destellos y estrella fugaz
+                for (i in 0 until 4) {
+                    val an = t * 0.7f + i * 1.5708f
+                    for (k in 5 downTo 0) {
+                        val a2 = an - k * 0.11f
+                        val x = 540f + cos(a2) * 450f
+                        val y = ty + 60f + sin(a2) * 130f
+                        dot(c, x, y, 13f - k * 1.6f, pal[i], 255 - k * 42)
+                    }
+                    Gl.glow(c, 540f + cos(an) * 450f, ty + 60f + sin(an) * 130f, 50f, pal[i], 90)
+                }
+                for (i in 0 until 16) {
+                    val a = (110 + 110 * sin(t * (1.5f + fxH(i) * 1.5f) + i * 2f)).toInt().coerceIn(0, 220)
+                    sparkle(c, fxH(i + 40) * W, topI + 80f + fxH(i + 90) * (vh - topI - 380f), 6f + fxH(i + 7) * 8f, if (i % 3 == 0) pal[i % 4] else Color.WHITE, a)
+                }
+                val u = (t % 7f) / 1.1f
+                if (u < 1f) {
+                    val x = W * 0.95f - u * W * 0.8f
+                    val y = topI + 90f + u * 420f
+                    Gl.line(c, x, y, x + 150f * (1f - u * 0.4f), y - 100f * (1f - u * 0.4f), 5f, Gl.alpha(Color.WHITE, (230 * (1f - u)).toInt()))
+                    Gl.glow(c, x, y, 40f, Color.WHITE, (140 * (1f - u)).toInt())
+                }
+            }
+            1 -> { // rojo: brasas que suben y calor pulsante
+                Gl.glow(c, 540f, vh, 950f, pal[0], (45 + 25 * sin(t * 1.6f)).toInt())
+                for (i in 0 until 30) {
+                    val sp = 55f + fxH(i + 3) * 90f
+                    val k = ((t * sp + fxH(i) * (vh + 80f)) % (vh + 80f)) / (vh + 80f)
+                    val x = fxH(i + 20) * W + sin(t * 1.4f + i) * 24f
+                    val y = vh - k * (vh + 40f)
+                    val a = (230 * (1f - k) * (0.6f + 0.4f * sin(t * 9f + i))).toInt().coerceIn(0, 255)
+                    val col = if (i % 3 == 0) 0xFFFFD060.toInt() else if (i % 3 == 1) 0xFFFF7A30.toInt() else pal[0]
+                    Gl.glow(c, x, y, 16f + fxH(i + 60) * 10f, col, a / 2)
+                    dot(c, x, y, 2.5f + fxH(i + 60) * 3.5f, col, a)
+                }
+            }
+            2 -> { // morado: aurora ondulante y estrellas titilantes
+                for (b in 0 until 3) {
+                    val base = topI + 520f + b * 150f
+                    val p = fxPath
+                    p.reset()
+                    p.moveTo(-40f, base)
+                    var x = -40f
+                    while (x < W + 40f) {
+                        x += 60f
+                        p.lineTo(x, base + sin(x * 0.006f + t * (0.5f + b * 0.2f) + b * 2f) * 70f + sin(x * 0.013f - t * 0.7f) * 24f)
+                    }
+                    val col = if (b == 1) pal[1] else pal[0]
+                    for ((w, a) in arrayOf(floatArrayOf(110f, 14f), floatArrayOf(60f, 22f), floatArrayOf(22f, 36f))) {
+                        val sp = Gl.p()
+                        sp.style = Paint.Style.STROKE
+                        sp.strokeWidth = w
+                        sp.strokeCap = Paint.Cap.ROUND
+                        sp.strokeJoin = Paint.Join.ROUND
+                        sp.color = Gl.alpha(col, a.toInt())
+                        c.drawPath(p, sp)
+                    }
+                }
+                for (i in 0 until 34) {
+                    val a = (60 + 190 * (0.5f + 0.5f * sin(t * (1f + fxH(i) * 2.5f) + i * 3f))).toInt().coerceIn(0, 255)
+                    val x = fxH(i + 11) * W
+                    val y = topI + 40f + fxH(i + 51) * (vh - topI - 300f)
+                    if (i % 6 == 0) sparkle(c, x, y, 9f, Color.WHITE, a) else dot(c, x, y, 1.6f + fxH(i + 71) * 2.2f, Color.WHITE, a)
+                }
+            }
+            3 -> { // rosa: corazones que suben y destellos
+                for (i in 0 until 16) {
+                    val sp = 40f + fxH(i + 3) * 60f
+                    val k = ((t * sp + fxH(i) * (vh + 120f)) % (vh + 120f)) / (vh + 120f)
+                    val x = fxH(i + 20) * W + sin(t * 1.2f + i * 1.7f) * 36f
+                    val y = vh + 40f - k * (vh + 100f)
+                    val r = 12f + fxH(i + 60) * 20f
+                    val a = (170 * min(1f, k * 6f) * (1f - k * 0.7f)).toInt()
+                    heartFx(c, x, y, r, if (i % 2 == 0) pal[0] else 0xFFFFC0DC.toInt(), a)
+                }
+                for (i in 0 until 10) {
+                    val a = (90 + 130 * sin(t * 2f + i * 1.9f)).toInt().coerceIn(0, 220)
+                    sparkle(c, fxH(i + 33) * W, topI + 60f + fxH(i + 77) * (vh - topI - 340f), 8f, 0xFFFFE0F0.toInt(), a)
+                }
+            }
+            4 -> { // verde: luciérnagas y hojas que caen
+                for (i in 0 until 24) {
+                    val x = fxH(i + 5) * W + sin(t * (0.4f + fxH(i) * 0.4f) + i * 3f) * 90f
+                    val y = topI + 60f + fxH(i + 55) * (vh - topI - 300f) + cos(t * (0.35f + fxH(i + 9) * 0.4f) + i * 2f) * 70f
+                    val pulse = 0.5f + 0.5f * sin(t * (1.6f + fxH(i + 2) * 1.5f) + i * 4f)
+                    Gl.glow(c, x, y, 36f, 0xFFD8FF70.toInt(), (110 * pulse).toInt())
+                    dot(c, x, y, 3.2f, 0xFFF4FFB0.toInt(), (80 + 175 * pulse).toInt())
+                }
+                for (i in 0 until 9) {
+                    val k = ((t * (36f + fxH(i) * 30f) + fxH(i + 8) * (vh + 80f)) % (vh + 80f)) / (vh + 80f)
+                    val x = fxH(i + 30) * W + sin(t * 1.1f + i * 2f) * 60f
+                    val y = -30f + k * (vh + 60f)
+                    c.save()
+                    c.rotate(t * 70f * (1f + fxH(i)) + i * 40f, x, y)
+                    val lp = fxPath
+                    lp.reset()
+                    lp.moveTo(x - 14f, y + 5f)
+                    lp.quadTo(x - 6f, y - 18f, x + 15f, y - 5f)
+                    lp.quadTo(x + 6f, y + 16f, x - 14f, y + 5f)
+                    val pp = Gl.p()
+                    pp.color = Gl.alpha(if (i % 2 == 0) pal[0] else 0xFF9AE05A.toInt(), 140)
+                    c.drawPath(lp, pp)
+                    Gl.line(c, x - 12f, y + 4f, x + 11f, y - 3f, 1.4f, Gl.white(120))
+                    c.restore()
+                }
+            }
+            Themes.HALLOWEEN -> { // fantasmas, niebla y relámpagos
+                for (b in 0 until 3) {
+                    val x = ((t * (14f + b * 7f) + b * 420f) % (W + 900f)) - 450f
+                    Gl.glow(c, x, vh - 380f + b * 90f, 420f, 0xFF8A7FA8.toInt(), 26)
+                }
+                for (i in 0 until 3) {
+                    val x = ((t * (26f + i * 9f) + i * 380f) % (W + 300f)) - 150f
+                    val y = topI + 900f + i * 150f + sin(t * 1.4f + i * 2f) * 34f
+                    ghostFx(c, x, y, 26f + i * 5f, 70)
+                }
+                val fl = (t % 9f)
+                if (fl < 0.35f) {
+                    val a = if (fl < 0.12f) 70 else if (fl < 0.2f) 15 else 45
+                    val pp = Gl.p()
+                    pp.color = Gl.alpha(0xFFE8E0FF.toInt(), a)
+                    c.drawRect(0f, 0f, W, vh, pp)
+                }
+            }
+            Themes.CATS -> { // gatitos: huellas que caminan y ojos que parpadean
+                for (k in 0 until 12) {
+                    val age = ((t * 1.1f - k * 0.55f) % 9.5f + 9.5f) % 9.5f
+                    if (age < 6.5f) {
+                        val pop = min(1f, age / 0.25f)
+                        val a = (110 * (1f - age / 6.5f) * pop).toInt()
+                        val x = 70f + k * 84f
+                        val y = vh - 400f + (if (k % 2 == 0) -26f else 26f) + sin(k * 0.6f) * 50f
+                        c.save()
+                        c.rotate(-14f + (if (k % 2 == 0) -8f else 8f), x, y)
+                        pawFx(c, x, y, 22f * (0.6f + 0.4f * pop), 0xFFFFC8A0.toInt(), a)
+                        c.restore()
+                    }
+                }
+                val blink = (t % 5f) < 0.16f
+                for ((ex, ey) in arrayOf(floatArrayOf(95f, topI + 560f), floatArrayOf(985f, topI + 700f))) {
+                    val open = if (blink) 0.12f else 1f
+                    for (sx in intArrayOf(-1, 1)) {
+                        val x = ex + sx * 26f
+                        Gl.glow(c, x, ey, 34f, 0xFF9AFF70.toInt(), 80)
+                        Gl.rect.set(x - 11f, ey - 14f * open, x + 11f, ey + 14f * open)
+                        val pp = Gl.p(); pp.color = 0xFFB8FF80.toInt(); c.drawOval(Gl.rect, pp)
+                        Gl.rect.set(x - 3f, ey - 12f * open, x + 3f, ey + 12f * open)
+                        val pq = Gl.p(); pq.color = 0xFF10200C.toInt(); c.drawOval(Gl.rect, pq)
+                    }
+                }
+                for (i in 0 until 7) {
+                    val k = ((t * (36f + fxH(i) * 40f) + fxH(i + 4) * (vh + 100f)) % (vh + 100f)) / (vh + 100f)
+                    heartFx(c, fxH(i + 20) * W + sin(t + i) * 26f, vh + 30f - k * (vh + 60f), 10f + fxH(i + 9) * 8f, 0xFFFF8FB0.toInt(), (130 * (1f - k)).toInt())
+                }
+            }
+            Themes.DOGS -> { // perritos: huesos flotando y una pelota que rebota
+                for (i in 0 until 9) {
+                    val k = ((t * (30f + fxH(i) * 30f) + fxH(i + 4) * (vh + 120f)) % (vh + 120f)) / (vh + 120f)
+                    val x = fxH(i + 20) * W + sin(t * 0.9f + i * 2f) * 30f
+                    boneFx(c, x, vh + 50f - k * (vh + 100f), 46f + fxH(i + 9) * 22f, t * 40f * (fxH(i + 2) - 0.5f) + i * 30f, (130 * min(1f, k * 5f) * (1f - k * 0.5f)).toInt())
+                }
+                val bx = (t * 190f) % (W + 240f) - 120f
+                val by = vh - 215f - abs(sin(t * 3.3f)) * 230f
+                val sh = Gl.p(); sh.color = Gl.alpha(Color.BLACK, 70)
+                Gl.rect.set(bx - 26f, vh - 204f, bx + 26f, vh - 192f)
+                c.drawOval(Gl.rect, sh)
+                c.save()
+                c.rotate(t * 300f, bx, by)
+                dot(c, bx, by, 26f, 0xFFD6F03C.toInt(), 255)
+                Gl.arc(c, bx, by, 17f, 40f, 100f, 3f, Gl.white(220))
+                Gl.arc(c, bx, by, 17f, 220f, 100f, 3f, Gl.white(220))
+                c.restore()
+                for (k in 0 until 6) {
+                    val age = ((t * 1.0f - k * 0.7f) % 8f + 8f) % 8f
+                    if (age < 5f) pawFx(c, 90f + k * 170f, topI + 780f + (if (k % 2 == 0) 0f else 40f), 20f, 0xFFE0B890.toInt(), (90 * (1f - age / 5f)).toInt())
+                }
+            }
+        }
     }
 
     private fun drawTile(c: Canvas, lvl: Int, cx: Float, cy: Float, w: Float, h: Float) {
