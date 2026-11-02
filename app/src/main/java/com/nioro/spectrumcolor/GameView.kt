@@ -2467,18 +2467,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.line(c, l, gy + 7f, r, gy + 7f, 1.6f, Gl.white(80))
         var gxx = l + 20f
         while (gxx < r) { Gl.line(c, gxx, gy + 14f, gxx, b, 1.4f, Gl.white(22)); gxx += 46f }
-        // jefe en sombra al fondo y la esfera protagonista
+        // el jefe del mundo y la esfera protagonista
         val bx = l + W * 0.76f
-        val bh = H * 0.34f
+        val bh = H * 0.44f
         Gl.glow(c, bx, gy - bh * 0.5f, bh * 1.3f, pal[2], 55)
-        Gl.rect.set(bx - bh * 0.55f, gy - bh, bx + bh * 0.55f, gy)
-        val bp = Gl.p(); bp.color = Gl.alpha(Gl.darken(bg[0], 0.4f), 235)
-        c.drawOval(Gl.rect, bp)
         val eg = 0.6f + 0.4f * sin(tm * 2.2f + w)
-        for (sx in intArrayOf(-1, 1)) {
-            Gl.glow(c, bx + sx * bh * 0.2f, gy - bh * 0.62f, 22f, pal[2], (170 * eg).toInt())
-            dot(c, bx + sx * bh * 0.2f, gy - bh * 0.62f, 5.5f, Color.WHITE, 255)
-        }
+        Gl.glow(c, bx, gy - bh * 0.5f, bh * 1.5f, pal[(w + 1) % 4], (40 + 30 * eg).toInt())
+        c.save()
+        Gl.rect.set(l, t, r, b)
+        advUi.drawBossPreview(c, w, bx, gy + 1f, bh, tm)
+        c.restore()
         val ox = l + W * 0.24f
         val oy = gy - 26f - abs(sin(tm * 3f)) * 8f
         Gl.glow(c, ox, oy, 60f, pal[0], 130)

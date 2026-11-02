@@ -1465,10 +1465,18 @@ class AdvUi(
         c.translate(x + shake, gy - a.bz)
         c.rotate(rot)
         c.scale(bsx, bsy)
-        val f = a.bface
-        val w = d.w
-        val h = d.h
-        when (world) {
+        drawBossShape(c, world, d.w, d.h, a.bface, col, acc, al, pal, a.bflash > 0f)
+        c.restore()
+        if (a.bstate == Adv.BS_STUN) for (k in 0 until 3) {
+            val an = time * 6f + k * 2.1f
+            glow(c, x + cos(an) * 18f, gy - d.h - 6f + sin(an) * 5f, 7f, 0xFFFFE070.toInt(), 200)
+        }
+    }
+
+
+    /** Dibuja el cuerpo del jefe del mundo wld con los pies en (0,0). f = hacia dónde mira (-1 izquierda, 1 derecha). */
+    private fun drawBossShape(c: Canvas, wld: Int, w: Float, h: Float, f: Int, col: Int, acc: Int, al: Int, pal: IntArray, flash: Boolean) {
+        when (wld) {
             0 -> { // guardián de cristal: rombo con esquirlas
                 pth.reset(); pth.moveTo(0f, -h); pth.lineTo(w / 2f, -h * 0.5f); pth.lineTo(0f, 0f); pth.lineTo(-w / 2f, -h * 0.5f); pth.close()
                 glossPath(c, -w / 2f, -h, w / 2f, 0f, col, al)
@@ -1542,7 +1550,7 @@ class AdvUi(
             8 -> { // ent ancestral
                 for (k in intArrayOf(-1, 1)) { line(c, k * w * 0.18f, -h * 0.6f, k * w * 0.62f, -h * (0.78f + 0.04f * sin(time * 2f + k)), 7f, Gl.alpha(0xFF6A4A2A.toInt(), al)); gloss(c, 0, k * w * 0.62f - 9f, -h * 0.84f - 9f, k * w * 0.62f + 9f, -h * 0.84f + 9f, 0f, 0xFF4CB04C.toInt(), al) }
                 gloss(c, 1, -w * 0.28f, -h * 0.86f, w * 0.28f, 0f, 10f, 0xFF7A5430.toInt(), al)
-                for (k in 0 until 4) gloss(c, 0, -w * 0.4f + k * w * 0.27f - 12f, -h * (0.98f - 0.05f * (k % 2)) - 12f, -w * 0.4f + k * w * 0.27f + 12f, -h * (0.98f - 0.05f * (k % 2)) + 12f, 0f, if (a.bflash > 0f) Color.WHITE else 0xFF3CA040.toInt(), al)
+                for (k in 0 until 4) gloss(c, 0, -w * 0.4f + k * w * 0.27f - 12f, -h * (0.98f - 0.05f * (k % 2)) - 12f, -w * 0.4f + k * w * 0.27f + 12f, -h * (0.98f - 0.05f * (k % 2)) + 12f, 0f, if (flash) Color.WHITE else 0xFF3CA040.toInt(), al)
                 eyes(c, f * 2f, -h * 0.66f, f, 2.8f, 0xFFFFE070.toInt())
             }
             9 -> { // emperatriz de hielo
@@ -1567,7 +1575,7 @@ class AdvUi(
                     pth.quadTo(-w * 0.5f * sc2, -h * 0.96f * sc2, 0f, -h * 0.96f * sc2); pth.quadTo(w * 0.5f * sc2, -h * 0.96f * sc2, w * 0.5f * sc2, -h * 0.6f * sc2); pth.lineTo(w * 0.5f * sc2, 0f)
                     for (j in 0 until 5) { pth.lineTo(w * 0.5f * sc2 - (j + 0.5f) * w * sc2 / 5f, -6f + sin(time * 5f + j + k) * 5f); pth.lineTo(w * 0.5f * sc2 - (j + 1f) * w * sc2 / 5f, 0f) }
                     pth.close()
-                    glossPath(c, -w * 0.5f, -h, w * 0.5f, 0f, if (k == 0) col else Gl.darken(opaque(pal[(world + k) % 4]), 0.7f), al)
+                    glossPath(c, -w * 0.5f, -h, w * 0.5f, 0f, if (k == 0) col else Gl.darken(opaque(pal[(wld + k) % 4]), 0.7f), al)
                 }
                 gloss(c, 1, -w * 0.26f, -h * 0.82f, w * 0.26f, -h * 0.52f, 10f, 0xFFF4F0E8.toInt(), al)
                 val ip = Gl.p(); ip.color = 0xFF14101C.toInt()
@@ -1576,11 +1584,21 @@ class AdvUi(
                 for (k in 0 until 4) line(c, -w * 0.5f + k * w * 0.33f, -h * 0.5f, -w * 0.5f + k * w * 0.33f + sin(time * 2f + k) * 8f, -h * 0.1f, 2f, Gl.alpha(0xFFB0B0C0.toInt(), al))
             }
         }
+    }
+
+    /** Vista previa del jefe de un mundo (para el menú de Aventura): de pie sobre y = gy, con la altura dada. */
+    fun drawBossPreview(c: Canvas, wld: Int, x: Float, gy: Float, boxH: Float, t: Float) {
+        val d = AdvCfg.bosses.getOrNull(wld) ?: return
+        val pal = Worlds.colors[wld.coerceIn(0, Worlds.colors.size - 1)]
+        val saveT = time
+        time = t
+        val k = boxH / d.h * (1f + 0.025f * sin(t * 2.6f))
+        c.save()
+        c.translate(x, gy)
+        c.scale(k, k)
+        drawBossShape(c, wld, d.w, d.h, -1, opaque(pal[wld % 4]), opaque(pal[(wld + 1) % 4]), 255, pal, false)
         c.restore()
-        if (a.bstate == Adv.BS_STUN) for (k in 0 until 3) {
-            val an = time * 6f + k * 2.1f
-            glow(c, x + cos(an) * 18f, gy - d.h - 6f + sin(an) * 5f, 7f, 0xFFFFE070.toInt(), 200)
-        }
+        time = saveT
     }
 
     // ------------------------------------------------------------------ interfaz
