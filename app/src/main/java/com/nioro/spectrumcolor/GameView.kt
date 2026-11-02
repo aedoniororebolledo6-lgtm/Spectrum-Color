@@ -167,6 +167,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     private var level = 1
     private var levelPage = 0
+    private val ADV_STEP = 610f
+    private var advPage = 0
+    private var advOff = 0f
+    private var advVel = 0f
+    private var advDrag = false
     private val hits = ArrayList<Hit>()
     private var pressedId: String? = null
     private var dragSlider: String? = null
@@ -494,7 +499,21 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             id == "ehn" -> if (BuildConfig.DEV) edNewLevel()
             id == "ehp" -> if (BuildConfig.DEV) edPublish(edPendingList())
-            id == "adv" -> scr = Scr.ADV_MENU
+            id == "adv" -> {
+                var first = 0
+                for (w in 0 until AdvCfg.WORLDS) if (advUnlocked(w) && (prefs.advMask shr w) and 1 == 0) { first = w; break }
+                advPage = first
+                advOff = 0f
+                scr = Scr.ADV_MENU
+            }
+            id.startsWith("advsel:") -> {
+                val w = id.substring(7).toIntOrNull() ?: -1
+                if (w in 0 until AdvCfg.WORLDS && w != advPage) {
+                    advOff += (w - advPage) * ADV_STEP
+                    advPage = w
+                    audio.play(Sfx.CLICK)
+                }
+            }
             id.startsWith("advw:") -> {
                 val w = id.substring(5).toIntOrNull() ?: -1
                 if (w in 0 until AdvCfg.WORLDS && advUnlocked(w)) advStart(w)
@@ -653,6 +672,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 skinVel = 0f
                 levelVel = 0f
                 levelDrag = false
+                advDrag = false
+                advVel = 0f
                 lastMoveT = e.eventTime
                 val id = hitAt(x, y)
                 pressedId = id
@@ -702,6 +723,18 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     }
                     if (dragged) edTouchDrag(y)
                     lastY = y
+                } else if (scr == Scr.ADV_MENU) {
+                    val dx = x - downX
+                    if (!advDrag && abs(dx) > 26f && abs(dx) > abs(y - downY)) {
+                        advDrag = true
+                        pressedId = null
+                    }
+                    if (advDrag) {
+                        var o = dx
+                        if ((advPage == 0 && o > 0f) || (advPage == AdvCfg.WORLDS - 1 && o < 0f)) o *= 0.35f
+                        if (dtm > 0.001f) advVel = advVel * 0.55f + ((o - advOff) / dtm) * 0.45f
+                        advOff = o
+                    }
                 } else if (scr == Scr.LEVELS) {
                     val dx = x - downX
                     if (!levelDrag && abs(dx) > 26f && abs(dx) > abs(y - downY)) {
@@ -738,6 +771,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                         }
                     }
                     edDrag = 0
+                } else if (scr == Scr.ADV_MENU && advDrag) {
+                    advDrag = false
+                    val want = if (advOff < -140f || advVel < -900f) 1 else if (advOff > 140f || advVel > 900f) -1 else 0
+                    val np = advPage + want
+                    if (want != 0 && np in 0 until AdvCfg.WORLDS) {
+                        advPage = np
+                        advOff += want * ADV_STEP
+                        audio.play(Sfx.CLICK)
+                    }
                 } else if (scr == Scr.LEVELS && levelDrag) {
                     levelDrag = false
                     val fling = levelVel
@@ -754,6 +796,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             MotionEvent.ACTION_CANCEL -> {
                 levelDrag = false
+                advDrag = false
                 slidePtr = -1
                 pressedId = null
                 dragSlider = null
@@ -815,6 +858,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     /** Inercia y rebote del menú de apariencias y asentamiento de las páginas de niveles. */
     private fun updateScroll(dt: Float) {
+        if (!advDrag && advOff != 0f) {
+            advOff *= exp(-11f * dt)
+            if (abs(advOff) < 0.5f) advOff = 0f
+        }
         if (!levelDrag && levelOff != 0f) {
             levelOff *= exp(-12f * dt)
             if (abs(levelOff) < 0.5f) levelOff = 0f
@@ -2216,26 +2263,231 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     }
 
+    private val clipP = android.graphics.Path()
+
+    private fun mixC(a: Int, b: Int, k: Float): Int {
+        val r = (Color.red(a) * (1f - k) + Color.red(b) * k).toInt()
+        val g = (Color.green(a) * (1f - k) + Color.green(b) * k).toInt()
+        val bl = (Color.blue(a) * (1f - k) + Color.blue(b) * k).toInt()
+        return Color.rgb(r, g, bl)
+    }
+
     private fun drawAdvMenu(c: Canvas) {
-        val pal = cur()
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AVENTURA", top + 130f, 56f)
         val saved = Integer.bitCount(prefs.advMask and ((1 shl AdvCfg.WORLDS) - 1))
-        Gl.text(c, "Los colores huyeron de los mundos. Salva cada uno.", 540f, top + 270f, 34f, Gl.light, Gl.white(210))
-        Gl.text(c, "Se juega en horizontal  ·  Salvados $saved/${AdvCfg.WORLDS}", 540f, top + 325f, 34f, Gl.regular, Gl.white(160))
-        for (i in 0 until AdvCfg.WORLDS) {
-            val col = i % 2
-            val row = i / 2
-            val cx = 540f + (if (col == 0) -250f else 250f)
-            val cy = top + 470f + row * 150f
-            val open = advUnlocked(i)
-            val done = (prefs.advMask shr i) and 1 == 1
-            val wc = Worlds.colors[i.coerceIn(0, Worlds.colors.size - 1)]
-            val label = if (open) (if (done) "✓ ${Worlds.names[i]}" else "${i + 1}. ${Worlds.names[i]}") else "${i + 1}. Bloqueado"
-            button(c, "advw:$i", label, cx, cy, 470f, 120f, if (open) wc[0] else 0, 42f, open)
+        Gl.text(c, "Los colores huyeron de los mundos. Salva cada uno.", 540f, top + 255f, 34f, Gl.light, Gl.white(210))
+        Gl.text(c, "Se juega en horizontal  ·  Salvados $saved/${AdvCfg.WORLDS}", 540f, top + 305f, 34f, Gl.regular, Gl.white(160))
+
+        val cw = 640f
+        val ch = (vh - top - 380f - 250f).coerceIn(760f, 1240f)
+        val cy = top + 380f + ch / 2f
+        // las tarjetas más lejanas se dibujan primero para que la central quede encima
+        val order = (0 until AdvCfg.WORLDS).filter { abs(it - advPage + advOff / ADV_STEP) < 1.9f }.sortedByDescending { abs(it - advPage + advOff / ADV_STEP) }
+        for (i in order) {
+            val d = (i - advPage) * ADV_STEP + advOff
+            val dn = abs(d) / ADV_STEP
+            val sc2 = 1f - 0.15f * min(1f, dn)
+            val al = 1f - 0.5f * min(1f, dn)
+            val cx = 540f + d
+            val centered = i == advPage && abs(advOff) < 6f
+            c.save()
+            c.translate(cx, cy)
+            c.scale(sc2, sc2)
+            if (al < 0.99f) c.saveLayerAlpha(-cw / 2f - 60f, -ch / 2f - 60f, cw / 2f + 60f, ch / 2f + 90f, (255 * al).toInt())
+            drawAdvCard(c, i, cw, ch, cx, cy, sc2, centered)
+            if (al < 0.99f) c.restore()
+            c.restore()
+            if (!centered && dn < 1.4f) hits.add(Hit("advsel:$i", cx - cw / 2f * sc2, cy - ch / 2f * sc2, cx + cw / 2f * sc2, cy + ch / 2f * sc2))
         }
-        Gl.text(c, "Termina un mundo del modo normal para abrir su aventura", 540f, vh - 130f, 32f, Gl.regular, Gl.white(130))
+        val pos = advPage - advOff / ADV_STEP
+        for (i in 0 until AdvCfg.WORLDS) {
+            val x = 540f + (i - (AdvCfg.WORLDS - 1) / 2f) * 38f
+            val near = (1f - abs(i - pos)).coerceIn(0f, 1f)
+            val pp = Gl.p()
+            pp.color = Gl.white((if (advUnlocked(i)) 110 else 50) + (130 * near).toInt())
+            c.drawCircle(x, vh - 190f, 6f + 3f * near, pp)
+        }
+        Gl.text(c, "Termina un mundo del modo normal para abrir su aventura", 540f, vh - 110f, 32f, Gl.regular, Gl.white(130))
+    }
+
+    private fun drawAdvCard(c: Canvas, i: Int, w: Float, h: Float, cx: Float, cy: Float, sc2: Float, centered: Boolean) {
+        val wc = Worlds.colors[i.coerceIn(0, Worlds.colors.size - 1)]
+        val open = advUnlocked(i)
+        val done = (prefs.advMask shr i) and 1 == 1
+        if (centered) Gl.glow(c, 0f, 0f, w * 0.85f, wc[0], 55)
+        Gl.panel(c, -w / 2f, -h / 2f, w / 2f, h / 2f, 60f, 1f, wc[0])
+        val pl = -w / 2f + 26f
+        val pr = w / 2f - 26f
+        val pt = -h / 2f + 26f
+        val pb = pt + h * 0.6f
+        // vista previa del fondo del mundo
+        clipP.reset()
+        Gl.rect.set(pl, pt, pr, pb)
+        clipP.addRoundRect(Gl.rect, 42f, 42f, android.graphics.Path.Direction.CW)
+        c.save()
+        c.clipPath(clipP)
+        drawWorldPreview(c, i, pl, pt, pr, pb)
+        if (!open) {
+            val gp = Gl.p()
+            gp.color = Color.argb(165, 20, 22, 36)
+            c.drawRect(pl, pt, pr, pb, gp)
+            drawLock(c, 0f, (pt + pb) / 2f - 10f, 2.2f, 230)
+        }
+        c.restore()
+        val pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 2.5f
+        pp.color = Gl.white(110)
+        Gl.rect.set(pl, pt, pr, pb)
+        c.drawRoundRect(Gl.rect, 42f, 42f, pp)
+        if (done) {
+            Gl.panel(c, pr - 230f, pt + 20f, pr - 20f, pt + 84f, 32f, 1.1f, 0xFF4DFF8E.toInt())
+            Gl.text(c, "✓ SALVADO", pr - 125f, pt + 62f, 30f, Gl.medium, Gl.white(250), 0.08f)
+        }
+        val ty = pb + 60f
+        Gl.text(c, "MUNDO ${i + 1}", 0f, ty, 30f, Gl.medium, Gl.white(150), 0.3f)
+        Gl.textFit(c, Worlds.names[i.coerceIn(0, Worlds.names.size - 1)], 0f, ty + 82f, 76f, w - 70f, Gl.light, Gl.white(250))
+        val boss = AdvCfg.bosses.getOrNull(i)?.name ?: ""
+        Gl.textFit(c, if (open) "Jefe: $boss" else "Jefe: ???", 0f, ty + 140f, 32f, w - 70f, Gl.regular, Gl.white(170))
+        val by = h / 2f - 92f
+        if (open) {
+            val id = "advw:$i"
+            val pressed = pressedId == id && centered
+            Gl.glow(c, 0f, by, 330f, wc[0], if (pressed) 70 else 45)
+            Gl.panel(c, -230f, by - 50f, 230f, by + 50f, 50f, if (pressed) 1.25f else 1.05f, wc[0])
+            Gl.text(c, if (done) "Rejugar" else "Jugar", 0f, by + 17f, 48f, Gl.medium, Gl.white(250), 0.06f)
+            if (centered) hits.add(Hit(id, cx - 230f * sc2, cy + (by - 50f) * sc2, cx + 230f * sc2, cy + (by + 50f) * sc2))
+        } else {
+            Gl.textFit(c, "Termina el mundo ${i + 1} en el modo normal", 0f, by + 12f, 32f, w - 90f, Gl.regular, Gl.white(165))
+        }
+    }
+
+    /** Vista previa animada del fondo de un mundo de la Aventura: degradado, colinas, decorado propio, suelo, esfera y jefe. */
+    private fun drawWorldPreview(c: Canvas, w: Int, l: Float, t: Float, r: Float, b: Float) {
+        val pal = Worlds.colors[w.coerceIn(0, Worlds.colors.size - 1)]
+        val bg = Worlds.bg[w.coerceIn(0, Worlds.bg.size - 1)]
+        val W = r - l
+        val H = b - t
+        val tm = time
+        val pp = Gl.p()
+        pp.shader = LinearGradient(0f, t, 0f, b, intArrayOf(mixC(bg[0], pal[0], 0.12f), mixC(bg[1], pal[0], 0.22f), mixC(bg[2], pal[1], 0.34f)), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(l, t, r, b, pp)
+        Gl.glow(c, l + W * (0.25f + 0.1f * sin(tm * 0.4f + w)), t + H * 0.28f, W * 0.7f, pal[0], 70)
+        Gl.glow(c, l + W * (0.78f + 0.08f * sin(tm * 0.3f + w * 2f)), t + H * 0.5f, W * 0.6f, pal[1], 55)
+        val gy = b - H * 0.2f
+        // partículas propias del mundo
+        for (k in 0 until 16) {
+            val fx = fxH(k + w * 31)
+            val fy = fxH(k + w * 31 + 500)
+            when (w) {
+                7 -> { val u = (tm * (0.06f + fx * 0.08f) + fy) % 1f; dot(c, l + fx * W + sin(tm * 2f + k) * 8f, gy - u * H * 0.8f, 2.5f + fx * 3f, if (k % 2 == 0) 0xFFFFB040.toInt() else 0xFFFF6A30.toInt(), (230 * (1f - u)).toInt()) }
+                9 -> { val u = (tm * (0.05f + fx * 0.06f) + fy) % 1f; dot(c, l + fx * W + sin(tm + k * 2f) * 14f, t + u * H * 0.8f, 2.5f + fx * 3f, Color.WHITE, 200) }
+                8 -> { val a = (80 + 170 * (0.5f + 0.5f * sin(tm * 1.8f + k * 3f))).toInt(); val fxp = l + fx * W + sin(tm * 0.5f + k) * 30f; val fyp = t + H * 0.25f + fy * H * 0.5f + cos(tm * 0.4f + k) * 20f; Gl.glow(c, fxp, fyp, 22f, 0xFFD8FF70.toInt(), a / 2); dot(c, fxp, fyp, 3f, 0xFFF4FFB0.toInt(), a) }
+                2 -> { val u = (tm * (0.05f + fx * 0.06f) + fy) % 1f; Gl.arc(c, l + fx * W + sin(tm + k) * 10f, gy - u * H * 0.8f, 5f + fx * 9f, 0f, 360f, 1.8f, Gl.white((150 * (1f - u)).toInt())) }
+                else -> { val a = (60 + 190 * (0.5f + 0.5f * sin(tm * (1f + fx * 2f) + k * 2f))).toInt(); dot(c, l + fx * W, t + fy * H * 0.7f, 1.8f + fx * 2.2f, Color.WHITE, a) }
+            }
+        }
+        // colinas lejanas con desplazamiento suave
+        for (layer in 0..1) {
+            val p = fxPath
+            p.reset()
+            p.moveTo(l, b)
+            var x = l
+            while (x <= r + 20f) {
+                val hh = H * (if (layer == 0) 0.2f else 0.12f) * (0.6f + 0.4f * sin((x - l) * (0.012f + layer * 0.007f) + w * 1.7f + layer * 2f + tm * 0.12f * (layer + 1)))
+                p.lineTo(x, gy - hh - H * 0.03f)
+                x += 14f
+            }
+            p.lineTo(r + 20f, b)
+            p.close()
+            val hp = Gl.p()
+            hp.color = Gl.alpha(mixC(bg[2], pal[layer + 1], 0.25f), if (layer == 0) 150 else 210)
+            c.drawPath(p, hp)
+        }
+        // decorado propio de cada mundo (mismo estilo que dentro de la Aventura)
+        when (w % 6) {
+            0 -> for (k in 0..2) { // columnas con arco
+                val x = l + W * (0.18f + 0.3f * k)
+                val hh = H * 0.5f
+                val cp = Gl.p(); cp.color = Gl.alpha(0xFF3A3F58.toInt(), 170)
+                c.drawRect(x - 12f, gy - hh, x + 12f, gy, cp)
+                cp.color = Gl.alpha(0xFF4A506C.toInt(), 190)
+                c.drawRect(x - 18f, gy - hh - 9f, x + 18f, gy - hh, cp)
+                Gl.line(c, x - 5f, gy - hh, x - 5f, gy, 2f, Gl.white(40))
+            }
+            1 -> for (k in 0..6) { // estalactitas
+                val x = l + W * (0.08f + 0.14f * k)
+                val len = H * (0.12f + 0.1f * fxH(k + w))
+                fxPath.reset(); fxPath.moveTo(x - 12f, t); fxPath.lineTo(x + 12f, t); fxPath.lineTo(x, t + len); fxPath.close()
+                val sp = Gl.p(); sp.color = Gl.alpha(Gl.darken(pal[1], 0.5f), 200); c.drawPath(fxPath, sp)
+            }
+            2 -> for (k in 0..3) { // cadenas con luz
+                val x = l + W * (0.15f + 0.23f * k)
+                val len = H * (0.2f + 0.12f * fxH(k + w))
+                var yy = t
+                while (yy < t + len) { Gl.arc(c, x, yy + 6f, 5f, 0f, 360f, 2f, Gl.alpha(0xFFB0B8C8.toInt(), 150)); yy += 11f }
+                Gl.glow(c, x, t + len + 8f, 24f, pal[1], 110)
+            }
+            3 -> for (k in 0..3) { // cristales
+                val x = l + W * (0.12f + 0.26f * k)
+                for (q in 0..2) {
+                    val hh = H * (0.1f + 0.1f * fxH(k * 3 + q + w))
+                    fxPath.reset(); fxPath.moveTo(x + q * 18f - 9f, gy); fxPath.lineTo(x + q * 18f, gy - hh); fxPath.lineTo(x + q * 18f + 9f, gy); fxPath.close()
+                    val sp = Gl.p(); sp.color = Gl.alpha(pal[(q + 1) % 4], 170); c.drawPath(fxPath, sp)
+                }
+                Gl.glow(c, x + 18f, gy - 22f, 44f, pal[2], 60)
+            }
+            4 -> for (k in 0..5) { // lianas
+                val x = l + W * (0.08f + 0.17f * k)
+                val len = H * (0.15f + 0.15f * fxH(k + w))
+                var py0 = t
+                var px0 = x
+                while (py0 < t + len) {
+                    val nx = x + sin((py0 - t) * 0.06f + k + tm * 0.8f) * 8f
+                    Gl.line(c, px0, py0, nx, py0 + 10f, 2.4f, Gl.alpha(0xFF50A060.toInt(), 160))
+                    px0 = nx; py0 += 10f
+                }
+            }
+            else -> for (k in 0..2) { // antorchas
+                val x = l + W * (0.2f + 0.3f * k)
+                val ty = gy - H * 0.38f
+                Gl.line(c, x, ty, x, ty + 36f, 5f, 0xFF605040.toInt())
+                val fl = 1f + 0.25f * sin(tm * 11f + k * 2f)
+                Gl.glow(c, x, ty - 8f, 44f * fl, 0xFFFFA030.toInt(), 150)
+                Gl.glow(c, x, ty - 7f, 15f * fl, 0xFFFFE080.toInt(), 230)
+            }
+        }
+        // suelo con borde luminoso
+        val gp = Gl.p()
+        gp.shader = LinearGradient(0f, gy, 0f, b, intArrayOf(mixC(bg[1], pal[0], 0.1f), mixC(bg[0], Color.BLACK, 0.4f)), null, Shader.TileMode.CLAMP)
+        c.drawRect(l, gy, r, b, gp)
+        Gl.line(c, l, gy + 1.5f, r, gy + 1.5f, 4f, Gl.alpha(pal[1], 230))
+        Gl.line(c, l, gy + 7f, r, gy + 7f, 1.6f, Gl.white(80))
+        var gxx = l + 20f
+        while (gxx < r) { Gl.line(c, gxx, gy + 14f, gxx, b, 1.4f, Gl.white(22)); gxx += 46f }
+        // jefe en sombra al fondo y la esfera protagonista
+        val bx = l + W * 0.76f
+        val bh = H * 0.34f
+        Gl.glow(c, bx, gy - bh * 0.5f, bh * 1.3f, pal[2], 55)
+        Gl.rect.set(bx - bh * 0.55f, gy - bh, bx + bh * 0.55f, gy)
+        val bp = Gl.p(); bp.color = Gl.alpha(Gl.darken(bg[0], 0.4f), 235)
+        c.drawOval(Gl.rect, bp)
+        val eg = 0.6f + 0.4f * sin(tm * 2.2f + w)
+        for (sx in intArrayOf(-1, 1)) {
+            Gl.glow(c, bx + sx * bh * 0.2f, gy - bh * 0.62f, 22f, pal[2], (170 * eg).toInt())
+            dot(c, bx + sx * bh * 0.2f, gy - bh * 0.62f, 5.5f, Color.WHITE, 255)
+        }
+        val ox = l + W * 0.24f
+        val oy = gy - 26f - abs(sin(tm * 3f)) * 8f
+        Gl.glow(c, ox, oy, 60f, pal[0], 130)
+        dot(c, ox, oy, 24f, mixC(Color.WHITE, pal[0], 0.35f), 255)
+        dot(c, ox - 7f, oy - 8f, 8f, Color.WHITE, 200)
+        // viñeta inferior
+        val vp = Gl.p()
+        vp.shader = LinearGradient(0f, t, 0f, b, intArrayOf(Gl.alpha(Color.BLACK, 70), 0, 0, Gl.alpha(Color.BLACK, 60)), floatArrayOf(0f, 0.2f, 0.8f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(l, t, r, b, vp)
     }
 
     private fun drawMpMenu(c: Canvas) {
