@@ -1801,39 +1801,83 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AJUSTES", top + 130f)
-        val y0 = top + 330f
         val dev = BuildConfig.DEV
-        // en pantallas más bajas las filas se juntan un poco para que todo quepa
-        val rs = min(1f, (vh - 120f - y0) / (if (dev) 1350f else 1220f))
-        Gl.panel(c, 60f, y0 - 90f, 1020f, y0 + (if (dev) 1350f else 1220f) * rs, 70f, 0.8f, pal[1])
+        val start = top + 250f
+        // alturas en unidades de diseño; si la pantalla es baja se comprimen las filas
+        val soundH = 20f + 2f * 190f + 112f
+        val gameH = 20f + 4f * 112f
+        val dataH = 20f + (if (dev) 3f else 2f) * 112f
+        val fixed = 3f * 64f + 2f * 28f
+        val avail = vh - 110f - start
+        val k = min(1f, (avail - fixed) / (soundH + gameH + dataH))
+        var y = start
 
-        settingRow(c, "Música", y0)
-        toggle(c, "tmusic", 870f, y0, prefs.musicOn)
-        slider(c, "music", y0 + 95f * rs, prefs.musicVol, prefs.musicOn)
+        fun header(txt: String) {
+            val bar = Gl.p()
+            bar.color = pal[0]
+            Gl.rect.set(66f, y + 14f, 72f, y + 44f)
+            c.drawRoundRect(Gl.rect, 3f, 3f, bar)
+            Gl.text(c, txt, 92f, y + 40f, 30f, Gl.medium, Gl.alpha(pal[0], 235), 0.22f, null, 0, Paint.Align.LEFT)
+            y += 64f
+        }
+        fun sep(yy: Float) {
+            val pp = Gl.p()
+            pp.color = Gl.white(30)
+            Gl.rect.set(104f, yy - 1f, 976f, yy + 1f)
+            c.drawRoundRect(Gl.rect, 1f, 1f, pp)
+        }
+        fun label(txt: String, cy: Float) = Gl.text(c, txt, 104f, cy + 16f, 46f, Gl.regular, Gl.white(240), 0f, null, 0, Paint.Align.LEFT)
+        val bx = 770f
+        val bw = 400f
+        val bh = 88f
 
-        settingRow(c, "Efectos", y0 + 200f * rs)
-        toggle(c, "tsfx", 870f, y0 + 200f * rs, prefs.sfxOn)
-        slider(c, "sfx", y0 + 295f * rs, prefs.sfxVol, prefs.sfxOn)
+        // ---------------- SONIDO ----------------
+        header("SONIDO")
+        val h1 = soundH * k
+        Gl.panel(c, 60f, y, 1020f, y + h1, 56f, 0.8f, pal[1])
+        var ry = y + 10f * k
+        label("Música", ry + 48f * k)
+        toggle(c, "tmusic", 890f, ry + 48f * k, prefs.musicOn)
+        slider(c, "music", ry + 138f * k, prefs.musicVol, prefs.musicOn)
+        ry += 190f * k
+        sep(ry)
+        label("Efectos", ry + 48f * k)
+        toggle(c, "tsfx", 890f, ry + 48f * k, prefs.sfxOn)
+        slider(c, "sfx", ry + 138f * k, prefs.sfxVol, prefs.sfxOn)
+        ry += 190f * k
+        sep(ry)
+        label("Vibración", ry + 56f * k)
+        toggle(c, "thaptic", 890f, ry + 56f * k, prefs.haptics)
+        y += h1 + 28f
 
-        settingRow(c, "Vibración", y0 + 420f * rs)
-        toggle(c, "thaptic", 870f, y0 + 420f * rs, prefs.haptics)
+        // ---------------- JUEGO ----------------
+        header("JUEGO")
+        val h2 = gameH * k
+        Gl.panel(c, 60f, y, 1020f, y + h2, 56f, 0.8f, pal[1])
+        ry = y + 10f * k
+        val rh = 112f * k
+        label("Dificultad", ry + rh / 2f)
+        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", bx, ry + rh / 2f, bw, bh, 0, 42f)
+        ry += rh; sep(ry)
+        label("Jugador", ry + rh / 2f)
+        button(c, "tname", prefs.name, bx, ry + rh / 2f, bw, bh, 0, 40f)
+        ry += rh; sep(ry)
+        label("Tema", ry + rh / 2f)
+        button(c, "ttheme", Themes.names[prefs.theme], bx, ry + rh / 2f, bw, bh, Themes.glow[prefs.theme][0], 40f)
+        ry += rh; sep(ry)
+        label("Idioma", ry + rh / 2f)
+        button(c, "tlang", I18n.langNames[prefs.lang], bx, ry + rh / 2f, bw, bh, 0, 40f)
+        y += h2 + 28f
 
-        settingRow(c, "Dificultad", y0 + 545f * rs)
-        button(c, "teasy", if (prefs.easy) "Fácil" else "Normal", 800f, y0 + 545f * rs, 300f, 100f, 0, 44f)
-
-        settingRow(c, "Jugador", y0 + 665f * rs)
-        button(c, "tname", prefs.name, 760f, y0 + 665f * rs, 380f, 100f, 0, 40f)
-
-        settingRow(c, "Tema", y0 + 785f * rs)
-        button(c, "ttheme", Themes.names[prefs.theme], 760f, y0 + 785f * rs, 380f, 100f, Themes.glow[prefs.theme][0], 40f)
-
-        settingRow(c, "Idioma", y0 + 905f * rs)
-        button(c, "tlang", I18n.langNames[prefs.lang], 760f, y0 + 905f * rs, 380f, 100f, 0, 40f)
-
-        settingRow(c, "Progreso", y0 + 1025f * rs)
+        // ---------------- DATOS ----------------
+        header("DATOS")
+        val h3 = dataH * k
+        Gl.panel(c, 60f, y, 1020f, y + h3, 56f, 0.8f, pal[1])
+        ry = y + 10f * k
+        label("Progreso", ry + rh / 2f)
         val armed = time - resetArmedAt < 3f
-        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", 760f, y0 + 1025f * rs, 380f, 100f, if (armed) 0xFFFF4F6B.toInt() else 0, 36f)
-
+        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", bx, ry + rh / 2f, bw, bh, if (armed) 0xFFFF4F6B.toInt() else 0, 34f)
+        ry += rh; sep(ry)
         val ul = when (updState) {
             1 -> "Buscando…"
             2 -> "Estás al día"
@@ -1841,15 +1885,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             4 -> "Sin conexión"
             else -> "Buscar"
         }
-        settingRow(c, "Actualización", y0 + 1145f * rs)
-        button(c, "update", ul, 760f, y0 + 1145f * rs, 380f, 100f, if (updState == 3) pal[2] else 0, 38f)
-
+        label("Actualización", ry + rh / 2f)
+        button(c, "update", ul, bx, ry + rh / 2f, bw, bh, if (updState == 3) pal[2] else 0, 38f)
         if (dev) {
-            settingRow(c, "Niveles", y0 + 1265f * rs)
-            button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 1265f * rs, 380f, 100f, 0, 40f)
+            ry += rh; sep(ry)
+            label("Niveles", ry + rh / 2f)
+            button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", bx, ry + rh / 2f, bw, bh, 0, 40f)
         }
 
-        Gl.text(c, "Color Flow  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
+        Gl.text(c, "Color Flow  ·  v2", 540f, vh - 60f, 34f, Gl.regular, Gl.white(120))
     }
 
     private fun drawThemes(c: Canvas) {
