@@ -1898,7 +1898,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     c.drawRect(0f, 0f, W, vh, pp)
                 }
             }
-            Themes.CATS -> { // gatitos: huellas que caminan y ojos que parpadean
+            Themes.CATS -> { // gatitos: huellas que caminan
                 for (k in 0 until 12) {
                     val age = ((t * 1.1f - k * 0.55f) % 9.5f + 9.5f) % 9.5f
                     if (age < 6.5f) {
@@ -1911,22 +1911,6 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                         pawFx(c, x, y, 22f * (0.6f + 0.4f * pop), 0xFFFFC8A0.toInt(), a)
                         c.restore()
                     }
-                }
-                val blink = (t % 5f) < 0.16f
-                for ((ex, ey) in arrayOf(floatArrayOf(95f, topI + 560f), floatArrayOf(985f, topI + 700f))) {
-                    val open = if (blink) 0.12f else 1f
-                    for (sx in intArrayOf(-1, 1)) {
-                        val x = ex + sx * 26f
-                        Gl.glow(c, x, ey, 34f, 0xFF9AFF70.toInt(), 80)
-                        Gl.rect.set(x - 11f, ey - 14f * open, x + 11f, ey + 14f * open)
-                        val pp = Gl.p(); pp.color = 0xFFB8FF80.toInt(); c.drawOval(Gl.rect, pp)
-                        Gl.rect.set(x - 3f, ey - 12f * open, x + 3f, ey + 12f * open)
-                        val pq = Gl.p(); pq.color = 0xFF10200C.toInt(); c.drawOval(Gl.rect, pq)
-                    }
-                }
-                for (i in 0 until 7) {
-                    val k = ((t * (36f + fxH(i) * 40f) + fxH(i + 4) * (vh + 100f)) % (vh + 100f)) / (vh + 100f)
-                    heartFx(c, fxH(i + 20) * W + sin(t + i) * 26f, vh + 30f - k * (vh + 60f), 10f + fxH(i + 9) * 8f, 0xFFFF8FB0.toInt(), (130 * (1f - k)).toInt())
                 }
             }
             Themes.DOGS -> { // perritos: huesos flotando y una pelota que rebota
