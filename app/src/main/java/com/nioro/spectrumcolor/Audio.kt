@@ -26,7 +26,7 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     private val ready = HashSet<Int>()
     private var mp: AudioTrack? = null
     private var track = -1
-    private val variant = intArrayOf(3, 1) // la próxima vez suena la siguiente canción
+    private val variant = intArrayOf(java.util.Random().nextInt(4), 1) // menú: al abrir el juego empieza una canción al azar
     private val nTracks = intArrayOf(4, 2)
     private var cur = 0
     private var paused = false
@@ -81,7 +81,8 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
         releasePlayer()
         track = t
         if (t in 0..1) {
-            variant[t] = (variant[t] + 1) % nTracks[t]
+            // menú: canción al azar (distinta de la anterior); partida: se alternan
+            variant[t] = if (t == 0) (variant[t] + 1 + java.util.Random().nextInt(nTracks[t] - 1)) % nTracks[t] else (variant[t] + 1) % nTracks[t]
             cur = variant[t]
         }
         if (prefs.musicOn) startPlayer()

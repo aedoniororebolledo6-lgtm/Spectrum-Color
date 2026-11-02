@@ -3545,8 +3545,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     /** Apariencias animadas 60..78: fenómenos, ciencia y magia (también recortadas a la bola). */
     private fun drawAnimIcon2(c: Canvas, x: Float, y: Float, r: Float, skin: Int, tm: Float) {
-        val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100, 45)
-        val ua = under[skin - 60]
+        val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100, 45, 45)
+        val ua = under.getOrElse(skin - 60) { 0 }
         if (ua > 0) c.drawCircle(x, y, r, pk(Gl.alpha(uSpace, ua)))
         val path = Gl.path
         val pi = Math.PI.toFloat()
