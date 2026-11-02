@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera los efectos y la música de Spectrum Color (WAV mono 16 bit, 22050 Hz).
+"""Genera los efectos y la música de Color Flow (WAV mono 16 bit, 22050 Hz).
 
 Todo se sintetiza aquí, sin samples de terceros. Uso:
     python3 tools/gen_audio.py app/src/main/res/raw

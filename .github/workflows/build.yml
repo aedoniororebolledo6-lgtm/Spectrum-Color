@@ -69,13 +69,16 @@ jobs:
       - name: Preparar APK y código QR
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/normal/release/app-normal-release.apk dist/SpectrumColor.apk
-          cp app/build/outputs/apk/dev/release/app-dev-release.apk dist/SpectrumColorDev.apk
+          cp app/build/outputs/apk/normal/release/app-normal-release.apk dist/ColorFlow.apk
+          cp app/build/outputs/apk/dev/release/app-dev-release.apk dist/ColorFlowDev.apk
+          # copias con el nombre anterior para que las apps ya instaladas puedan actualizarse
+          cp dist/ColorFlow.apk dist/SpectrumColor.apk
+          cp dist/ColorFlowDev.apk dist/SpectrumColorDev.apk
           sudo apt-get update -y
           sudo apt-get install -y qrencode
-          URL="https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColor.apk"
+          URL="https://github.com/${{ github.repository }}/releases/latest/download/ColorFlow.apk"
           qrencode -o dist/qr.png -s 14 -m 3 "$URL"
-          URL_DEV="https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColorDev.apk"
+          URL_DEV="https://github.com/${{ github.repository }}/releases/latest/download/ColorFlowDev.apk"
           qrencode -o dist/qr_dev.png -s 14 -m 3 "$URL_DEV"
           echo "Enlace de descarga: $URL"
 
@@ -85,29 +88,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag -y || true
-          gh release create latest dist/SpectrumColor.apk dist/qr.png dist/SpectrumColorDev.apk dist/qr_dev.png \
+          gh release create latest dist/ColorFlow.apk dist/qr.png dist/ColorFlowDev.apk dist/qr_dev.png dist/SpectrumColor.apk dist/SpectrumColorDev.apk \
             --target "$(git rev-parse HEAD)" \
-            --title "Spectrum Color (última versión)" \
-            --notes "Escanea el QR o abre SpectrumColor.apk desde el celular para instalar. Compilación #${{ github.run_number }}."
+            --title "Color Flow (última versión)" \
+            --notes "Escanea el QR o abre ColorFlow.apk desde el celular para instalar. Compilación #${{ github.run_number }}."
 
       - name: Resumen
         if: github.ref == 'refs/heads/main' || github.event_name == 'issues'
         run: |
           {
-            echo "## Spectrum Color listo"
+            echo "## Color Flow listo"
             echo ""
-            echo "Descarga: https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColor.apk"
+            echo "Descarga: https://github.com/${{ github.repository }}/releases/latest/download/ColorFlow.apk"
             echo ""
             echo "QR: https://github.com/${{ github.repository }}/releases/latest/download/qr.png"
             echo ""
-            echo "Desarrollador: https://github.com/${{ github.repository }}/releases/latest/download/SpectrumColorDev.apk"
+            echo "Desarrollador: https://github.com/${{ github.repository }}/releases/latest/download/ColorFlowDev.apk"
             echo "QR desarrollador: https://github.com/${{ github.repository }}/releases/latest/download/qr_dev.png"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Guardar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: SpectrumColor-apk
+          name: ColorFlow-apk
           path: dist/
 
       - name: Avisar en el issue

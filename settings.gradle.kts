@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SpectrumColor"
+rootProject.name = "ColorFlow"
 include(":app")

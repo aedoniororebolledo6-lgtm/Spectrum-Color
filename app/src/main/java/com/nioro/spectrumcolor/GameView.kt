@@ -40,7 +40,7 @@ interface HostApi {
 }
 
 /**
- * Spectrum Color: pantalla única dibujada con Canvas. Todo se dibuja en "unidades de diseño"
+ * Color Flow: pantalla única dibujada con Canvas. Todo se dibuja en "unidades de diseño"
  * (el ancho de la pantalla siempre vale 1080), igual que el motor de juego (Engine.kt).
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
@@ -324,7 +324,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         try {
             update(dt)
         } catch (e: Exception) {
-            Log.e("SpectrumColor", "update", e)
+            Log.e("ColorFlow", "update", e)
         }
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
@@ -539,7 +539,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 I18n.lang = prefs.lang
             }
             id == "update" -> {
-                if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/" + (if (BuildConfig.DEV) "SpectrumColorDev.apk" else "SpectrumColor.apk"))
+                if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/" + (if (BuildConfig.DEV) "ColorFlowDev.apk" else "ColorFlow.apk"))
                 else checkUpdate()
             }
             id == "back" -> onBack()
@@ -1134,7 +1134,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             if (on) {
                 if (mcLock == null) {
                     val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                    mcLock = wm?.createMulticastLock("spectrum")
+                    mcLock = wm?.createMulticastLock("colorflow")
                     mcLock?.setReferenceCounted(false)
                 }
                 mcLock?.acquire()
@@ -1296,7 +1296,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         hits.clear()
         if (scr == Scr.ADV) {
             if (advUi.active) {
-                try { advUi.draw(canvas, width, height) } catch (e: Exception) { Log.e("SpectrumColor", "adv", e) }
+                try { advUi.draw(canvas, width, height) } catch (e: Exception) { Log.e("ColorFlow", "adv", e) }
             } else canvas.drawColor(Color.BLACK)
             return
         }
@@ -1305,7 +1305,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         try {
             drawAll(canvas)
         } catch (e: Exception) {
-            Log.e("SpectrumColor", "draw", e)
+            Log.e("ColorFlow", "draw", e)
         }
         canvas.restore()
     }
@@ -1605,14 +1605,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val ty = topI + 260f
         Gl.glow(c, 540f, ty + 20f, 470f, pal[1], 60)
         Gl.glow(c, 540f, ty + 60f, 390f, pal[0], 50)
-        Gl.text(c, "SPECTRUM", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
+        Gl.text(c, "COLOR", 540f, ty, 112f, Gl.thin, Gl.white(245), 0.14f)
         val shader = LinearGradient(270f, 0f, 810f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
-        Gl.text(c, "COLOR", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
+        Gl.text(c, "FLOW", 540f, ty + 130f, 124f, Gl.light, Color.WHITE, 0.3f, shader)
 
         if (prefs.theme == Themes.CATS) {
-            // orejas sobre "SPECTRUM" y bigotes a los lados de "COLOR"
-            val tw = Gl.textWidth("SPECTRUM", 112f, Gl.thin, 0.14f)
-            val cw = Gl.textWidth("COLOR", 124f, Gl.light, 0.3f)
+            // orejas sobre "COLOR" y bigotes a los lados de "FLOW"
+            val tw = Gl.textWidth("COLOR", 112f, Gl.thin, 0.14f)
+            val cw = Gl.textWidth("FLOW", 124f, Gl.light, 0.3f)
             val wig = sin(time * 1.5f) * 4f
             for (sgn in intArrayOf(-1, 1)) {
                 val ex = 540f + sgn * (tw / 2f - 10f)
@@ -1626,8 +1626,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Cats.tri(c, 540f - 20f, ty + 188f, 540f + 20f, ty + 188f, 540f, ty + 214f, 0xFFFF7F9A.toInt())
         }
         if (prefs.theme == Themes.DOGS) {
-            // orejas caídas a los lados de "SPECTRUM", y hocico con lengua bajo "COLOR"
-            val tw = Gl.textWidth("SPECTRUM", 112f, Gl.thin, 0.14f)
+            // orejas caídas a los lados de "COLOR", y hocico con lengua bajo "FLOW"
+            val tw = Gl.textWidth("COLOR", 112f, Gl.thin, 0.14f)
             val wig = sin(time * 1.6f) * 5f
             for (sgn in intArrayOf(-1, 1)) {
                 val ex = 540f + sgn * (tw / 2f + 14f)
@@ -1849,7 +1849,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             button(c, "topen", if (prefs.allOpen) "Todos abiertos" else "Abrir todos", 760f, y0 + 1265f * rs, 380f, 100f, 0, 40f)
         }
 
-        Gl.text(c, "Spectrum Color  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
+        Gl.text(c, "Color Flow  ·  v2", 540f, vh - 90f, 34f, Gl.regular, Gl.white(120))
     }
 
     private fun drawThemes(c: Canvas) {
@@ -1904,8 +1904,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val g = Themes.glow[t]
             Gl.glow(c, pl + 60f, pt + 90f, 150f, g[1], 70)
             Gl.glow(c, pr - 40f, pb2 - 70f, 170f, g[0], 70)
-            Gl.text(c, "SPECTRUM", cx, pt + 70f, 34f, Gl.thin, Gl.white(235), 0.12f)
-            Gl.text(c, "COLOR", cx, pt + 112f, 38f, Gl.light, g[0], 0.25f)
+            Gl.text(c, "COLOR", cx, pt + 70f, 34f, Gl.thin, Gl.white(235), 0.12f)
+            Gl.text(c, "FLOW", cx, pt + 112f, 38f, Gl.light, g[0], 0.25f)
             if (t == Themes.HALLOWEEN) {
                 Spooky.web(c, pl, pt, 130f, 140, 0f, 90f, 3)
                 Spooky.web(c, pr, pt, 130f, 140, 90f, 90f, 3)
@@ -2026,7 +2026,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (m != null && m.phase == Match.Phase.CLOSED) {
             if (m.badVersion) {
                 Gl.text(c, "Versiones distintas del juego", 540f, top + 540f, 48f, Gl.medium, Gl.white(220))
-                Gl.text(c, "Actualiza Spectrum Color en los dos celulares", 540f, top + 610f, 32f, Gl.regular, Gl.white(170))
+                Gl.text(c, "Actualiza Color Flow en los dos celulares", 540f, top + 610f, 32f, Gl.regular, Gl.white(170))
             } else {
                 Gl.text(c, "El anfitrión se fue", 540f, top + 560f, 52f, Gl.medium, Gl.white(220))
             }
