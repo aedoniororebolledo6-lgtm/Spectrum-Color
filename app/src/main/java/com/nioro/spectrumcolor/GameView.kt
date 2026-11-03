@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Shader
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -267,7 +268,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var slidePtr = -1
     private var slideRefX = 0f
     private var slideRefBx = Cfg.W / 2f
-    private var resetArmedAt = -10f
+    /** Ventana de "Borrar progreso": 0 cerrada, 1 aviso con la lista, 2 "¿Estás seguro?", 3 borrado. */
+    private var resetDlg = 0
+    private var resetDlgT = 0f
 
     // ---- partida ----
     private var course: Course? = null
@@ -413,7 +416,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.ADV_MENU -> goHome()
             Scr.ADV -> { if (advUi.active) advUi.back() else if (!advLeaving) advExit() }
             Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
-            Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> goHome()
+            Scr.SETTINGS -> if (resetDlg != 0) resetDlg = 0 else goHome()
+            Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME -> goHome()
             Scr.THEMES -> scr = Scr.SETTINGS
             Scr.EDITOR -> edBack()
             Scr.MP_HOST, Scr.MP_JOIN -> {
@@ -523,6 +527,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun activate(id: String) {
+        if (id == "rdl_bg") return // fondo de la ventana de borrar: solo bloquea los toques
         audio.play(Sfx.CLICK)
         when {
             id == "edit" -> if (BuildConfig.DEV) {
@@ -627,14 +632,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "teasy" -> prefs.easy = !prefs.easy
             id == "tname" || id == "mp_name" -> api.prompt(I18n.t("Tu nombre"), prefs.name, I18n.t("Nombre")) { prefs.name = it }
             id == "topen" -> if (BuildConfig.DEV) prefs.allOpen = !prefs.allOpen
-            id == "treset" -> {
-                if (time - resetArmedAt < 3f) {
-                    prefs.resetProgress()
-                    resetArmedAt = -10f
-                } else {
-                    resetArmedAt = time
-                }
+            id == "treset" -> { resetDlg = 1; resetDlgT = time }
+            id == "rdl_yes" -> if (resetDlg == 1) { resetDlg = 2; resetDlgT = time }
+            id == "rdl_ok" -> if (resetDlg == 2) {
+                prefs.resetProgress()
+                resetDlg = 3
+                resetDlgT = time
+                haptic(HapticFeedbackConstants.LONG_PRESS)
             }
+            id == "rdl_no" -> resetDlg = 0
             // partida
             id == "pause" -> ov = Ov.PAUSE
             id == "resume" -> ov = Ov.NONE
@@ -2204,8 +2210,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.panel(c, 60f, y, 1020f, y + h3, 56f, 0.8f, pal[1])
         ry = y + 10f * k
         label("Progreso", ry + rh / 2f)
-        val armed = time - resetArmedAt < 3f
-        button(c, "treset", if (armed) "¿Seguro? Toca otra vez" else "Borrar progreso", bx, ry + rh / 2f, bw, bh, if (armed) 0xFFFF4F6B.toInt() else 0, 34f)
+        button(c, "treset", "Borrar progreso", bx, ry + rh / 2f, bw, bh, 0xFFFF4F6B.toInt(), 34f)
         ry += rh; sep(ry)
         val ul = when (updState) {
             1 -> "Buscando…"
@@ -2224,6 +2229,106 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
 
         Gl.text(c, "Color Flow  ·  v2", 540f, vh - 60f, 34f, Gl.regular, Gl.white(120))
+        if (resetDlg != 0) drawResetDlg(c)
+    }
+
+    /** Triángulo de advertencia amarillo con "!" en el centro. */
+    private fun warnTriangle(c: Canvas, cx: Float, cy: Float, s: Float) {
+        val pth = Path()
+        pth.moveTo(cx, cy - s)
+        pth.lineTo(cx + s * 1.1f, cy + s * 0.8f)
+        pth.lineTo(cx - s * 1.1f, cy + s * 0.8f)
+        pth.close()
+        Gl.glow(c, cx, cy, s * 1.6f, 0xFFFFD23F.toInt(), 70)
+        var pp = Gl.p()
+        pp.color = 0xFFFFD23F.toInt()
+        pp.pathEffect = android.graphics.CornerPathEffect(s * 0.18f)
+        c.drawPath(pth, pp)
+        pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = s * 0.09f
+        pp.strokeJoin = Paint.Join.ROUND
+        pp.pathEffect = android.graphics.CornerPathEffect(s * 0.18f)
+        pp.color = 0xFF5A1A00.toInt()
+        c.drawPath(pth, pp)
+        pp = Gl.p()
+        pp.color = 0xFF3A1200.toInt()
+        val bw = s * 0.11f
+        c.drawRoundRect(RectF(cx - bw, cy - s * 0.5f, cx + bw, cy + s * 0.3f), bw, bw, pp)
+        c.drawCircle(cx, cy + s * 0.52f, bw * 1.1f, pp)
+    }
+
+    /** Ventana roja de "Borrar progreso": aviso con lo que se borra, luego "¿Estás seguro?" y al final la confirmación. */
+    private fun drawResetDlg(c: Canvas) {
+        hits.clear() // lo de detrás no se puede tocar mientras la ventana está abierta
+        hits.add(Hit("rdl_bg", -Cfg.W, -vh, Cfg.W * 2f, vh * 2f))
+        val a = ((time - resetDlgT) / 0.22f).coerceIn(0f, 1f)
+        dim(c, (90 + 90 * a).toInt())
+        val items = ArrayList<String>()
+        items.add("Las estrellas de todos los niveles")
+        items.add("Los niveles desbloqueados")
+        items.add("El récord del modo infinito")
+        items.add("Los mundos salvados de la Aventura")
+        items.add("Las partidas guardadas de la Aventura")
+        items.add("Las apariencias que se abren con estrellas o récord")
+        if (BuildConfig.DEV) items.add("«Abrir todos» (desarrollador)")
+        val ph = when (resetDlg) { 1 -> 520f + items.size * 74f + 330f; 2 -> 900f; else -> 700f }
+        val cy = vh / 2f
+        val t = cy - ph / 2f
+        val b = cy + ph / 2f
+        val fit = min(1f, (vh - 60f) / ph)
+        val z = fit * (0.88f + 0.12f * easeOut(a))
+        c.save()
+        c.scale(z, z, 540f, cy)
+        // ventana roja
+        Gl.glow(c, 540f, cy, ph * 0.62f, 0xFFFF2040.toInt(), 80)
+        val win = RectF(90f, t, 990f, b)
+        var pp = Gl.p()
+        pp.color = Color.argb(110, 0, 0, 0)
+        c.drawRoundRect(RectF(88f, t + 10f, 992f, b + 22f), 70f, 70f, pp)
+        pp = Gl.p()
+        pp.shader = LinearGradient(0f, t, 0f, b, intArrayOf(0xFFD8283E.toInt(), 0xFF8E0C20.toInt(), 0xFF5C0614.toInt()), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+        c.drawRoundRect(win, 70f, 70f, pp)
+        pp = Gl.p()
+        pp.style = Paint.Style.STROKE
+        pp.strokeWidth = 6f
+        pp.color = 0xFFFF8090.toInt()
+        c.drawRoundRect(win, 70f, 70f, pp)
+        // franjas de advertencia arriba
+        pp = Gl.p()
+        pp.color = Color.argb(45, 255, 255, 255)
+        c.drawRoundRect(RectF(120f, t + 26f, 960f, t + 40f), 7f, 7f, pp)
+        val pulse = if (resetDlg == 3) 0f else 0.06f * sin(time * 6f)
+        warnTriangle(c, 540f, t + 160f, 92f * (1f + pulse))
+        when (resetDlg) {
+            1 -> {
+                Gl.text(c, "BORRAR PROGRESO", 540f, t + 330f, 64f, Gl.medium, Gl.white(250), 0.08f)
+                Gl.textFit(c, "Se borrará para siempre:", 540f, t + 410f, 40f, 800f, Gl.regular, Gl.white(225))
+                var y = t + 500f
+                for (s in items) {
+                    pp = Gl.p(); pp.color = 0xFFFFD23F.toInt()
+                    c.drawCircle(170f, y - 13f, 9f, pp)
+                    Gl.textFit(c, s, 200f, y, 38f, 740f, Gl.regular, Gl.white(245), align = Paint.Align.LEFT)
+                    y += 74f
+                }
+                Gl.textFit(c, "Se mantienen tus ajustes, tu nombre y el idioma.", 540f, y + 10f, 32f, 800f, Gl.regular, Gl.white(185))
+                button(c, "rdl_yes", "Sí, borrar", 540f, b - 230f, 680f, 120f, 0xFFFF3050.toInt(), 50f)
+                button(c, "rdl_no", "Cancelar", 540f, b - 90f, 680f, 110f, 0, 46f)
+            }
+            2 -> {
+                Gl.text(c, "¿ESTÁS SEGURO?", 540f, t + 360f, 76f, Gl.medium, Gl.white(250), 0.06f)
+                Gl.textFit(c, "Esto no se puede deshacer.", 540f, t + 450f, 44f, 800f, Gl.regular, Gl.white(230))
+                Gl.textFit(c, "Perderás todo tu progreso.", 540f, t + 510f, 40f, 800f, Gl.regular, Gl.white(200))
+                button(c, "rdl_ok", "Sí, estoy seguro", 540f, b - 230f, 680f, 120f, 0xFFFF3050.toInt(), 48f)
+                button(c, "rdl_no", "No, volver", 540f, b - 90f, 680f, 110f, 0, 46f)
+            }
+            else -> {
+                Gl.text(c, "PROGRESO BORRADO", 540f, t + 350f, 60f, Gl.medium, Gl.white(250), 0.06f)
+                Gl.textFit(c, "Empiezas de cero. ¡Suerte!", 540f, t + 430f, 40f, 800f, Gl.regular, Gl.white(215))
+                button(c, "rdl_no", "Aceptar", 540f, b - 110f, 680f, 120f, 0, 50f)
+            }
+        }
+        c.restore()
     }
 
     private fun drawThemes(c: Canvas) {
