@@ -36,6 +36,19 @@ class MainActivity : Activity(), HostApi {
         setContentView(game)
         hideSystemBars()
         requestHighRefresh()
+        debugIntent(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        debugIntent(intent)
+    }
+
+    /** Versión de desarrollador: `--es ir <atajo>` abre una pantalla directo (para las capturas de ci/smoke.sh). */
+    private fun debugIntent(i: android.content.Intent?) {
+        if (!BuildConfig.DEV) return
+        val cmd = i?.getStringExtra("ir") ?: return
+        game.postDelayed({ game.debugGo(cmd) }, 800) // después del primer dibujo: ya se conoce el tamaño de la pantalla
     }
 
     override fun onResume() {

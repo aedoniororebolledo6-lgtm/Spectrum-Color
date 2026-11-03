@@ -94,6 +94,14 @@ class AdvUi(
 
     fun stop() { adv = null; ptrs.clear() }
 
+    /** Solo para las capturas de prueba: salta la historia y deja la vitrina de enemigos k (o la sala inicial si k < 0). */
+    fun debugPlay(k: Int) {
+        val a = adv ?: return
+        if (k >= 0) a.showcase(k)
+        phase = 1
+        phT = 0f
+    }
+
     /** La app pasa a segundo plano: si se estaba jugando, abre la pausa y suelta los botones. */
     fun pauseGame() {
         ptrs.clear()

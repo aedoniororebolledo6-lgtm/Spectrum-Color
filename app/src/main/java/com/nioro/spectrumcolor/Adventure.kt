@@ -1128,6 +1128,37 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
 
+    /**
+     * Vitrina para las capturas de prueba (versión de desarrollador): una sala plana con tres enemigos a la vista.
+     * k = 0: arquero, slime, bombardero; 1: mago, lobo, calavera; 2: gólem élite, caballero y arquero élite.
+     */
+    fun showcase(k: Int) {
+        clearRoom()
+        cur = 0
+        arenaX = 1e9f
+        bossStarted = false
+        roomLen = max(2400f, viewW + 80f)
+        endX = roomLen
+        rooms[0].len = roomLen
+        ground(0f, roomLen)
+        val g = AdvCfg.GROUND
+        val sets = arrayOf(intArrayOf(E_ARCHER, E_SLIME, E_BOMBER), intArrayOf(E_MAGE, E_WOLF, E_SKULL), intArrayOf(E_GOLEM, E_KNIGHT, E_ARCHER))
+        val set = sets[k.coerceIn(0, sets.size - 1)]
+        for ((i, t) in set.withIndex()) {
+            val x = 260f + i * 170f
+            val e = addEnemy(t, x, g, x - 80f, x + 80f)
+            e.elite = false
+            if (k == 2 && i != 1) makeElite(e)
+            e.face = -1
+            e.cd = 0.4f + i * 0.5f
+        }
+        px = 80f; py = g; pvx = 0f; pvy = 0f; onGround = true; face = 1
+        opx = px; opy = py
+        camX = 0f; ocam = 0f
+        pendRoom = -1
+        enterCd = 5f
+    }
+
     // ------------------------------------------------------------------ rellenos (trampas, torretas y plataformas en los tramos vacíos)
     private val fMin = intArrayOf(150, 240, 130, 230, 150, 270, 120, 240, 100, 260, 120, 240, 150, 130, 170, 230, 170, 240, 140, 270, 230, 180, 200, 200, 170, 160, 120, 230, 180, 190, 270, 270, 270, 270, 230, 120, 210, 230, 230, 270, 250, 270, 230,
         200, 220, 240, 200, 240, 240, 230, 260)

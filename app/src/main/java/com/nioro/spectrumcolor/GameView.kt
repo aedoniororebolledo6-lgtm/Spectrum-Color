@@ -159,6 +159,32 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var advPending = -1
     private var advWait = 0f
     private var advLeaving = false
+    /** Solo pruebas (versión dev): al abrir la Aventura, saltar la historia (-1) o mostrar la vitrina k. -2 = nada. */
+    private var advDebug = -2
+
+    /**
+     * Atajos para las capturas automáticas (solo versión de desarrollador). Se usan desde ci/smoke.sh con
+     * `adb shell am start -S -n com.nioro.spectrumcolor/.MainActivity --es ir <atajo>`:
+     * inicio, ajustes, borrar1, borrar2, apariencias, nivel:N, infinito, mundos, aventura:W, vitrina:W:K.
+     */
+    fun debugGo(cmd: String) {
+        if (!BuildConfig.DEV) return
+        val p = cmd.split(":")
+        val n1 = p.getOrNull(1)?.toIntOrNull() ?: 0
+        val n2 = p.getOrNull(2)?.toIntOrNull() ?: 0
+        when (p[0]) {
+            "inicio" -> goHome()
+            "ajustes" -> scr = Scr.SETTINGS
+            "borrar1" -> { scr = Scr.SETTINGS; resetDlg = 1; resetDlgT = time }
+            "borrar2" -> { scr = Scr.SETTINGS; resetDlg = 2; resetDlgT = time }
+            "apariencias" -> activate("skins")
+            "nivel" -> if (Levels.isPlayable(n1)) startLevel(n1)
+            "infinito" -> startEndless()
+            "mundos" -> scr = Scr.ADV_MENU
+            "aventura" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = -1; advStart(n1) }
+            "vitrina" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = n2; advStart(n1) }
+        }
+    }
 
     private fun advStart(w: Int) {
         advPending = w
@@ -990,7 +1016,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (advLeaving) {
                     if (height > width || advWait > 3f) { advLeaving = false; scr = Scr.ADV_MENU }
                 } else if (advPending >= 0) {
-                    if (width > height) { advUi.prefs = prefs; advUi.start(advPending, width / (height / AdvCfg.H), false); advPending = -1 }
+                    if (width > height) {
+                        advUi.prefs = prefs
+                        advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0)
+                        if (advDebug != -2) advUi.debugPlay(advDebug)
+                        advDebug = -2
+                        advPending = -1
+                    }
                     else if (advWait > 3f) { advPending = -1; advExit() }
                 }
             }
