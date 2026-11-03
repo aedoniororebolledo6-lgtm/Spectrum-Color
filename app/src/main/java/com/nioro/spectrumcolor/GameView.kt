@@ -337,6 +337,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             val sm = sim
             if (sm != null && !sm.dead && !sm.finished) ov = Ov.PAUSE
         }
+        if (scr == Scr.ADV) advUi.pauseGame()
     }
 
     fun destroy() {
@@ -4780,7 +4781,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (!BuildConfig.DEV || !Levels.isPlayable(l)) return
         edLevel = l
         level = l
-        world = Levels.world(l)
+        world = Levels.world(l) % Worlds.colors.size // los niveles extra (121+) reutilizan los colores de los 12 mundos
         edData = Course.level(l).toData()
         edKind = -1
         edIdx = -1
