@@ -47,7 +47,13 @@ def main():
             continue
         b64 = m.group(2)
         try:
-            text = zlib.decompress(base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)), 15, 200000).decode("utf-8")
+            # el tercer argumento de zlib.decompress es el tamaño inicial del búfer, no un límite:
+            # con decompressobj + max_length se corta de verdad a 200 KB
+            d = zlib.decompressobj()
+            data = d.decompress(base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)), 200000)
+            if d.unconsumed_tail:
+                raise ValueError("nivel demasiado grande")
+            text = data.decode("utf-8")
         except Exception as e:  # noqa: BLE001
             print("nivel", n, "no se pudo leer:", e)
             continue

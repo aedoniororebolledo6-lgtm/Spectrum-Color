@@ -133,21 +133,30 @@ class Conn(private val sock: Socket, private val events: ConcurrentLinkedQueue<S
 
     private fun readLoop() {
         try {
-            val input = sock.getInputStream()
+            // con búfer: antes se leía byte a byte directo del socket (una llamada al sistema por byte)
+            val input = java.io.BufferedInputStream(sock.getInputStream(), 4096)
             val buf = ByteArray(NetCfg.MAX_LINE)
             var len = 0
+            var skipping = false
             while (open) {
                 val b = input.read()
                 if (b < 0) break
                 lastRx = System.currentTimeMillis()
                 if (b == '\n'.code) {
-                    val line = String(buf, 0, len, Charsets.UTF_8)
+                    // si la línea era demasiado larga se descarta entera (antes llegaba su final como un mensaje basura)
+                    if (!skipping) {
+                        val line = String(buf, 0, len, Charsets.UTF_8)
+                        if (line.isNotEmpty() && line != "PING") events.offer(line)
+                    }
                     len = 0
-                    if (line.isNotEmpty() && line != "PING") events.offer(line)
+                    skipping = false
+                } else if (skipping) {
+                    // seguir descartando hasta el fin de línea
                 } else if (len < buf.size) {
                     buf[len++] = b.toByte()
                 } else {
-                    len = 0 // línea demasiado larga: se descarta
+                    len = 0
+                    skipping = true
                 }
             }
         } catch (e: Exception) {
@@ -299,7 +308,9 @@ class NetScanner(
             } catch (e: java.net.SocketTimeoutException) {
                 // seguir escuchando
             } catch (e: Exception) {
-                if (running) break
+                // antes un error suelto cortaba la búsqueda de salas aunque siguiera activa
+                if (!running || s.isClosed) break
+                try { Thread.sleep(200) } catch (_: InterruptedException) { break }
             }
         }
         try {

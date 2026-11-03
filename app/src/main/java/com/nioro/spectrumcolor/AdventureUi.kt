@@ -94,6 +94,14 @@ class AdvUi(
 
     fun stop() { adv = null; ptrs.clear() }
 
+    /** La app pasa a segundo plano: si se estaba jugando, abre la pausa y suelta los botones. */
+    fun pauseGame() {
+        ptrs.clear()
+        inp.left = false; inp.right = false; inp.jumpHeld = false
+        inp.clearPressed()
+        if (phase == 1) { phase = 2; phT = 0f }
+    }
+
     /** Botón "atrás": pausa, o sale si ya estaba en pausa. */
     fun back(): Boolean {
         return when (phase) {
