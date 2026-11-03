@@ -33,7 +33,9 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
    `inicio`, `ajustes`, `borrar1`, `borrar2`, `apariencias`, `nivel:N`, `infinito`, `mundos`, `aventura:W`
    (mundo W desde 0, salta la historia) y `vitrina:W:K` (sala con 3 enemigos nuevos, K = 0, 1 o 2, en modo dios).
    Para una pantalla nueva: añade el atajo en `GameView.debugGo` y un paso `go …; shot …` en `ci/smoke.sh`.
-5. **Después de cualquier cambio visual, mira las capturas** antes de dar el trabajo por terminado.
+5. El Android virtual está en **inglés**: las capturas sirven también para ver textos sin traducir
+   (si un texto sale en español, falta su `d(...)` en `I18n.kt`).
+6. **Después de cualquier cambio visual, mira las capturas** antes de dar el trabajo por terminado.
    Si el dueño manda capturas de su teléfono en el chat, úsalas también.
 
 ## Compilar y probar en el contenedor

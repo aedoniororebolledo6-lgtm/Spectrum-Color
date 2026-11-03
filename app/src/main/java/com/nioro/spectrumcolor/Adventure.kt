@@ -1132,7 +1132,11 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
      * Vitrina para las capturas de prueba (versión de desarrollador): una sala plana con tres enemigos a la vista.
      * k = 0: arquero, slime, bombardero; 1: mago, lobo, calavera; 2: gólem élite, caballero y arquero élite.
      */
+    /** En la vitrina no se sale de la sala (un golpe podía empujar al jugador por la puerta). */
+    var noExit = false
+
     fun showcase(k: Int) {
+        noExit = true
         clearRoom()
         cur = 0
         arenaX = 1e9f
@@ -1597,6 +1601,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     private fun lockedMin(): Float {
+        if (noExit) return AdvCfg.PHALF
         val a = lastAmbushActive()
         if (a != null) return a.x0 + AdvCfg.PHALF + 2f
         if (bossStarted) return arenaX + AdvCfg.PHALF + 2f
@@ -1605,6 +1610,7 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     private fun lockedMax(): Float {
+        if (noExit) return roomLen - AdvCfg.PHALF
         val a = lastAmbushActive()
         if (a != null) return a.x1 - AdvCfg.PHALF - 2f
         if (bossStarted) return arenaX + viewW - AdvCfg.PHALF - 2f

@@ -1785,7 +1785,7 @@ class AdvUi(
         Gl.text(c, "${a.hearts}", 36f, 49f, 15f * hs, Gl.medium, Gl.white(235), 0f, null, 0, Paint.Align.LEFT)
         gloss(c, 1, 18f, 58f, 44f, 84f, 7f, if (a.sub == 0) 0xFF505868.toInt() else 0xFF70C8FF.toInt())
         if (a.sub != 0) Gl.text(c, AdvCfg.subLetters.substring(a.sub, a.sub + 1), 31f, 77f, 17f, Gl.medium, Color.BLACK)
-        Gl.text(c, if (a.sub == 0) "Sin arma" else "${AdvCfg.subNames[a.sub]} (${AdvCfg.subCost[a.sub]})", 50f, 76f, 12f, Gl.regular, Gl.white(190), 0f, null, 0, Paint.Align.LEFT)
+        Gl.text(c, if (a.sub == 0) "Sin arma" else "${I18n.t(AdvCfg.subNames[a.sub])} (${AdvCfg.subCost[a.sub]})", 50f, 76f, 12f, Gl.regular, Gl.white(190), 0f, null, 0, Paint.Align.LEFT)
         var ix = 18f
         if (a.boots) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFF40C0F0.toInt()); ix += 28f }
         if (a.whip > 0) { gloss(c, 1, ix, 90f, ix + 22f, 106f, 4f, 0xFFFFD060.toInt()); Gl.text(c, "L${a.whip}", ix + 11f, 103f, 11f, Gl.medium, Color.BLACK); ix += 28f }
