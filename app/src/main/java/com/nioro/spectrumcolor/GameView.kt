@@ -165,7 +165,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     /**
      * Atajos para las capturas automáticas (solo versión de desarrollador). Se usan desde ci/smoke.sh con
      * `adb shell am start -S -n com.nioro.spectrumcolor/.MainActivity --es ir <atajo>`:
-     * inicio, ajustes, borrar1, borrar2, apariencias, nivel:N, infinito, mundos, aventura:W, vitrina:W:K.
+     * inicio, ajustes, borrar1, borrar2, apariencias, esfera:N, estela:N, nivel:N, infinito, mundos, aventura:W, vitrina:W:K.
      */
     fun debugGo(cmd: String) {
         if (!BuildConfig.DEV) return
@@ -178,6 +178,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "borrar1" -> { scr = Scr.SETTINGS; resetDlg = 1; resetDlgT = time }
             "borrar2" -> { scr = Scr.SETTINGS; resetDlg = 2; resetDlgT = time }
             "apariencias" -> activate("skins")
+            // eligen una apariencia o estela (abre todo para poder verla) y muestran su pestaña
+            "esfera" -> if (n1 in Skins.names.indices) { prefs.allOpen = true; prefs.skin = n1; activate("skins") }
+            "estela" -> if (n1 in 0 until Trails.COUNT) {
+                prefs.allOpen = true
+                prefs.trail = n1
+                scr = Scr.SKINS
+                skinTab = 2
+                skinScroll = ((n1 / 4) * 280f - 300f).coerceAtLeast(0f)
+            }
             "nivel" -> if (Levels.isPlayable(n1)) startLevel(n1)
             "infinito" -> startEndless()
             "mundos" -> scr = Scr.ADV_MENU
@@ -3506,8 +3515,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun skinOpen(k: Int): Boolean {
         if (prefs.allOpen) return true
         if (Skins.special(k)) return prefs.endlessBest >= Skins.endNeed(k) || prefs.worldsDone() >= Skins.worldNeed(k)
+        if (Skins.stellar(k)) return prefs.totalStars() >= Skins.need[k] || advSaved() >= Skins.advNeed(k)
         return prefs.totalStars() >= Skins.need[k]
     }
+
+    /** Mundos salvados en la Aventura. */
+    private fun advSaved(): Int = Integer.bitCount(prefs.advMask and ((1 shl AdvCfg.WORLDS) - 1))
 
     private fun effSkin(): Int {
         val k = prefs.skin
@@ -3696,6 +3709,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             in 20..39 -> drawSkinIcon(c, x, y, r, skin, col, tm)
             in Skins.ANIM_FIRST..59 -> drawAnimIcon(c, x, y, r, skin, col, tm)
             in 60..78 -> drawAnimIcon2(c, x, y, r, skin, tm)
+            in Skins.STELLAR_FIRST..98 -> drawAnimIcon3(c, x, y, r, skin, col, tm)
             9 -> {
                 pp = Gl.p()
                 pp.color = Gl.alpha(Gl.darken(col, 0.25f), 110)
@@ -4257,6 +4271,234 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun hf(n: Float): Float = frac(sin(n * 12.9898f) * 43758.547f)
 
+    /** Apariencias animadas 79..98: estelares y mecánicas (dentro de la bola, ya recortada). */
+    private fun drawAnimIcon3(c: Canvas, x: Float, y: Float, r: Float, skin: Int, col: Int, tm: Float) {
+        val under = intArrayOf(200, 190, 170, 200, 210, 200, 180, 210, 120, 60, 90, 90, 90, 40, 140, 60, 0, 170, 100, 0)
+        val ua = under.getOrElse(skin - Skins.STELLAR_FIRST) { 0 }
+        if (ua > 0) c.drawCircle(x, y, r, pk(Gl.alpha(uSpace, ua)))
+        val path = Gl.path
+        val pi = Math.PI.toFloat()
+        when (skin) {
+            79 -> { // constelación: estrellas unidas por líneas que titilan
+                val sx = floatArrayOf(-0.55f, -0.2f, 0.15f, 0.5f, 0.3f, -0.1f, -0.45f)
+                val sy = floatArrayOf(-0.3f, -0.55f, -0.2f, -0.45f, 0.3f, 0.5f, 0.35f)
+                for (i in 0 until 6) Gl.line(c, x + sx[i] * r, y + sy[i] * r, x + sx[i + 1] * r, y + sy[i + 1] * r, r * 0.03f, Gl.white(90))
+                for (i in 0 until 7) {
+                    val a = 0.5f + 0.5f * sin(tm * 4f + i * 1.9f)
+                    dot(c, x + sx[i] * r, y + sy[i] * r, r * (0.06f + 0.05f * a), Color.WHITE, (140 + 115 * a).toInt())
+                    dot(c, x + sx[i] * r, y + sy[i] * r, r * 0.18f * a, col, (60 * a).toInt())
+                }
+            }
+            80 -> { // lluvia de meteoros
+                for (k in 0 until 6) {
+                    val u = frac(tm * 0.7f + k / 6f)
+                    val sx = x + r * (0.9f - 1.9f * u) + (hf(k.toFloat()) - 0.5f) * r * 0.8f
+                    val sy = y - r * (0.9f - 1.9f * u) + (hf(k + 7f) - 0.5f) * r * 0.8f
+                    Gl.line(c, sx, sy, sx + r * 0.35f, sy - r * 0.35f, r * 0.05f, Gl.alpha(0xFFFFB060.toInt(), (220 * (1f - u)).toInt()))
+                    dot(c, sx, sy, r * 0.06f, Color.WHITE, (255 * (1f - u)).toInt())
+                }
+            }
+            81 -> { // anillos de Saturno: planeta y anillo inclinado que gira
+                c.save(); c.rotate(-20f, x, y)
+                val ring = Gl.p(); ring.style = Paint.Style.STROKE; ring.strokeWidth = r * 0.08f
+                ring.color = Gl.alpha(0xFFE8D4A0.toInt(), 200)
+                Gl.rect.set(x - r * 0.85f, y - r * 0.22f, x + r * 0.85f, y + r * 0.22f)
+                c.drawArc(Gl.rect, 180f, 180f, false, ring)
+                dot(c, x, y, r * 0.4f, 0xFFE0B070.toInt(), 255)
+                for (k in -1..1) { Gl.rect.set(x - r * 0.4f, y + k * r * 0.13f - r * 0.03f, x + r * 0.4f, y + k * r * 0.13f + r * 0.03f); c.drawOval(Gl.rect, pk(Gl.alpha(0xFFB07840.toInt(), 120))) }
+                c.drawArc(RectF(x - r * 0.85f, y - r * 0.22f, x + r * 0.85f, y + r * 0.22f), 0f, 180f, false, ring)
+                val ma = tm * 1.6f
+                dot(c, x + cos(ma) * r * 0.85f, y + sin(ma) * r * 0.22f, r * 0.07f, Color.WHITE, 230)
+                c.restore()
+            }
+            82 -> { // polvo estelar: remolino de puntitos
+                for (k in 0 until 26) {
+                    val rr = r * (0.1f + 0.8f * hf(k.toFloat()))
+                    val an = tm * (1.8f - rr / r) + k * 2.4f
+                    dot(c, x + cos(an) * rr, y + sin(an) * rr, r * 0.035f + r * 0.03f * hf(k + 3f), if (k % 3 == 0) col else Color.WHITE, 200)
+                }
+            }
+            83 -> { // quásar: núcleo brillante con dos chorros que giran
+                c.save(); c.rotate(tm * 40f, x, y)
+                for (s in intArrayOf(-1, 1)) {
+                    path.reset(); path.moveTo(x - r * 0.08f, y); path.lineTo(x, y + s * r * 1.1f); path.lineTo(x + r * 0.08f, y); path.close()
+                    c.drawPath(path, pk(Gl.alpha(0xFF9AD8FF.toInt(), 200)))
+                }
+                c.restore()
+                Gl.glow(c, x, y, r * 0.55f, col, 200)
+                dot(c, x, y, r * 0.16f, Color.WHITE, 255)
+            }
+            84 -> { // estrella fugaz que cruza una y otra vez
+                for (k in 0 until 5) dot(c, x + (hf(k + 11f) - 0.5f) * r * 1.6f, y + (hf(k + 21f) - 0.5f) * r * 1.6f, r * 0.03f, Color.WHITE, 160)
+                val u = frac(tm * 0.6f)
+                val sx = x - r + u * r * 2.2f
+                val sy = y + r * 0.4f - u * r * 0.9f
+                for (j in 0 until 8) dot(c, sx - j * r * 0.09f, sy + j * r * 0.035f, r * (0.11f - j * 0.012f), if (j == 0) Color.WHITE else 0xFFFFE080.toInt(), 230 - j * 26)
+            }
+            85 -> { // fases lunares: la sombra recorre la luna
+                dot(c, x, y, r * 0.55f, 0xFFF0EEDC.toInt(), 255)
+                for (k in 0 until 4) dot(c, x + (hf(k + 31f) - 0.5f) * r * 0.6f, y + (hf(k + 41f) - 0.5f) * r * 0.6f, r * 0.07f, 0xFFC8C4B0.toInt(), 200)
+                val ph = frac(tm * 0.12f)
+                dot(c, x + (ph * 2.4f - 1.2f) * r * 0.55f * 1.1f, y, r * 0.56f, uSpace, 235)
+            }
+            86 -> { // Vía Láctea: banda de estrellas que se desliza
+                c.save(); c.rotate(-30f, x, y)
+                Gl.rect.set(x - r, y - r * 0.22f, x + r, y + r * 0.22f)
+                c.drawOval(Gl.rect, pk(Gl.alpha(0xFF8A7CFF.toInt(), 80)))
+                for (k in 0 until 30) {
+                    val px = x - r + frac(hf(k.toFloat()) + tm * 0.05f) * r * 2f
+                    val py = y + (hf(k + 50f) - 0.5f) * r * 0.45f
+                    dot(c, px, py, r * 0.025f + r * 0.03f * hf(k + 9f), Color.WHITE, 120 + (100 * (0.5f + 0.5f * sin(tm * 5f + k))).toInt())
+                }
+                c.restore()
+            }
+            87 -> { // latido: línea de electrocardiograma que avanza
+                path.reset()
+                val ph = frac(tm * 0.5f)
+                var first = true
+                for (i in 0..40) {
+                    val u = i / 40f
+                    val q = frac(u + ph)
+                    val yy = when {
+                        q in 0.40f..0.45f -> -0.15f
+                        q in 0.45f..0.50f -> 0.55f
+                        q in 0.50f..0.56f -> -0.75f
+                        q in 0.56f..0.60f -> 0.2f
+                        else -> 0f
+                    }
+                    val px = x - r + u * r * 2f
+                    if (first) { path.moveTo(px, y + yy * r * 0.6f); first = false } else path.lineTo(px, y + yy * r * 0.6f)
+                }
+                c.drawPath(path, ps(240, r * 0.07f))
+            }
+            88 -> { // oleaje: olas que pasan
+                for (k in 0 until 3) {
+                    path.reset()
+                    val by = y - r * 0.1f + k * r * 0.32f
+                    path.moveTo(x - r, y + r)
+                    for (i in 0..20) {
+                        val px = x - r + i * r * 0.1f
+                        path.lineTo(px, by + sin(px / r * 4f + tm * (2.5f + k * 0.6f) + k) * r * 0.08f)
+                    }
+                    path.lineTo(x + r, y + r); path.close()
+                    c.drawPath(path, pk(Gl.alpha(if (k == 0) 0xFF7FD8FF.toInt() else if (k == 1) 0xFF3FA0E0.toInt() else 0xFF1F60B0.toInt(), 200)))
+                }
+            }
+            89 -> { // reloj con agujas
+                Gl.arc(c, x, y, r * 0.62f, 0f, 360f, r * 0.06f, Gl.white(220))
+                for (k in 0 until 12) { val an = k * pi / 6f; Gl.line(c, x + cos(an) * r * 0.5f, y + sin(an) * r * 0.5f, x + cos(an) * r * 0.58f, y + sin(an) * r * 0.58f, r * 0.04f, Gl.white(200)) }
+                val am = tm * 1.2f - pi / 2f
+                val ah = tm * 0.1f - pi / 2f
+                Gl.line(c, x, y, x + cos(ah) * r * 0.3f, y + sin(ah) * r * 0.3f, r * 0.08f, Gl.white(240))
+                Gl.line(c, x, y, x + cos(am) * r * 0.48f, y + sin(am) * r * 0.48f, r * 0.05f, Gl.white(240))
+                dot(c, x, y, r * 0.07f, Color.WHITE, 255)
+            }
+            90 -> { // brújula con aguja que oscila
+                Gl.arc(c, x, y, r * 0.62f, 0f, 360f, r * 0.05f, Gl.white(200))
+                val an = sin(tm * 1.7f) * 0.5f + sin(tm * 4.1f) * 0.1f
+                c.save(); c.rotate(Math.toDegrees(an.toDouble()).toFloat(), x, y)
+                path.reset(); path.moveTo(x, y - r * 0.5f); path.lineTo(x + r * 0.11f, y); path.lineTo(x - r * 0.11f, y); path.close()
+                c.drawPath(path, pk(0xFFFF4F6B.toInt()))
+                path.reset(); path.moveTo(x, y + r * 0.5f); path.lineTo(x + r * 0.11f, y); path.lineTo(x - r * 0.11f, y); path.close()
+                c.drawPath(path, pw(230))
+                c.restore()
+                dot(c, x, y, r * 0.06f, 0xFF333344.toInt(), 255)
+            }
+            91 -> { // engranajes que giran engranados
+                fun gear(gx: Float, gy: Float, gr: Float, teeth: Int, rot: Float, a: Int) {
+                    path.reset()
+                    for (i in 0 until teeth * 2) {
+                        val an = rot + i * pi / teeth
+                        val rr = if (i % 2 == 0) gr else gr * 0.78f
+                        val px = gx + cos(an) * rr; val py = gy + sin(an) * rr
+                        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                    }
+                    path.close()
+                    c.drawPath(path, pw(a))
+                    dot(c, gx, gy, gr * 0.3f, uSpace, 230)
+                }
+                gear(x - r * 0.25f, y - r * 0.15f, r * 0.42f, 9, tm * 1.2f, 220)
+                gear(x + r * 0.42f, y + r * 0.35f, r * 0.3f, 7, -tm * 1.2f * 9f / 7f + 0.2f, 170)
+            }
+            92 -> { // mirada: un ojo que mira alrededor y parpadea
+                Gl.rect.set(x - r * 0.62f, y - r * 0.36f, x + r * 0.62f, y + r * 0.36f)
+                c.drawOval(Gl.rect, pw(240))
+                val lx = sin(tm * 0.9f) * r * 0.25f
+                val ly = cos(tm * 1.3f) * r * 0.08f
+                dot(c, x + lx, y + ly, r * 0.24f, col, 255)
+                dot(c, x + lx, y + ly, r * 0.11f, 0xFF101020.toInt(), 255)
+                dot(c, x + lx - r * 0.07f, y + ly - r * 0.07f, r * 0.05f, Color.WHITE, 230)
+                val bl = frac(tm * 0.3f)
+                if (bl > 0.95f) { Gl.rect.set(x - r * 0.64f, y - r * 0.38f, x + r * 0.64f, y + r * 0.38f); c.drawOval(Gl.rect, pk(Gl.darken(col, 0.6f))) }
+            }
+            93 -> { // lámpara de lava: burbujas que suben y bajan
+                for (k in 0 until 5) {
+                    val u = 0.5f + 0.5f * sin(tm * (0.6f + k * 0.13f) + k * 1.7f)
+                    val bx = x + (k - 2) * r * 0.25f + sin(tm * 0.7f + k) * r * 0.08f
+                    val by = y + r * 0.6f - u * r * 1.2f
+                    dot(c, bx, by, r * (0.14f + 0.06f * hf(k + 2f)), if (k % 2 == 0) 0xFFFF6A3D.toInt() else 0xFFFFB03D.toInt(), 235)
+                }
+            }
+            94 -> { // corazón latiendo
+                val b = 1f + 0.14f * abs(sin(tm * 4.2f)).let { it * it }
+                c.save(); c.scale(b, b, x, y)
+                path.reset()
+                path.moveTo(x, y + r * 0.45f)
+                path.cubicTo(x - r * 0.75f, y - r * 0.05f, x - r * 0.35f, y - r * 0.62f, x, y - r * 0.25f)
+                path.cubicTo(x + r * 0.35f, y - r * 0.62f, x + r * 0.75f, y - r * 0.05f, x, y + r * 0.45f)
+                path.close()
+                c.drawPath(path, pk(0xFFFF4F7A.toInt()))
+                dot(c, x - r * 0.2f, y - r * 0.22f, r * 0.08f, Color.WHITE, 200)
+                c.restore()
+            }
+            95 -> { // yin yang que gira
+                c.save(); c.rotate(tm * 60f, x, y)
+                dot(c, x, y, r * 0.62f, Color.WHITE, 245)
+                path.reset()
+                Gl.rect.set(x - r * 0.62f, y - r * 0.62f, x + r * 0.62f, y + r * 0.62f)
+                path.arcTo(Gl.rect, 90f, 180f)
+                Gl.rect.set(x - r * 0.31f, y - r * 0.62f, x + r * 0.31f, y)
+                path.arcTo(Gl.rect, 270f, 180f)
+                Gl.rect.set(x - r * 0.31f, y, x + r * 0.31f, y + r * 0.62f)
+                path.arcTo(Gl.rect, 270f, -180f)
+                path.close()
+                c.drawPath(path, pk(0xFF151525.toInt()))
+                dot(c, x, y - r * 0.31f, r * 0.09f, 0xFF151525.toInt(), 255)
+                dot(c, x, y + r * 0.31f, r * 0.09f, Color.WHITE, 255)
+                c.restore()
+            }
+            96 -> { // átomo: tres órbitas con electrones
+                dot(c, x, y, r * 0.14f, col, 255)
+                for (k in 0 until 3) {
+                    c.save(); c.rotate(k * 60f, x, y)
+                    Gl.rect.set(x - r * 0.7f, y - r * 0.22f, x + r * 0.7f, y + r * 0.22f)
+                    c.drawOval(Gl.rect, ps(150, r * 0.04f))
+                    val an = tm * (2.2f + k * 0.4f) + k * 2f
+                    dot(c, x + cos(an) * r * 0.7f, y + sin(an) * r * 0.22f, r * 0.08f, Color.WHITE, 245)
+                    c.restore()
+                }
+            }
+            97 -> { // llamarada solar: sol con lenguas de fuego
+                for (k in 0 until 10) {
+                    val an = k * pi / 5f + tm * 0.3f
+                    val len = r * (0.15f + 0.25f * (0.5f + 0.5f * sin(tm * 3f + k * 1.3f)))
+                    Gl.line(c, x + cos(an) * r * 0.42f, y + sin(an) * r * 0.42f, x + cos(an) * (r * 0.42f + len), y + sin(an) * (r * 0.42f + len), r * 0.12f, Gl.alpha(0xFFFF8A3D.toInt(), 210))
+                }
+                dot(c, x, y, r * 0.45f, 0xFFFFC23D.toInt(), 255)
+                dot(c, x - r * 0.12f, y - r * 0.12f, r * 0.15f, 0xFFFFF0A0.toInt(), 200)
+            }
+            98 -> { // caleidoscopio: pétalos de colores girando
+                for (k in 0 until 8) {
+                    c.save(); c.rotate(k * 45f + tm * 30f, x, y)
+                    path.reset(); path.moveTo(x, y); path.quadTo(x + r * 0.35f, y - r * 0.3f, x, y - r * 0.85f); path.quadTo(x - r * 0.35f, y - r * 0.3f, x, y)
+                    c.drawPath(path, pk(Gl.alpha(Color.HSVToColor(floatArrayOf((k * 45f + tm * 60f) % 360f, 0.7f, 1f)), 190)))
+                    c.restore()
+                }
+                dot(c, x, y, r * 0.12f, Color.WHITE, 240)
+            }
+        }
+    }
+
     /** Apariencias animadas 60..78: fenómenos, ciencia y magia (también recortadas a la bola). */
     private fun drawAnimIcon2(c: Canvas, x: Float, y: Float, r: Float, skin: Int, tm: Float) {
         val under = intArrayOf(90, 0, 120, 0, 200, 90, 120, 140, 200, 150, 150, 160, 150, 160, 150, 90, 100, 45, 45)
@@ -4801,6 +5043,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     drawLock(c, cx, cy + 62f, 0.8f, 235)
                     Gl.text(c, "${Skins.endNeed(i)} pts infinito", cx, cy + 98f, 23f, Gl.regular, Gl.white(220))
                     Gl.text(c, "o ${Skins.worldNeed(i)} mundos", cx, cy + 123f, 23f, Gl.regular, Gl.white(220))
+                } else if (Skins.stellar(i)) {
+                    drawLock(c, cx, cy + 62f, 0.8f, 235)
+                    Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 98f, 23f, Gl.regular, Gl.white(220))
+                    Gl.text(c, "o ${Skins.advNeed(i)} en Aventura", cx, cy + 123f, 23f, Gl.regular, Gl.white(220))
                 } else {
                     drawLock(c, cx, cy + 74f, 0.95f, 235)
                     Gl.text(c, "${Skins.need[i]} estrellas", cx, cy + 118f, 25f, Gl.regular, Gl.white(215))

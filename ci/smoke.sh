@@ -21,6 +21,11 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go borrar1;           shot 03_borrar_aviso "ventana roja: lista de lo que se borra"; alive
   go borrar2;           shot 04_borrar_seguro "¿Estás seguro?"; alive
   go apariencias;       shot 05_apariencias "apariencias"; alive
+  go esfera:81;         shot 05b_esfera_saturno "esfera nueva: Anillos de Saturno"; alive
+  go esfera:91;         shot 05c_esfera_engranajes "esfera nueva: Engranajes"; alive
+  go esfera:98;         shot 05d_esfera_caleidoscopio "esfera nueva: Caleidoscopio"; alive
+  go estela:27;         shot 05e_estela_aurora "estela nueva: Aurora boreal"; alive
+  go estela:40;         shot 05f_estela_supernova "estela nueva: Supernova"; alive
   go nivel:1;           shot 06_nivel1 "nivel 1"; alive
   go infinito;          shot 07_infinito "modo infinito"; alive
   go mundos 6;          shot 08_mundos "carrusel de mundos de la Aventura"; alive
