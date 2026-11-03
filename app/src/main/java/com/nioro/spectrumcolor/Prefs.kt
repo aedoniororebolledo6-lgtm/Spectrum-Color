@@ -176,7 +176,11 @@ class Prefs(context: Context) {
 
     fun resetProgress() {
         for (i in starArr.indices) starArr[i] = 0
-        sp.edit().putString("stars", "").putInt("endlessBest", 0).putBoolean("allOpen", false).apply()
+        val ed = sp.edit().putString("stars", "").putInt("endlessBest", 0).putBoolean("allOpen", false)
+        // también la Aventura: mundos salvados y partidas guardadas de cada mundo
+        ed.remove("advMask")
+        for (k in sp.all.keys) if (k.startsWith("advS")) ed.remove(k)
+        ed.apply()
     }
 
     private fun save() {
