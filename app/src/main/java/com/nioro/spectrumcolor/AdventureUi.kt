@@ -13,6 +13,7 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** Dibujo, controles táctiles y flujo (historia, pausa, victoria) del modo Aventura. Va en horizontal. */
 class AdvUi(
@@ -287,6 +288,9 @@ class AdvUi(
                 Adv.EV_DIE -> { burst(e.x, e.y, pal[0], 28, 210f); corpses.add(Corpse(e.x, e.y, pal[0], 0f)); sfx(Sfx.DIE) }
                 Adv.EV_WIN -> { for (k in 0 until 4) burst(e.x, e.y, pal[k], 22, 210f); sfx(Sfx.WIN) }
                 Adv.EV_STUN -> nums.add(Num(e.x, e.y - 10f, "¡Aturdido!", 1.0f, 0xFFFFE070.toInt()))
+                Adv.EV_BOOM -> { burst(e.x, e.y - 8f, 0xFFFFB040.toInt(), 16, 160f, 260f); burst(e.x, e.y - 6f, Gl.white(200), 6, 90f, 0f); sfx(Sfx.DIE) }
+                Adv.EV_SPLIT -> { burst(e.x, e.y, pal[3], 14, 130f, 260f); sfx(Sfx.TAP) }
+                Adv.EV_TELEPORT -> { for (k in 0 until 12) { val an = k * 0.5236f; parts.add(Pt(e.x, e.y, cos(an) * 70f, sin(an) * 70f, 0xFFC080FF.toInt(), 2.2f, 0.45f, 0.45f, 0f)) }; sfx(Sfx.SWITCH) }
             }
         }
         a.events.clear()
@@ -1128,9 +1132,27 @@ class AdvUi(
     // ------------------------------------------------------------------ enemigos (opacos, tipo acrílico)
     private fun drawEnemy(c: Canvas, e: AdvEnemy, a: Adv, pal: IntArray) {
         val pop = if (e.age < 0.35f) easeBack(e.age / 0.35f) else 1f
-        if (pop != 1f) { c.save(); c.scale(pop, pop, e.x, e.y) }
+        val k = pop * (if (e.elite) 1.15f else 1f)
+        // aura de los élite: brillo dorado que late
+        if (e.elite) glow(c, e.x, e.y - a.eh(e) / 2f, a.eh(e) * 0.9f + 6f * sin(time * 6f), 0xFFFFC040.toInt(), 110)
+        // aviso de ataque (todos los que se preparan): un "!" sobre la cabeza
+        if (telegraphing(e)) {
+            val ty = e.y - a.eh(e) - 12f
+            glow(c, e.x, ty, 10f, 0xFFFF4060.toInt(), 150)
+            Gl.text(c, "!", e.x, ty + 5f, 15f, Gl.medium, 0xFFFFE070.toInt())
+        }
+        val fade = e.type == Adv.E_MAGE && e.vis < 1f
+        if (fade) c.saveLayerAlpha(e.x - 40f, e.y - 70f, e.x + 40f, e.y + 10f, (255 * e.vis).toInt().coerceIn(0, 255))
+        if (k != 1f) { c.save(); c.scale(k, k, e.x, e.y) }
         drawEnemyBody(c, e, a, pal)
-        if (pop != 1f) c.restore()
+        if (k != 1f) c.restore()
+        if (fade) c.restore()
+    }
+
+    private fun telegraphing(e: AdvEnemy): Boolean = when (e.type) {
+        Adv.E_KNIGHT, Adv.E_GOLEM, Adv.E_WOLF, Adv.E_SKULL, Adv.E_ARCHER, Adv.E_CHARGER -> e.st == 1
+        Adv.E_MAGE -> e.st == 3
+        else -> false
     }
 
     private fun drawEnemyBody(c: Canvas, e: AdvEnemy, a: Adv, pal: IntArray) {
@@ -1139,7 +1161,10 @@ class AdvUi(
             Adv.E_WALKER -> pal[1]; Adv.E_BAT -> pal[2]; Adv.E_THROWER -> pal[3]; Adv.E_HOPPER -> pal[0]
             Adv.E_TURRET -> 0xFF7A88A8.toInt(); Adv.E_CHARGER -> pal[2]; Adv.E_MEDUSA -> 0xFF50C878.toInt()
             Adv.E_KNIGHT -> 0xFF8898B8.toInt(); Adv.E_GHOST -> 0xFFE8EEFF.toInt()
-            Adv.E_POP -> 0xFFC0705A.toInt(); Adv.E_CEIL -> 0xFF7A8AA0.toInt(); else -> 0xFF6A3A8A.toInt()
+            Adv.E_POP -> 0xFFC0705A.toInt(); Adv.E_CEIL -> 0xFF7A8AA0.toInt()
+            Adv.E_ARCHER -> 0xFF5E9A5A.toInt(); Adv.E_SLIME -> pal[3]; Adv.E_BOMBER -> 0xFF9A7A5A.toInt()
+            Adv.E_MAGE -> 0xFF7A4AC8.toInt(); Adv.E_WOLF -> 0xFF8A8FA8.toInt(); Adv.E_SKULL -> 0xFFF0EAD8.toInt()
+            Adv.E_GOLEM -> 0xFF8A7A6A.toInt(); else -> 0xFF6A3A8A.toInt()
         }
         val col = if (hit) Color.WHITE else opaque(base0)
         val x = e.x
@@ -1147,7 +1172,7 @@ class AdvUi(
         val f = e.face
         val tt = time * 6f + e.x * 0.05f
         // sombra de contacto
-        if (e.type != Adv.E_BAT && e.type != Adv.E_GHOST && e.type != Adv.E_MEDUSA && e.type != Adv.E_CEIL && e.type != Adv.E_POP) {
+        if (!a.flyer(e.type) && e.type != Adv.E_CEIL && e.type != Adv.E_POP) {
             val sp = Gl.p(); sp.color = Gl.alpha(Color.BLACK, 70)
             rf.set(x - 10f, e.floor - 2f, x + 10f, e.floor + 2f)
             c.drawOval(rf, sp)
@@ -1258,7 +1283,8 @@ class AdvUi(
                 eyes(c, x, y - 8f, f, 2f, 0xFFFFF4C0.toInt())
             }
             Adv.E_KNIGHT -> {
-                val sw = if (abs(a.px - x) < 180f) sin(tt) * 2f else 0f
+                val sw = if (e.st == 1) sin(time * 60f) * 1.2f else if (abs(a.px - x) < 180f) sin(tt) * 2f else 0f
+                if (e.st == 2) for (k in 0 until 3) line(c, x - f * (16f + k * 7f), y - 30f + k * 9f, x - f * (28f + k * 7f), y - 30f + k * 9f, 2f, Gl.white(150 - k * 40))
                 gloss(c, 1, x - 11f + sw, y - 12f, x - 1f + sw, y, 3f, Gl.darken(col, 0.7f))
                 gloss(c, 1, x + 1f - sw, y - 12f, x + 11f - sw, y, 3f, Gl.darken(col, 0.7f))
                 gloss(c, 1, x - 11f, y - 30f, x + 11f, y - 10f, 6f, col)
@@ -1285,6 +1311,108 @@ class AdvUi(
                 c.drawOval(rf.also { it.set(x + 2f, y - 20f, x + 7f, y - 12f) }, ep)
                 if (chase) glow(c, x, y - 14f, 22f, 0xFFA0B0FF.toInt(), 50)
             }
+            Adv.E_ARCHER -> {
+                // cuerpo con capucha y arco que se tensa en el aviso
+                val draw = if (e.st == 1) (e.t / 0.55f).coerceIn(0f, 1f) else 0f
+                gloss(c, 0, x - 8f + 0f, y - 6f, x - 1f, y, 0f, Gl.darken(col, 0.6f))
+                gloss(c, 0, x + 1f, y - 6f, x + 8f, y, 0f, Gl.darken(col, 0.6f))
+                gloss(c, 1, x - 9f, y - 24f, x + 9f, y - 4f, 6f, col)
+                pth.reset(); pth.moveTo(x - 9f, y - 22f); pth.quadTo(x, y - 40f, x + 9f, y - 22f); pth.close()
+                glossPath(c, x - 9f, y - 34f, x + 9f, y - 22f, Gl.darken(col, 0.75f))
+                eyes(c, x + f * 2f, y - 22f, f, 1.8f, 0xFFFFF4C0.toInt())
+                val bx = x + f * 12f
+                val bp = Gl.p(); bp.style = Paint.Style.STROKE; bp.strokeWidth = 2.2f; bp.color = 0xFF8A5A30.toInt()
+                rf.set(bx - 8f, y - 30f, bx + 8f, y - 6f)
+                c.drawArc(rf, if (f > 0) -70f else 110f, 140f, false, bp)
+                line(c, bx - f * (1f + draw * 7f), y - 28f, bx - f * (1f + draw * 7f), y - 8f, 1f, Gl.white(200))
+                if (draw > 0f) line(c, bx - f * draw * 7f, y - 18f, bx + f * 9f, y - 18f, 1.6f, 0xFFE0E0E8.toInt())
+            }
+            Adv.E_SLIME -> {
+                val air = e.y < e.floor - 1f
+                val sy = if (air) 1.18f else 0.82f + 0.08f * sin(tt * 1.4f)
+                val sxs = 1f / sy
+                val w = if (e.small) 7f else 12f
+                val h = if (e.small) 11f else 20f
+                pth.reset()
+                pth.moveTo(x - w * sxs, y)
+                pth.quadTo(x - w * sxs, y - h * sy, x, y - h * sy)
+                pth.quadTo(x + w * sxs, y - h * sy, x + w * sxs, y)
+                pth.close()
+                glossPath(c, x - w * sxs, y - h * sy, x + w * sxs, y, col, 225)
+                eyes(c, x + f * 1.5f, y - h * sy * 0.55f, f, if (e.small) 1.3f else 2f, 0xFFFFF4C0.toInt())
+            }
+            Adv.E_BOMBER -> {
+                // globo con canasta: suelta bombas
+                val bob = sin(time * 4f + e.t) * 1.5f
+                line(c, x - 7f, y - 10f + bob, x - 5f, y - 2f, 1.2f, 0xFF5A4030.toInt())
+                line(c, x + 7f, y - 10f + bob, x + 5f, y - 2f, 1.2f, 0xFF5A4030.toInt())
+                gloss(c, 0, x - 13f, y - 30f + bob, x + 13f, y - 8f + bob, 0f, pal[2])
+                gloss(c, 1, x - 6f, y - 3f, x + 6f, y + 3f, 2f, col)
+                eyes(c, x, y - 19f + bob, f, 2f, 0xFFFFF4C0.toInt())
+                val ready = e.cd <= 0f
+                glow(c, x, y + 5f, 6f, 0xFFFF6040.toInt(), if (ready) 170 else 50)
+            }
+            Adv.E_MAGE -> {
+                // túnica, sombrero puntiagudo y bastón con cristal
+                pth.reset(); pth.moveTo(x - 11f, y); pth.lineTo(x + 11f, y); pth.lineTo(x + 6f, y - 24f); pth.lineTo(x - 6f, y - 24f); pth.close()
+                glossPath(c, x - 11f, y - 24f, x + 11f, y, col)
+                gloss(c, 0, x - 7f, y - 32f, x + 7f, y - 20f, 0f, 0xFFF0D8C0.toInt())
+                pth.reset(); pth.moveTo(x - 10f, y - 29f); pth.lineTo(x + 10f, y - 29f); pth.lineTo(x + f * 6f, y - 46f); pth.close()
+                glossPath(c, x - 10f, y - 46f, x + 10f, y - 29f, Gl.darken(col, 0.7f))
+                eyes(c, x + f * 1.5f, y - 26f, f, 1.6f, 0xFF14101C.toInt())
+                line(c, x + f * 12f, y, x + f * 12f, y - 34f, 2f, 0xFF8A5A30.toInt())
+                val ch = if (e.st == 3) (e.t / 0.5f).coerceIn(0f, 1f) else if (e.st == 4) 0.2f else 0.5f
+                glow(c, x + f * 12f, y - 37f, 7f + 10f * ch, 0xFFC080FF.toInt(), (80 + 150 * ch).toInt())
+                gloss(c, 0, x + f * 12f - 3f, y - 40f, x + f * 12f + 3f, y - 34f, 0f, 0xFFE0C0FF.toInt())
+                if (e.st == 4) for (k in 0 until 3) { val an = time * 4f + k * 2.1f; glow(c, x + cos(an) * 10f, y - 50f + sin(an) * 3f, 3f, 0xFFFFE070.toInt(), 160) }
+            }
+            Adv.E_WOLF -> {
+                val crouch = e.st == 1
+                val leap = e.st == 2
+                val by = if (crouch) 4f else 0f
+                val run = if (e.st == 0) sin(tt * 1.5f) * 3f else 0f
+                for (k in intArrayOf(-1, 1)) {
+                    gloss(c, 0, x + k * 9f - 3f + run * k, y - 7f + by, x + k * 9f + 3f + run * k, y, 0f, Gl.darken(col, 0.6f))
+                }
+                c.save(); if (leap) c.rotate(if (e.vy < 0f) -f * 15f else f * 12f, x, y - 10f)
+                gloss(c, 0, x - 15f, y - 18f + by, x + 12f, y - 5f + by, 0f, col)
+                gloss(c, 0, x + f * 10f - 7f, y - 23f + by, x + f * 10f + 7f, y - 11f + by, 0f, lighten(col, 0.1f))
+                pth.reset(); pth.moveTo(x + f * 6f, y - 21f + by); pth.lineTo(x + f * 8f, y - 29f + by); pth.lineTo(x + f * 11f, y - 21f + by); pth.close()
+                glossPath(c, x - 12f, y - 29f + by, x + 12f, y - 21f + by, Gl.darken(col, 0.8f))
+                line(c, x - f * 14f, y - 14f + by, x - f * 22f, y - 20f + by + sin(time * 10f) * 2f, 3f, Gl.darken(col, 0.8f))
+                eyes(c, x + f * 12f, y - 18f + by, f, 1.5f, if (crouch || leap) 0xFFFF6070.toInt() else 0xFFFFF4C0.toInt())
+                c.restore()
+            }
+            Adv.E_SKULL -> {
+                val sh = if (e.st == 1) sin(time * 70f) * 1.5f else 0f
+                if (e.st == 2) for (k in 1..3) glow(c, x - e.vx * 0.02f * k, y - 9f - e.vy * 0.02f * k, 9f - k * 2f, 0xFF80FFC0.toInt(), 120 - k * 30)
+                gloss(c, 0, x - 10f + sh, y - 18f, x + 10f + sh, y - 2f, 0f, col)
+                gloss(c, 1, x - 6f + sh, y - 5f, x + 6f + sh, y + 1f, 2f, Gl.darken(col, 0.85f))
+                val ep = Gl.p(); ep.color = 0xFF14101C.toInt()
+                c.drawCircle(x - 4f + sh, y - 11f, 3f, ep); c.drawCircle(x + 4f + sh, y - 11f, 3f, ep)
+                val hot = e.st == 1 || e.st == 2
+                glow(c, x - 4f + sh, y - 11f, 4f, if (hot) 0xFFFF4060.toInt() else 0xFF80FFC0.toInt(), 200)
+                glow(c, x + 4f + sh, y - 11f, 4f, if (hot) 0xFFFF4060.toInt() else 0xFF80FFC0.toInt(), 200)
+            }
+            Adv.E_GOLEM -> {
+                // bloques de piedra; levanta los puños antes del golpe y queda agachado después
+                val up = if (e.st == 1) (e.t / 0.75f).coerceIn(0f, 1f) else 0f
+                val down = e.st == 2
+                val step = if (e.st == 0) abs(sin(tt * 0.7f)) * 2f else 0f
+                gloss(c, 1, x - 13f, y - 12f, x - 3f, y, 3f, Gl.darken(col, 0.7f))
+                gloss(c, 1, x + 3f, y - 12f, x + 13f, y, 3f, Gl.darken(col, 0.7f))
+                val by = (if (down) 4f else 0f) + step
+                gloss(c, 1, x - 16f, y - 38f + by, x + 16f, y - 10f + by, 6f, col)
+                gloss(c, 1, x - 9f, y - 48f + by, x + 9f, y - 36f + by, 4f, lighten(col, 0.08f))
+                eyes(c, x + f * 2f, y - 42f + by, f, 1.8f, if (e.st == 1) 0xFFFF6070.toInt() else 0xFFFFD060.toInt())
+                for (k in intArrayOf(-1, 1)) {
+                    val ay = if (down) y - 8f else y - 24f - up * 26f
+                    gloss(c, 1, x + k * 17f - 5f, ay - 8f + by, x + k * 17f + 5f, ay + 6f + by, 3f, Gl.darken(col, 0.85f))
+                }
+                // grietas que brillan
+                line(c, x - 6f, y - 30f + by, x + 2f, y - 22f + by, 1.4f, Gl.alpha(0xFFFFA040.toInt(), 160))
+                line(c, x + 2f, y - 22f + by, x - 2f, y - 16f + by, 1.4f, Gl.alpha(0xFFFFA040.toInt(), 160))
+            }
             else -> { // araña
                 if (e.st == 0 || e.st == 1) line(c, x, 0f, x, y - 6f, 1.2f, Gl.white(130))
                 for (k in intArrayOf(-1, 1)) for (j in 0 until 3) {
@@ -1299,8 +1427,28 @@ class AdvUi(
 
     private fun drawProj(c: Canvas, p: AdvProj, pal: IntArray) {
         if (!p.mine) {
-            glow(c, p.x, p.y, p.r * 2.2f, 0xFFFF4060.toInt(), 80)
-            gloss(c, 0, p.x - p.r, p.y - p.r, p.x + p.r, p.y + p.r, 0f, 0xFFFF6078.toInt())
+            when (p.kind) {
+                7 -> { // flecha orientada según su velocidad
+                    val l = sqrt(p.vx * p.vx + p.vy * p.vy).coerceAtLeast(1f)
+                    val ux = p.vx / l; val uy = p.vy / l
+                    line(c, p.x - ux * 11f, p.y - uy * 11f, p.x + ux * 6f, p.y + uy * 6f, 2f, 0xFFD8C8A8.toInt())
+                    pth.reset(); pth.moveTo(p.x + ux * 9f, p.y + uy * 9f); pth.lineTo(p.x + ux * 3f - uy * 3f, p.y + uy * 3f + ux * 3f); pth.lineTo(p.x + ux * 3f + uy * 3f, p.y + uy * 3f - ux * 3f); pth.close()
+                    val ap = Gl.p(); ap.color = 0xFFE8E8F0.toInt(); c.drawPath(pth, ap)
+                    line(c, p.x - ux * 11f, p.y - uy * 11f, p.x - ux * 8f - uy * 3f, p.y - uy * 8f + ux * 3f, 1.6f, 0xFFFF6070.toInt())
+                }
+                8 -> { // bomba con mecha
+                    gloss(c, 0, p.x - 6f, p.y - 6f, p.x + 6f, p.y + 6f, 0f, 0xFF3A3448.toInt())
+                    glow(c, p.x + 3f, p.y - 7f, 5f + 2f * sin(time * 30f), 0xFFFFB040.toInt(), 220)
+                }
+                9 -> { // orbe mágico
+                    glow(c, p.x, p.y, p.r * 2.6f, 0xFFB060FF.toInt(), 120)
+                    gloss(c, 0, p.x - p.r, p.y - p.r, p.x + p.r, p.y + p.r, 0f, 0xFFD8A8FF.toInt())
+                }
+                else -> {
+                    glow(c, p.x, p.y, p.r * 2.2f, 0xFFFF4060.toInt(), 80)
+                    gloss(c, 0, p.x - p.r, p.y - p.r, p.x + p.r, p.y + p.r, 0f, 0xFFFF6078.toInt())
+                }
+            }
             return
         }
         when (p.kind) {
@@ -1345,6 +1493,12 @@ class AdvUi(
                     px0 = nx; yy += 22f
                 }
                 glow(c, cx, h.y1 - 20f, 40f, if (h.mine) 0xFF80C0FF.toInt() else 0xFFFF6070.toInt(), 110)
+            }
+            5 -> { // explosión de bomba
+                val cx = (h.x0 + h.x1) / 2f
+                val k = (1f - h.life / 0.22f).coerceIn(0f, 1f)
+                glow(c, cx, h.y1 - 12f, 22f + 26f * k, 0xFFFFB040.toInt(), (230 * (1f - k * 0.6f)).toInt())
+                glow(c, cx, h.y1 - 12f, 12f + 14f * k, Color.WHITE, (200 * (1f - k)).toInt())
             }
             4 -> {
                 pth.reset(); pth.moveTo(h.x0, h.y1); pth.lineTo((h.x0 + h.x1) / 2f, h.y0); pth.lineTo(h.x1, h.y1); pth.close()
