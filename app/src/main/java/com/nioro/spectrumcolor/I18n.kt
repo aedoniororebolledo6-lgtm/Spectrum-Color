@@ -56,6 +56,7 @@ object I18n {
         d("Estás al día", "Up to date", "Актуально")
         d("Descargar nueva", "Download new", "Скачать новую")
         d("Sin conexión", "No connection", "Нет связи")
+        d("Reintentar", "Retry", "Повторить")
         d("Buscar", "Check", "Проверить")
         d("Color Flow  ·  v2", "Color Flow  ·  v2", "Color Flow  ·  v2")
         d("TEMAS", "THEMES", "ТЕМЫ")

@@ -65,7 +65,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val audio = Audio(context, prefs)
     private val rnd = Random(System.nanoTime())
     private val handler = Handler(Looper.getMainLooper())
-    // ---- actualización (0 = sin comprobar, 1 = buscando, 2 = al día, 3 = hay versión nueva, 4 = sin conexión) ----
+    // ---- actualización (0 = sin comprobar, 1 = buscando, 2 = al día, 3 = hay versión nueva, 4 = sin conexión, 5 = GitHub no respondió: reintentar) ----
     @Volatile private var updState = 0
     @Volatile private var updNew = 0
 
@@ -76,28 +76,65 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         0
     }
 
+    // Descarga un texto por HTTPS. Lanza IOException con el código HTTP si el servidor responde con error.
+    private fun fetchText(url: String, json: Boolean): String {
+        val cn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        try {
+            cn.connectTimeout = 10000
+            cn.readTimeout = 10000
+            cn.instanceFollowRedirects = true
+            cn.setRequestProperty("User-Agent", "ColorFlow-Android")
+            cn.setRequestProperty("Cache-Control", "no-cache")
+            if (json) cn.setRequestProperty("Accept", "application/vnd.github+json")
+            val code = cn.responseCode
+            if (code !in 200..299) throw java.io.IOException("HTTP $code")
+            return cn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            cn.disconnect()
+        }
+    }
+
+    // Sin red de verdad: no hay DNS, ruta o la conexión se corta por tiempo.
+    private fun isOffline(e: Throwable): Boolean =
+        e is java.net.UnknownHostException || e is java.net.ConnectException ||
+            e is java.net.NoRouteToHostException || e is java.net.SocketTimeoutException
+
     private fun checkUpdate() {
         if (updState == 1) return
         updState = 1
         Thread {
-            try {
-                val u = java.net.URL("https://api.github.com/repos/aedoniororebolledo6-lgtm/Spectrum-Color/releases/tags/latest")
-                val cn = u.openConnection() as java.net.HttpURLConnection
-                cn.connectTimeout = 8000
-                cn.readTimeout = 8000
-                cn.setRequestProperty("Accept", "application/vnd.github+json")
-                val txt = cn.inputStream.bufferedReader().use { it.readText() }
-                cn.disconnect()
-                val m = Regex("Compilaci.{1,8}#(\\d+)").find(txt)
-                val n = m?.groupValues?.get(1)?.toIntOrNull()
-                if (n == null) {
-                    updState = 4
-                } else {
-                    updNew = n
-                    updState = if (n > installedBuild()) 3 else 2
+            val repo = "aedoniororebolledo6-lgtm/Spectrum-Color"
+            // Primero la API; si GitHub la limita (403) o falla, se prueba la página pública de la versión.
+            val sources = listOf(
+                "https://api.github.com/repos/$repo/releases/tags/latest" to true,
+                "https://github.com/$repo/releases/tag/latest" to false
+            )
+            var offline = false
+            var found: Int? = null
+            loop@ for (attempt in 0 until 2) {
+                for ((url, json) in sources) {
+                    try {
+                        val txt = fetchText(url, json)
+                        val n = Regex("Compilaci.{1,8}#(\\d+)").find(txt)?.groupValues?.get(1)?.toIntOrNull()
+                        if (n != null) {
+                            found = n
+                            break@loop
+                        }
+                    } catch (e: Exception) {
+                        if (isOffline(e)) offline = true
+                    }
                 }
-            } catch (e: Exception) {
-                updState = 4
+                if (attempt == 0) {
+                    try { Thread.sleep(1500) } catch (_: InterruptedException) {}
+                }
+            }
+            val n = found
+            if (n != null) {
+                updNew = n
+                updState = if (n > installedBuild()) 3 else 2
+            } else {
+                // 4 = sin red de verdad; 5 = hay red pero GitHub no respondió bien
+                updState = if (offline) 4 else 5
             }
         }.start()
     }
@@ -2174,6 +2211,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             2 -> "Estás al día"
             3 -> "Descargar nueva"
             4 -> "Sin conexión"
+            5 -> "Reintentar"
             else -> "Buscar"
         }
         label("Actualización", ry + rh / 2f)
