@@ -20,19 +20,30 @@ object Skins {
         "Materia Oscura", "Agujero de Gusano", "Ecos del Big Bang", "Bioluminiscencia", "ADN Giratorio",
         "Telaraña Estelar", "Runas Antiguas", "Alquimia", "Gema del Tiempo",
         // animada: mascota
-        "Hámster", "Stickman"
+        "Hámster", "Stickman",
+        // animadas: estelares y mecánicas (79..98)
+        "Constelación", "Lluvia de meteoros", "Anillos de Saturno", "Polvo estelar", "Quásar", "Estrella fugaz",
+        "Fases lunares", "Vía Láctea", "Latido", "Oleaje", "Reloj", "Brújula", "Engranajes", "Mirada",
+        "Lámpara de lava", "Corazón latiendo", "Yin yang", "Átomo", "Llamarada solar", "Caleidoscopio"
     )
 
     val need = intArrayOf(
         0, 0, 4, 8, 12, 16, 20, 25, 30, 36, 42, 48, 55, 62, 70, 78, 86, 95, 104, 114,
         124, 135, 146, 158, 170, 183, 196, 210, 224, 238, 252, 266, 280, 294, 308, 322, 334, 344, 352, 358,
         10, 28, 46, 64, 82, 100, 118, 136, 154, 172, 190, 208, 226, 244, 262, 280, 298, 316, 334, 352,
-        14, 33, 52, 71, 90, 109, 128, 147, 166, 185, 204, 223, 242, 261, 280, 299, 318, 337, 356
+        14, 33, 52, 71, 90, 109, 128, 147, 166, 185, 204, 223, 242, 261, 280, 299, 318, 337, 356,
+        // 79..98: estrellas, o bien mundos salvados en la Aventura (ver advNeed)
+        24, 40, 56, 72, 88, 104, 120, 136, 152, 168, 184, 200, 216, 232, 248, 264, 280, 296, 312, 330
     )
 
     /** Las apariencias 60..78 no usan estrellas: se abren con récord del modo infinito O con mundos completados. */
     const val SPECIAL_FIRST = 60
-    fun special(k: Int): Boolean = k >= SPECIAL_FIRST
+    fun special(k: Int): Boolean = k in SPECIAL_FIRST until STELLAR_FIRST
+
+    /** Las apariencias 79..98 se abren con estrellas O con mundos salvados en la Aventura. */
+    const val STELLAR_FIRST = 79
+    fun stellar(k: Int): Boolean = k >= STELLAR_FIRST
+    fun advNeed(k: Int): Int = 1 + ((k - STELLAR_FIRST) * 11) / 19
     /** El hámster (77) es más fácil de conseguir: 60 puntos en el infinito o 3 mundos. */
     fun endNeed(k: Int): Int = if (k == 78) 80 else if (k == 77) 60 else 20 + (k - SPECIAL_FIRST) * 10
     fun worldNeed(k: Int): Int = if (k == 78) 4 else if (k == 77) 3 else 1 + ((k - SPECIAL_FIRST) * 11) / 16
