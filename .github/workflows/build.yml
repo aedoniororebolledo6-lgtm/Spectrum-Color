@@ -2,7 +2,10 @@ name: Compilar APK
 
 on:
   push:
-    branches: ["**"]
+    # solo main publica; las ramas de trabajo se verifican con check.yml ("Verificar rama")
+    branches: ["main"]
+    # la documentación y las herramientas no cambian la app: no publicar una "actualización" vacía
+    paths-ignore: ["**.md", "tools/**", "ci/**"]
   issues:
     types: [opened]
   workflow_dispatch:
@@ -59,12 +62,29 @@ jobs:
           gradle-version: "8.9"
 
       - name: Compilar APK firmado
+        id: gradle
         run: |
           set -o pipefail
           gradle :app:assembleNormalRelease :app:assembleDevRelease --no-daemon --stacktrace 2>&1 | tee build.log || {
             grep -a -A5 -E "^e: |What went wrong" build.log | grep -av "^--" | head -16 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
             exit 1
           }
+
+      - name: Publicar errores de compilación
+        if: failure() && steps.gradle.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grep -a -E "^e: |error:|What went wrong|FAILED|Execution failed" -A4 build.log | head -c 100000 > err.txt || true
+          [ -s err.txt ] || tail -c 20000 build.log > err.txt
+          gh release delete build-error --yes --cleanup-tag || true
+          gh release create build-error --title "Error de compilación" --notes-file err.txt --prerelease
+
+      - name: Limpiar aviso de error anterior
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete build-error --yes --cleanup-tag || true
 
       - name: Preparar APK y código QR
         run: |
@@ -124,3 +144,41 @@ jobs:
             gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "No se pudieron publicar los niveles. Revisa la ejecución #${{ github.run_number }}."
           fi
           gh issue close ${{ github.event.issue.number }} --repo ${{ github.repository }}
+
+  # "Ojos": abre la versión de desarrollador en un Android virtual, recorre las pantallas con atajos
+  # y publica capturas + report.txt en el release "diagnostico" (ver tools/capturas.sh).
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ColorFlow-apk
+
+      - name: Activar KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Probar la app en un Android virtual
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          ram-size: 4096M
+          heap-size: 512M
+          script: bash ci/smoke.sh
+
+      - name: Publicar informe de la prueba
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ci/publicar_diagnostico.sh
