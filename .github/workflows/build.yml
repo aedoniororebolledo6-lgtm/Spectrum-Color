@@ -5,7 +5,7 @@ on:
     # solo main publica; las ramas de trabajo se verifican con check.yml ("Verificar rama")
     branches: ["main"]
     # la documentación y las herramientas no cambian la app: no publicar una "actualización" vacía
-    paths-ignore: ["**.md", "tools/**", "ci/**"]
+    paths-ignore: ["**.md", "tools/**", "ci/**", "docs/**"]
   issues:
     types: [opened]
   workflow_dispatch:
@@ -54,12 +54,12 @@ jobs:
       - name: Instalar Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platforms;android-34 build-tools;34.0.0"
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.14.3"
 
       - name: Compilar APK firmado
         id: gradle

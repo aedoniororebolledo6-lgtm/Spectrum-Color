@@ -17,7 +17,7 @@ SRC=app/src/main/java/com/nioro/spectrumcolor
 # R y BuildConfig de relleno con los recursos que usa el código
 {
   echo "package com.nioro.spectrumcolor"
-  echo "object BuildConfig { const val DEV = true }"
+  echo "object BuildConfig { const val DEV = true; const val STORE = false }"
   echo "object R { object raw {"
   i=1; for f in app/src/main/res/raw/*; do n=$(basename "$f"); echo "  const val ${n%.*} = $i"; i=$((i+1)); done
   echo "} }"

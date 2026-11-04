@@ -642,7 +642,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 prefs.lang = (prefs.lang + 1) % 3
                 I18n.lang = prefs.lang
             }
-            id == "update" -> {
+            id == "update" && !BuildConfig.STORE -> {
                 if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/" + (if (BuildConfig.DEV) "ColorFlowDev.apk" else "ColorFlow.apk"))
                 else checkUpdate()
             }
@@ -2194,7 +2194,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         // alturas en unidades de diseño; si la pantalla es baja se comprimen las filas
         val soundH = 20f + 2f * 190f + 112f
         val gameH = 20f + 4f * 112f
-        val dataH = 20f + (if (dev) 3f else 2f) * 112f
+        val dataH = 20f + (1f + (if (BuildConfig.STORE) 0f else 1f) + (if (dev) 1f else 0f)) * 112f
         val fixed = 3f * 64f + 2f * 28f
         val avail = vh - 110f - start
         val k = min(1f, (avail - fixed) / (soundH + gameH + dataH))
@@ -2264,6 +2264,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         ry = y + 10f * k
         label("Progreso", ry + rh / 2f)
         button(c, "treset", "Borrar progreso", bx, ry + rh / 2f, bw, bh, 0xFFFF4F6B.toInt(), 34f)
+        // la versión de Google Play la actualiza la tienda: sin botón propio (las reglas de Play lo prohíben)
+        if (!BuildConfig.STORE) {
         ry += rh; sep(ry)
         val ul = when (updState) {
             1 -> "Buscando…"
@@ -2275,6 +2277,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
         label("Actualización", ry + rh / 2f)
         button(c, "update", ul, bx, ry + rh / 2f, bw, bh, if (updState == 3) pal[2] else 0, 38f)
+        }
         if (dev) {
             ry += rh; sep(ry)
             label("Niveles", ry + rh / 2f)
