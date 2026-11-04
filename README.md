@@ -46,3 +46,21 @@ y `tools/run_adv_tests.sh god 640 rooms` (todas las salas se pueden recorrer).
 
 La IA de los enemigos (`AdvAi.kt`) adapta ideas de [libgdx/gdx-ai](https://github.com/libgdx/gdx-ai) (Apache 2.0):
 comportamientos de dirección (Seek, Arrive, Pursue, Flee, Wander) y árboles de comportamiento.
+
+|Obstáculos de catálogo (juego principal)|
+
+- **200 obstáculos nuevos** (`Kit.kt`), armados con piezas de vidrio: aros con hueco, abanicos, engranajes, estrellas,
+  molinos, satélites, órbitas dobles, planetas, cintas cruzadas, escaleras, aros gemelos, ochos, joyas, aros que se
+  balancean o laten, polígonos vivos, elipses, hélices, rombos y coronas (20 familias × 10 variantes).
+- Se estrenan de a dos por nivel, del nivel 11 (mundo 2) al 120; los más nuevos de cada mundo salen más seguido.
+- Cada diseño pasa una búsqueda automática que demuestra que se puede cruzar (`tools/run_tests.sh` → modo `kits`).
+- En el **editor de niveles** (versión de desarrollador): tipo "Catálogo", fila "Diseño" y una **galería** con las
+  200 miniaturas animadas (Menú → Catálogo de obstáculos) para elegir o insertar con un toque.
+
+|Taller de la Aventura (estilo Mario Maker)|
+
+- Menú de la Aventura → **Taller**: pinta tu propia sala con el dedo sobre una cuadrícula.
+- Pestañas: **Terreno** (suelo, bloques, rompibles, plataformas, frágiles, pinchos, resortes, plataformas móviles),
+  **Objetos** (inicio, meta, velas, premios, corazón, carne, fuego, péndulo, roca) y **Enemigos** (los 19).
+- **Probar ▶** para jugarla (al morir vuelves al inicio; la pausa o la meta te devuelven al editor),
+  3 ranuras de guardado, tema de cualquier mundo, enemigos élite y sala más ancha o más angosta.
