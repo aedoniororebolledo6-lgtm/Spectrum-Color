@@ -3478,36 +3478,70 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun drawSwitcher(c: Canvas, s: Sw, cr: Course, pal: IntArray) =
         drawSwitcherN(c, s, if (cr.isLevel) Levels.colors(cr.level) else 4, pal)
 
+    /**
+     * Cambiador de color: esfera de vidrio con pétalos de colores que giran en remolino, una gema central del color
+     * al que te cambia (con un halo que late) y chispas en órbita.
+     */
     private fun drawSwitcherN(c: Canvas, s: Sw, n: Int, pal: IntArray) {
         val x = Cfg.W / 2f
+        val y = s.y
         val r = Cfg.SW_R
-        Gl.glow(c, x, s.y, r * 2.8f, Color.WHITE, 45)
-        Gl.rect.set(x - r, s.y - r, x + r, s.y + r)
-        val rot = time * 90f
-        val span = 360f / n
-        for (i in 0 until n) {
-            val pp = Gl.p()
-            pp.color = Gl.alpha(pal[i % 4], 235)
-            c.drawArc(Gl.rect, rot + i * span, span, true, pp)
-        }
+        val target = pal[s.toColor % 4]
+        val beat = 0.5f + 0.5f * sin(time * 5f)
+        Gl.glow(c, x, y, r * 2.9f, Color.WHITE, 40)
+        Gl.glow(c, x, y, r * (2.0f + 0.5f * beat), target, (60 + 50 * beat).toInt())
+        // cuerpo oscuro de la esfera
         var pp = Gl.p()
-        pp.color = Gl.alpha(pal[s.toColor % 4], 255)
-        c.drawCircle(x, s.y, r * 0.42f, pp)
+        pp.color = Color.argb(150, 8, 10, 26)
+        c.drawCircle(x, y, r, pp)
+        // pétalos curvos en remolino
+        c.save()
+        ballClip.reset()
+        ballClip.addCircle(x, y, r - 1f, Path.Direction.CW)
+        c.clipPath(ballClip)
+        val rot = time * 110f
+        val k = n * 2
+        val path = Gl.path
+        for (i in 0 until k) {
+            val a0 = Math.toRadians((rot + i * 360f / k).toDouble()).toFloat()
+            val a1 = a0 + 6.2832f / k
+            val am = (a0 + a1) / 2f + 0.35f
+            path.reset()
+            path.moveTo(x, y)
+            path.quadTo(x + cos(am - 0.5f) * r * 0.9f, y + sin(am - 0.5f) * r * 0.9f, x + cos(a0) * r * 1.1f, y + sin(a0) * r * 1.1f)
+            path.lineTo(x + cos(a1) * r * 1.1f, y + sin(a1) * r * 1.1f)
+            path.quadTo(x + cos(am + 0.2f) * r * 0.55f, y + sin(am + 0.2f) * r * 0.55f, x, y)
+            path.close()
+            pp = Gl.p()
+            pp.color = Gl.alpha(pal[i % n % 4], 225)
+            c.drawPath(path, pp)
+        }
+        c.restore()
+        // gema central del color nuevo
+        val g = r * (0.42f + 0.04f * beat)
+        path.reset()
+        path.moveTo(x, y - g); path.lineTo(x + g * 0.85f, y); path.lineTo(x, y + g); path.lineTo(x - g * 0.85f, y); path.close()
+        Gl.glow(c, x, y, g * 1.8f, target, 150)
+        pp = Gl.p(); pp.color = target; c.drawPath(path, pp)
+        pp = Gl.p(); pp.style = Paint.Style.STROKE; pp.strokeWidth = 2.4f; pp.strokeJoin = Paint.Join.ROUND; pp.color = Gl.white(220); c.drawPath(path, pp)
+        path.reset()
+        path.moveTo(x, y - g * 0.8f); path.lineTo(x + g * 0.35f, y - g * 0.1f); path.lineTo(x - g * 0.2f, y - g * 0.15f); path.close()
+        pp = Gl.p(); pp.color = Gl.white(170); c.drawPath(path, pp)
+        // brillo de vidrio y borde
         pp = Gl.p()
-        pp.style = Paint.Style.STROKE
-        pp.strokeWidth = 2.6f
-        pp.color = Gl.white(190)
-        c.drawCircle(x, s.y, r * 0.42f, pp)
-        pp = Gl.p()
-        pp.shader = android.graphics.RadialGradient(
-            x - r * 0.3f, s.y - r * 0.35f, r * 1.2f, Gl.white(130), Gl.white(0), Shader.TileMode.CLAMP
-        )
-        c.drawCircle(x, s.y, r, pp)
-        pp = Gl.p()
-        pp.style = Paint.Style.STROKE
-        pp.strokeWidth = 2.6f
-        pp.color = Gl.white(170)
-        c.drawCircle(x, s.y, r, pp)
+        pp.shader = android.graphics.RadialGradient(x - r * 0.3f, y - r * 0.35f, r * 1.2f, Gl.white(140), Gl.white(0), Shader.TileMode.CLAMP)
+        c.drawCircle(x, y, r, pp)
+        pp = Gl.p(); pp.style = Paint.Style.STROKE; pp.strokeWidth = 2.6f; pp.color = Gl.white(180)
+        c.drawCircle(x, y, r, pp)
+        Gl.arc(c, x, y, r * 0.78f, 200f, 60f, 2.6f, Gl.white(150))
+        // chispas en órbita
+        for (j in 0 until 3) {
+            val an = time * 2.2f + j * 2.094f
+            val sx = x + cos(an) * r * 1.5f
+            val sy = y + sin(an) * r * 1.5f
+            Gl.glow(c, sx, sy, 9f, pal[j % n % 4], 160)
+            pp = Gl.p(); pp.color = Gl.white(230); c.drawCircle(sx, sy, 2.6f, pp)
+        }
     }
 
     private fun drawTrail(c: Canvas, col: Int) {
