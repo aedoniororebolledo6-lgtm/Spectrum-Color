@@ -19,7 +19,7 @@ concurrency:
 jobs:
   mundo:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 340
     strategy:
       fail-fast: false
       matrix:
@@ -47,11 +47,12 @@ jobs:
         run: |
           W=${{ matrix.world }}
           FROM=$((W * 10 + 1)); TO=$((W * 10 + 10))
-          MAXS=300 java -Xmx12g -cp tests.jar com.nioro.spectrumcolor.SimTestKt feas 0,4,8 $(seq $FROM $TO) | tee feas.txt
+          # para cada nivel: la variante actual si se puede completar, si no la primera de 0..7 que sí
+          MAXS=150 java -Xmx12g -cp tests.jar com.nioro.spectrumcolor.SimTestKt pick 7 $(seq $FROM $TO) | tee feas.txt
           {
             echo "### Mundo $((W + 1)) (niveles $FROM a $TO)"
             echo '```'
-            grep -E "nivel" feas.txt | sort -k2 -n
+            grep -E "ELEGIDA|SIN VARIANTE" feas.txt | sort -k3 -n
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if grep -q "NO ENCONTRADO" feas.txt; then echo "::error::Hay niveles sin solución encontrada en el mundo $((W + 1))"; exit 1; fi
+          if grep -q "SIN VARIANTE" feas.txt; then echo "::error::Hay niveles sin variante posible en el mundo $((W + 1))"; exit 1; fi

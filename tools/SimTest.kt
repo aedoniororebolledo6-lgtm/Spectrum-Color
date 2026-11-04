@@ -463,6 +463,27 @@ fun main(args: Array<String>) {
         pool.awaitTermination(600, TimeUnit.MINUTES)
         return
     }
+    if (args.size >= 3 && args[0] == "pick") {
+        // pick <máx> <nivel>...: para cada nivel, la primera variante (0..máx) que la búsqueda completa.
+        // Empieza por la variante actual (Levels.salt) para no cambiar los niveles que ya andan.
+        val maxSalt = args[1].toInt()
+        val dl = (System.getenv("DELAYS") ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
+        val maxs = (System.getenv("MAXS") ?: "150").toFloat()
+        val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
+        for (l in args.drop(2).map { it.toInt() }) pool.submit {
+            val cur = Levels.salt(l)
+            val order = listOf(cur) + (0..maxSalt).filter { it != cur }
+            var chosen = -1
+            for (sa in order) {
+                val (ok, secs) = feasible(Course.level(l, sa), 2400f, dl, maxSeconds = maxs)
+                if (ok) { chosen = sa; synchronized(System.out) { println("ELEGIDA nivel %3d variante %d  (%.1f s de juego)".format(l, sa, secs)) }; break }
+            }
+            if (chosen < 0) synchronized(System.out) { println("SIN VARIANTE nivel %3d".format(l)) }
+        }
+        pool.shutdown()
+        pool.awaitTermination(600, TimeUnit.MINUTES)
+        return
+    }
     if (args.size >= 3 && args[0] == "salt") {
         // salt <maxSalt> <nivel>...: ¿qué variantes de cada nivel son posibles con retrasos 0/4/8?
         val maxSalt = args[1].toInt()
