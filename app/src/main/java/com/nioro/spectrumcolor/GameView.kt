@@ -163,6 +163,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var advLeaving = false
     /** Solo pruebas (versión dev): al abrir la Aventura, saltar la historia (-1) o mostrar la vitrina k. -2 = nada. */
     private var advDebug = -2
+    /** Solo versión dev (atajo `icono:K`): 0 = normal; 1 o 2 = dibujar el ícono de la app (2 = con disco de vidrio). */
+    private var iconShot = 0
 
     /**
      * Atajos para las capturas automáticas (solo versión de desarrollador). Se usan desde ci/smoke.sh con
@@ -198,6 +200,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "galeria" -> if (Levels.isPlayable(n1)) { openEditor(n1); edOpenGallery() }
             "aventura" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = -1; advStart(n1) }
             "vitrina" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = n2; advStart(n1) }
+            // dibuja el ícono de la app (esfera Aurora boreal sobre el fondo del menú) para recortarlo de la captura
+            "icono" -> { goHome(); iconShot = n1 + 1 }
         }
     }
 
@@ -1495,6 +1499,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             return
         }
         drawBackground(c, 0f)
+        if (iconShot > 0) { drawIconShot(c); return }
         if (a < 1f) {
             c.saveLayerAlpha(0f, 0f, Cfg.W, vh, (255 * e).toInt())
             val z = 0.94f + 0.06f * e
@@ -1743,6 +1748,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     // ======================================================================
     // Pantallas de menú
     // ======================================================================
+
+    /** Ícono de la app: la esfera Aurora boreal (apariencia 56) en el centro de un cuadrado de 1080 sobre el fondo. */
+    private fun drawIconShot(c: Canvas) {
+        val cy = vh / 2f
+        val pal = cur()
+        Gl.glow(c, 540f, cy, 520f, pal[1], 70)
+        Gl.glow(c, 540f, cy, 400f, 0xFF35E8A0.toInt(), 60)
+        if (iconShot == 2) Gl.panel(c, 540f - 380f, cy - 380f, 540f + 380f, cy + 380f, 380f, 0.8f, pal[1])
+        drawBallAt(c, 540f, cy, 270f, 0xFF35E8A0.toInt(), 56, time, true)
+    }
 
     private fun drawHome(c: Canvas) {
         val pal = cur()

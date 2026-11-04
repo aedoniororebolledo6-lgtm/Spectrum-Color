@@ -17,6 +17,8 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
 {
   echo "== PASOS"
   go inicio 8;          shot 01_inicio "menú principal"; alive
+  go icono:0;           shot 00_icono_a "ícono: esfera Aurora boreal"; alive
+  go icono:1;           shot 00_icono_b "ícono: con disco de vidrio"; alive
   go ajustes;           shot 02_ajustes "ajustes"; alive
   go borrar1;           shot 03_borrar_aviso "ventana roja: lista de lo que se borra"; alive
   go borrar2;           shot 04_borrar_seguro "¿Estás seguro?"; alive
@@ -40,6 +42,14 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go vitrina:11:2 9;    shot 13_vitrina_c "gólem élite, caballero, arquero élite"; sleep 2; shot 13b_vitrina_c "1 s después"; alive
   go aventura:11 9;     shot 14_aventura_m12 "Aventura mundo 12, sala inicial"; alive
   go taller 9;          shot 15_taller "Taller: editor de salas de la Aventura"; alive
+  # capturas para la ficha de Google Play, con la esfera Aurora boreal (la del ícono)
+  go esfera:56;         shot 20_play_apariencias "Play: apariencias con Aurora boreal"; alive
+  go inicio 8;          shot 21_play_inicio "Play: menú"; alive
+  go nivel:5 7;         shot 22_play_nivel5 "Play: nivel 5"; alive
+  go nivel:33 7;        shot 23_play_nivel33 "Play: nivel 33"; alive
+  go nivel:75 7;        shot 24_play_nivel75 "Play: nivel 75"; alive
+  go nivel:112 7;       shot 25_play_nivel112 "Play: nivel 112"; alive
+  go infinito;          shot 26_play_infinito "Play: modo infinito"; alive
 } > steps.txt 2>&1
 
 timeout 60 adb logcat -d > full.log 2>&1
