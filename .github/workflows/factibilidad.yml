@@ -10,6 +10,7 @@ on:
     paths:
       - "app/src/main/java/com/nioro/spectrumcolor/Engine.kt"
       - "app/src/main/java/com/nioro/spectrumcolor/Kit.kt"
+      - "tools/SimTest.kt"
 
 concurrency:
   group: feas-${{ github.ref }}

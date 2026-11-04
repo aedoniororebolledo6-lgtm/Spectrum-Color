@@ -315,7 +315,9 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
                 }
                 if (!ok) continue
                 if (fin) return Pair(true, (layer + 1) * grain * Cfg.STEP)
-                val a = sims[0]
+                // la clave sale de la primera bola que todavía no llegó: si la de retraso 0 ya cruzó la meta, se
+                // queda quieta y todas las jugadas parecían iguales (solo sobrevivía "no tocar" y las demás no llegaban)
+                val a = sims.firstOrNull { !it.finished } ?: sims[0]
                 val key = ((a.by / 7f).toInt().toLong() shl 40) xor ((a.bvy / 40f).toInt().toLong() shl 24) xor (a.starCount.toLong() shl 8) xor (a.swCount.toLong() shl 2) xor (if (pend[0] >= 0) 1L else 0L)
                 val key2 = key * 31L + (a.bx / 36f).toInt().toLong()
                 if (seen.add(key2)) next.add(FNode(sims, pend))
@@ -329,7 +331,8 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
             next.shuffle(rnd)
             val keep = beam / 2
             val sorted = ArrayList(next)
-            sorted.sortWith(compareByDescending<FNode> { it.sims[0].starCount }.thenBy { it.sims[0].by })
+            // progreso = la bola más atrasada que aún no llegó (la que ya cruzó la meta no cuenta)
+            sorted.sortWith(compareByDescending<FNode> { it.sims[0].starCount }.thenBy { n -> (n.sims.firstOrNull { !it.finished } ?: n.sims[0]).by })
             val chosen = LinkedHashSet<FNode>()
             for (k in 0 until keep) chosen.add(sorted[k])
             var k = 0
@@ -338,6 +341,11 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
         } else {
             frontier = next
         }
+    }
+    if (System.getenv("FEASDBG") != null) {
+        val b = frontier.maxWithOrNull(compareBy<FNode> { it.sims[0].starCount }.thenBy { -it.sims[0].by })
+        if (b != null) { val a = b.sims[0]; println("  [diag] mejor estado: estrellas=${a.starCount}/${course.obs.size} y=${a.by} meta=${course.finishY} color=${a.color} cambiadores=${a.swCount}/${course.sws.size} vivos=${frontier.size}")
+            for ((k, sm) in b.sims.withIndex()) println("    bola $k: y=${sm.by} vy=${sm.bvy} terminó=${sm.finished} muerta=${sm.dead} estrellas=${sm.starCount} color=${sm.color} t=${sm.t}") }
     }
     return Pair(false, maxSeconds)
 }
