@@ -28,17 +28,17 @@ jobs:
       - name: Instalar Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platforms;android-34 build-tools;34.0.0"
+          packages: "platforms;android-36 build-tools;36.0.0"
 
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.14.3"
 
       - name: Compilar APK (desarrollador)
         run: |
           set -o pipefail
-          gradle :app:assembleDevRelease --no-daemon --stacktrace 2>&1 | tee build.log || {
+          gradle :app:assembleDevRelease :app:bundlePlayRelease --no-daemon --stacktrace 2>&1 | tee build.log || {
             grep -a -A5 -E "^e: |What went wrong" build.log | grep -av "^--" | head -16 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
             exit 1
           }

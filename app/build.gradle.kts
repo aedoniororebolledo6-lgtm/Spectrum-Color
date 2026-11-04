@@ -10,12 +10,12 @@ val buildMinutes = (System.currentTimeMillis() / 60000L).toInt()
 
 android {
     namespace = "com.nioro.spectrumcolor"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.nioro.spectrumcolor"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = buildMinutes
         versionName = "2.0.$runNumber"
     }
@@ -27,29 +27,51 @@ android {
             keyAlias = "glassswitch"
             keyPassword = "glassswitch"
         }
+        // Llave de subida a Google Play: vive solo en los "Secrets" de GitHub (nunca en el repositorio).
+        // play.yml la escribe en un archivo temporal y pasa la ruta y la contraseña por variables de entorno.
+        val upFile = System.getenv("UPLOAD_KEYSTORE")
+        if (upFile != null && file(upFile).exists()) {
+            create("upload") {
+                storeFile = file(upFile)
+                storePassword = System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UPLOAD_KEY_ALIAS") ?: "upload"
+                keyPassword = System.getenv("UPLOAD_KEY_PASSWORD") ?: System.getenv("UPLOAD_KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildFeatures {
         buildConfig = true
     }
 
-    // "normal" = versión pública; "dev" = versión de desarrollador (con el botón para abrir todos los niveles).
+    // "normal" = versión pública (APK de GitHub, se actualiza sola); "dev" = versión de desarrollador
+    // (editor, atajos, abrir todos los niveles); "play" = la de Google Play (la actualiza la tienda: sin botón
+    // de actualizar ni descargas fuera de Play).
     flavorDimensions += "modo"
     productFlavors {
         create("normal") {
             dimension = "modo"
             buildConfigField("boolean", "DEV", "false")
+            buildConfigField("boolean", "STORE", "false")
+            signingConfig = signingConfigs.getByName("release")
         }
         create("dev") {
             dimension = "modo"
             buildConfigField("boolean", "DEV", "true")
+            buildConfigField("boolean", "STORE", "false")
+            signingConfig = signingConfigs.getByName("release")
+        }
+        create("play") {
+            dimension = "modo"
+            buildConfigField("boolean", "DEV", "false")
+            buildConfigField("boolean", "STORE", "true")
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("release")
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
         }
     }
 
