@@ -80,7 +80,8 @@ object T {
     const val WAVE = 21      // ola: barra de colores que sube y baja ondulando
     const val JAWS = 22      // mandíbulas: dos barras mortales que se abren y se cierran
     const val EIGHT = 23     // serpiente de bolitas que recorre un ocho
-    const val COUNT = 24
+    const val KIT = 24       // obstáculo de catálogo: uno de los 200 diseños de Kit.kt (Ob.design)
+    const val COUNT = 25
 
     /** Obstáculos que solo aparecen dentro de las zonas de deslizar. */
     fun isSlide(type: Int): Boolean = type in SGATE..PILLAR
@@ -100,13 +101,14 @@ class Ob(
     val aux: Float = 0f,        // dato propio del tipo: pinchos (grados), largo (PEND), hueco (GATE), carril (COUNTER), radio interior (CROSS)
     val drift: Float = 0f,      // aceleración vertical extra en la zona del obstáculo (corriente de aire)
     val fade: Boolean = false,  // el obstáculo se ve solo una parte del tiempo
-    val wob: Float = 0f         // vaivén extra del giro, en grados
+    val wob: Float = 0f,        // vaivén extra del giro, en grados
+    val design: Int = -1        // diseño del catálogo (solo T.KIT)
 ) {
     fun copy(
         type: Int = this.type, y: Float = this.y, n: Int = this.n, shift: Int = this.shift, speed: Float = this.speed,
         phase: Float = this.phase, size: Float = this.size, inner: Float = this.inner, aux: Float = this.aux,
-        drift: Float = this.drift, fade: Boolean = this.fade, wob: Float = this.wob
-    ): Ob = Ob(type, y, n, shift, speed, phase, size, inner, aux, drift, fade, wob)
+        drift: Float = this.drift, fade: Boolean = this.fade, wob: Float = this.wob, design: Int = this.design
+    ): Ob = Ob(type, y, n, shift, speed, phase, size, inner, aux, drift, fade, wob, design)
 
     /** Distancia máxima desde el centro hasta cualquier parte del obstáculo. */
     val reach: Float = when (type) {
@@ -121,6 +123,7 @@ class Ob(
         T.SQUARE -> size * 1.4143f + Cfg.THICK / 2f
         T.SPIKES -> size + Cfg.THICK / 2f + Cfg.SPIKE_H
         T.ORBIT -> size + Cfg.ORB_R
+        T.KIT -> Kit.reach(this)
         else -> size + Cfg.THICK / 2f
     }
 
@@ -135,6 +138,7 @@ class Ob(
             T.HEX -> for (k in 0 until 6) m = m or (1 shl ((k + shift) % n))
             T.PENT, T.STAR -> for (k in 0 until 5) m = m or (1 shl ((k + shift) % n))
             T.EIGHT -> for (k in 0 until 6) m = m or (1 shl ((k + shift) % n))
+            T.KIT -> m = Kit.present(this)
             T.ORBIT -> {
                 for (k in 0 until 3) m = m or (1 shl ((k + shift) % n))
                 for (k in 0 until 2) m = m or (1 shl ((k + shift + 1) % n))
@@ -349,6 +353,7 @@ object Geo {
                 return false
             }
             T.SPIKES -> return spikeHit(o, bx, by, color, t)
+            T.KIT -> return Kit.hits(o, bx, by, color, t)
             T.PEND -> {
                 if (abs(by - o.y) > Cfg.BAR_H + graze) return false
                 val rel = bx - swingX(o, t)
@@ -519,14 +524,78 @@ object Levels {
 
     /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
     private val salts = IntArray(BASE + 1).also {
-        // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
+        // variantes elegidas con `SimTestKt pick` (workflow Factibilidad): con los obstáculos de catálogo cada nivel
+        // usa la primera variante que la búsqueda completa con toques retrasados 0/4/8 pasos
         it[11] = 3
         it[12] = 2
         it[13] = 1
-        it[15] = 2
-        it[17] = 5
-        it[18] = 1
-        it[20] = 1
+        it[14] = 2
+        it[15] = 4
+        it[17] = 1
+        it[18] = 4
+        it[21] = 11
+        it[22] = 10
+        it[23] = 2
+        it[25] = 3
+        it[26] = 3
+        it[27] = 3
+        it[28] = 2
+        it[29] = 1
+        it[30] = 1
+        it[31] = 1
+        it[32] = 1
+        it[33] = 1
+        it[34] = 2
+        it[36] = 5
+        it[39] = 3
+        it[40] = 2
+        it[41] = 10
+        it[42] = 4
+        it[43] = 4
+        it[44] = 12
+        it[46] = 12
+        it[48] = 6
+        it[49] = 1
+        it[50] = 6
+        it[52] = 6
+        it[53] = 3
+        it[54] = 6
+        it[55] = 3
+        it[56] = 1
+        it[57] = 7
+        it[58] = 3
+        it[59] = 1
+        it[60] = 2
+        it[61] = 6
+        it[62] = 15
+        it[64] = 6
+        it[65] = 1
+        it[66] = 4
+        it[67] = 2
+        it[68] = 3
+        it[69] = 7
+        it[70] = 13
+        it[72] = 9
+        it[73] = 3
+        it[74] = 3
+        it[75] = 1
+        it[76] = 2
+        it[78] = 26
+        it[79] = 1
+        it[80] = 1
+        it[82] = 2
+        it[86] = 3
+        it[87] = 1
+        it[93] = 3
+        it[95] = 1
+        it[96] = 1
+        it[99] = 1
+        it[104] = 2
+        it[106] = 4
+        it[108] = 1
+        it[110] = 1
+        it[114] = 1
+        it[119] = 3
     }
 
     fun salt(level: Int): Int = if (level in 1..BASE) salts[level] else 0
@@ -577,7 +646,8 @@ object Levels {
         21, 31, 41, 51, 61, 71, // pinchos, péndulo, cruz, puertas, órbitas, opuestas
         4, 7, 13, 46,           // arco abierto, barra que cambia de color, hexágono, rayo
         999, 999, 999, 999,     // obstáculos de deslizar: solo dentro de las zonas
-        11, 33, 55, 77, 99      // pentágono, estrella, ola, mandíbulas, serpiente (mundos 2, 4, 6, 8 y 10)
+        11, 33, 55, 77, 99,     // pentágono, estrella, ola, mandíbulas, serpiente (mundos 2, 4, 6, 8 y 10)
+        11                      // obstáculos de catálogo (Kit.kt): sus 200 diseños se estrenan del nivel 11 al 120
     )
 
     fun unlockLevel(type: Int): Int = unlockAt[type]
@@ -607,7 +677,7 @@ object Levels {
     fun totalGates(level: Int): Int = gates(level) + slidePlan(level).sum()
 
     /** Obstáculo desde el que aparece cada tipo en el modo infinito. */
-    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64, 9999, 9999, 9999, 9999, 12, 36, 44, 56, 62)
+    val unlockGate = intArrayOf(0, 22, 0, 4, 8, 28, 34, 40, 46, 52, 58, 2, 5, 10, 64, 9999, 9999, 9999, 9999, 12, 36, 44, 56, 62, 14)
 }
 
 class Zone(val bottom: Float, val top: Float)
@@ -768,8 +838,8 @@ class Course private constructor(
 
     private fun pickType(i: Int, g: Int): Int {
         val hard = isLevel && Levels.isHard(level)
-        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f, 0f, 0f, 0f, 0f, 2.0f, 2.0f, 2.0f, 2.6f, 2.8f)
-        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f, 0f, 0f, 0f, 0f, 2.4f, 1.8f, 1.7f, 1.5f, 1.6f)
+        val w = if (hard) floatArrayOf(1.6f, 0f, 1.3f, 1.4f, 1.4f, 1.4f, 1.5f, 1.6f, 1.4f, 1.5f, 1.2f, 1.6f, 1.5f, 1.5f, 1.3f, 0f, 0f, 0f, 0f, 2.0f, 2.0f, 2.0f, 2.6f, 2.8f, 9.0f)
+        else floatArrayOf(2.2f, 0f, 2.2f, 2.0f, 2.0f, 1.6f, 1.6f, 1.6f, 1.4f, 1.6f, 1.4f, 2.0f, 1.8f, 1.6f, 1.3f, 0f, 0f, 0f, 0f, 2.4f, 1.8f, 1.7f, 1.5f, 1.6f, 7.0f)
         // desde el mundo 2 los anillos, cuadrados y triángulos van cediendo su lugar a los obstáculos nuevos
         if (isLevel && level >= 11) {
             w[T.RING] *= 0.55f
@@ -797,6 +867,8 @@ class Course private constructor(
                     w[t] *= 4f
                 }
             }
+            // el catálogo gana peso a medida que avanza el juego (del mundo 2 al 12)
+            if (t == T.KIT && isLevel) w[t] *= 0.35f + 0.9f * Levels.difficulty(level)
             if (t == lastType) w[t] *= 0.3f else if (t == lastType2) w[t] *= 0.65f
             sum += w[t]
         }
@@ -821,6 +893,8 @@ class Course private constructor(
         var n = colorsFor(i, g)
         // en los niveles difíciles solo los obstáculos con "espera natural" usan 4 colores
         if ((hard || !isLevel) && n == 4 && type != T.RING && type != T.SPIKES && type != T.CROSS && type != T.ORBIT && type != T.ARC) n = 3
+        if (type == T.KIT && n > 3) n = 3 // los diseños de catálogo se comprobaron con 2 y 3 colores
+        val design = if (type == T.KIT) pickDesign(g) else -1
 
         val dirS = if (rnd.nextBoolean()) 1f else -1f
         val vari = 0.92f + rnd.nextFloat() * 0.16f
@@ -857,6 +931,7 @@ class Course private constructor(
             T.WAVE -> { speed = dirS * barSpd * vari; size = lerp(50f, 90f, d); inner = lerp(1.3f, 2.0f, d) }
             T.JAWS -> { speed = lerp(0.2f, 0.3f, d) * vari; size = 0f; aux = lerp(170f, 140f, d) }
             T.EIGHT -> { speed = dirS * spin * 0.9f; size = lerp(250f, 300f, sizeVar); aux = lerp(100f, 125f, d) }
+            T.KIT -> { speed = dirS * spin * 0.9f; size = lerp(285f, 310f, sizeVar) }
             else -> { speed = dirS * spin * 0.9f; size = 370f }
         }
 
@@ -875,14 +950,14 @@ class Course private constructor(
         }
 
         val gapFree = if (hard) lerp(430f, 385f, d) else lerp(500f, 400f, d)
-        val probe = Ob(type, 0f, n, shift, speed, phase, size, inner, aux)
+        val probe = Ob(type, 0f, n, shift, speed, phase, size, inner, aux, design = design)
         val y: Float
         if (i == 0) {
             y = cursor - Cfg.START_GAP - probe.reach
         } else {
             y = cursor - gapFree - probe.reach
         }
-        val ob = Ob(type, y, n, shift, speed, phase, size, inner, aux, drift, fade, wob)
+        val ob = Ob(type, y, n, shift, speed, phase, size, inner, aux, drift, fade, wob, design)
 
         if (i == 0) {
             curColor = firstSetBit(ob.present, rnd.nextInt(Integer.bitCount(ob.present)))
@@ -902,6 +977,36 @@ class Course private constructor(
         }
         obs.add(ob)
         cursor = y - ob.reach
+    }
+
+    private val usedDesigns = HashSet<Int>()
+
+    /**
+     * Diseño de catálogo para el próximo obstáculo: entre los ya estrenados, los más nuevos (de este mundo)
+     * salen más seguido para aprenderlos; no se repite un diseño en el mismo nivel.
+     */
+    private fun pickDesign(g: Int): Int {
+        var top = -1
+        for (i in 0 until Kit.COUNT) {
+            val ok = if (isLevel) Kit.unlockLevel(i) <= level else Kit.unlockGate(i) <= g
+            if (ok) top = i
+        }
+        if (top < 0) return 0
+        val wf = if (isLevel) Levels.worldFirst(Levels.world(level)) else Int.MAX_VALUE
+        var sum = 0f
+        val w = FloatArray(top + 1)
+        for (i in 0..top) {
+            var x = 1f
+            val ul = Kit.unlockLevel(i)
+            if (isLevel && ul >= wf) x = if (ul >= level - 1) 6f else 3f
+            if (usedDesigns.contains(i)) x *= 0.05f
+            w[i] = x
+            sum += x
+        }
+        var r = rnd.nextFloat() * sum
+        for (i in 0..top) { r -= w[i]; if (r <= 0f) { usedDesigns.add(i); return i } }
+        usedDesigns.add(top)
+        return top
     }
 
     private fun firstSetBit(mask: Int, k: Int): Int {
@@ -1054,7 +1159,9 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
         for (o in obs) {
             sb.append("O ").append(o.type).append(' ').append(r(o.y)).append(' ').append(o.n).append(' ').append(o.shift).append(' ')
                 .append(r(o.speed)).append(' ').append(r(o.phase)).append(' ').append(r(o.size)).append(' ').append(r(o.inner)).append(' ')
-                .append(r(o.aux)).append(' ').append(r(o.drift)).append(' ').append(if (o.fade) 1 else 0).append(' ').append(r(o.wob)).append('\n')
+                .append(r(o.aux)).append(' ').append(r(o.drift)).append(' ').append(if (o.fade) 1 else 0).append(' ').append(r(o.wob))
+            if (o.type == T.KIT) sb.append(' ').append(o.design)
+            sb.append('\n')
         }
         for (s in sws) sb.append("W ").append(r(s.y)).append(' ').append(s.toColor).append('\n')
         for (z in zones) sb.append("Z ").append(r(z.bottom)).append(' ').append(r(z.top)).append('\n')
@@ -1089,8 +1196,9 @@ class LevelData(var startColor: Int, var finishY: Float, val obs: ArrayList<Ob>,
                             val type = p[1].toInt()
                             val n = p[3].toInt().coerceIn(2, 4)
                             if (type !in 0 until T.COUNT) return null
+                            val des = if (type == T.KIT) (p.getOrNull(13)?.toIntOrNull() ?: 0).coerceIn(0, Kit.COUNT - 1) else -1
                             o.add(Ob(type, p[2].toFloat(), n, p[4].toInt().coerceIn(0, n - 1), p[5].toFloat(), p[6].toFloat(), p[7].toFloat(),
-                                p[8].toFloat(), p[9].toFloat(), p[10].toFloat(), p[11] == "1", p[12].toFloat()))
+                                p[8].toFloat(), p[9].toFloat(), p[10].toFloat(), p[11] == "1", p[12].toFloat(), des))
                         }
                         "W" -> w.add(Sw(p[1].toFloat(), p[2].toInt().coerceIn(0, 3)))
                         "Z" -> z.add(Zone(p[1].toFloat(), p[2].toFloat()))

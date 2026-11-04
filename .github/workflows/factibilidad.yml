@@ -1,0 +1,58 @@
+name: Factibilidad
+
+# Comprueba con la búsqueda de tools/SimTest.kt ("feas") que cada nivel se puede completar aunque el toque
+# llegue con retraso (0, 4 u 8 pasos). Un trabajo por mundo, todos a la vez. Se lanza a mano o cuando cambia
+# la generación de niveles (Engine.kt / Kit.kt) en una rama de trabajo.
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: ["main"]
+    paths:
+      - "app/src/main/java/com/nioro/spectrumcolor/Engine.kt"
+      - "app/src/main/java/com/nioro/spectrumcolor/Kit.kt"
+      - "tools/SimTest.kt"
+
+concurrency:
+  group: feas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mundo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        world: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Instalar kotlinc
+        run: |
+          curl -sSL -o kc.zip https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
+          unzip -q kc.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/kotlinc/bin" >> "$GITHUB_PATH"
+
+      - name: Compilar las pruebas
+        run: |
+          SRC=app/src/main/java/com/nioro/spectrumcolor
+          kotlinc "$SRC/Engine.kt" "$SRC/Kit.kt" "$SRC/Net.kt" "$SRC/Match.kt" tools/SimTest.kt -include-runtime -d tests.jar 2>&1 | grep -v "^warning" || true
+
+      - name: ¿Se puede completar cada nivel del mundo?
+        run: |
+          W=${{ matrix.world }}
+          FROM=$((W * 10 + 1)); TO=$((W * 10 + 10))
+          # para cada nivel: la variante actual si se puede completar, si no la primera de 0..7 que sí
+          MAXS=150 java -Xmx12g -cp tests.jar com.nioro.spectrumcolor.SimTestKt pick 7 $(seq $FROM $TO) | tee feas.txt
+          {
+            echo "### Mundo $((W + 1)) (niveles $FROM a $TO)"
+            echo '```'
+            grep -E "ELEGIDA|SIN VARIANTE" feas.txt | sort -k3 -n
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "SIN VARIANTE" feas.txt; then echo "::error::Hay niveles sin variante posible en el mundo $((W + 1))"; exit 1; fi

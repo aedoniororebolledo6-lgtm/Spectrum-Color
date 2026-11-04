@@ -10,6 +10,7 @@ import android.graphics.Shader
 import android.view.MotionEvent
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -92,7 +93,7 @@ class AdvUi(
         inp.left = false; inp.right = false; inp.jumpHeld = false
     }
 
-    fun stop() { adv = null; ptrs.clear() }
+    fun stop() { adv = null; ptrs.clear(); mkTesting = false }
 
     /** Solo para las capturas de prueba: salta la historia y deja la vitrina de enemigos k (o la sala inicial si k < 0). */
     fun debugPlay(k: Int) {
@@ -112,6 +113,13 @@ class AdvUi(
 
     /** Botón "atrás": pausa, o sale si ya estaba en pausa. */
     fun back(): Boolean {
+        if (mkTesting && (phase == 2 || phase == 3)) { mkBackToEdit(); return false }
+        if (phase == 4) {
+            // salir del Taller con "atrás": primero cerrar el menú, y guardar los cambios antes de irse
+            if (mkMore) { mkMore = false; return false }
+            if (mkDirty) mkSave()
+            stop(); onExit(); return true
+        }
         return when (phase) {
             1 -> { phase = 2; phT = 0f; false }
             else -> { stop(); onExit(); true }
@@ -138,6 +146,9 @@ class AdvUi(
     fun touch(e: MotionEvent, w: Int, h: Int) {
         if (adv == null || h <= 0) return
         val s = h / AdvCfg.H
+        if (phase == 4) { mkTouch(e, s); return }
+        // probando una sala del Taller: al ganar, tocar vuelve al editor
+        if (mkTesting && phase == 3 && e.actionMasked == MotionEvent.ACTION_DOWN) { if (phT > 0.8f) mkBackToEdit(); return }
         val ai = e.actionIndex
         val am = e.actionMasked
         if (am == MotionEvent.ACTION_DOWN || am == MotionEvent.ACTION_POINTER_DOWN) {
@@ -148,7 +159,7 @@ class AdvUi(
                 3 -> if (phT > 1.2f) { stop(); onExit() }
                 2 -> {
                     if (abs(x - (vw - 130f)) < 100f && abs(y - 145f) < 26f) phase = 1
-                    else if (abs(x - (vw - 130f)) < 100f && abs(y - 215f) < 26f) { stop(); onExit() }
+                    else if (abs(x - (vw - 130f)) < 100f && abs(y - 215f) < 26f) { if (mkTesting) mkBackToEdit() else { stop(); onExit() } }
                 }
                 1 -> {
                     val id = hitBtn(x, y)
@@ -199,7 +210,7 @@ class AdvUi(
             handleEvents(a)
             animate(a, dt)
             if (a.won && phase == 1) { phase = 3; phT = 0f }
-            if (phase == 3 && !winSent) { winSent = true; savedCount = onWin(world); prefs?.setAdvSave(world, "") }
+            if (phase == 3 && !winSent && !mkTesting) { winSent = true; savedCount = onWin(world); prefs?.setAdvSave(world, "") }
         } else inp.clearPressed()
         val it = parts.iterator()
         while (it.hasNext()) {
@@ -270,7 +281,7 @@ class AdvUi(
     private fun handleEvents(a: Adv) {
         val pal = Worlds.colors[world.coerceIn(0, Worlds.colors.size - 1)]
         for (e in a.events) {
-            if (!a.god && !a.won && (e.t == Adv.EV_CHECK || e.t == Adv.EV_UNLOCK || (e.t == Adv.EV_PICK && (e.n == Adv.IT_KEY || e.n == Adv.IT_HPUP || e.n == Adv.IT_BOOTS || e.n == Adv.IT_WHIP)))) prefs?.setAdvSave(world, a.saveState())
+            if (!a.god && !a.won && !mkTesting && a.maker == null && (e.t == Adv.EV_CHECK || e.t == Adv.EV_UNLOCK || (e.t == Adv.EV_PICK && (e.n == Adv.IT_KEY || e.n == Adv.IT_HPUP || e.n == Adv.IT_BOOTS || e.n == Adv.IT_WHIP)))) prefs?.setAdvSave(world, a.saveState())
             when (e.t) {
                 Adv.EV_JUMP -> { burst(e.x, e.y, Gl.white(200), 5, 45f, 60f); sfx(Sfx.TAP) }
                 Adv.EV_JUMP2 -> { for (k in 0 until 10) { val an = k * 0.628f; parts.add(Pt(e.x, e.y, cos(an) * 80f, sin(an) * 30f, 0xFF80E0FF.toInt(), 2f, 0.4f, 1f, 0f)) }; sfx(Sfx.SWITCH) }
@@ -503,7 +514,9 @@ class AdvUi(
             c.drawCircle(p.x, p.y, p.sz, pp)
         }
         for (n in nums) Gl.text(c, n.s, n.x, n.y, 13f, Gl.medium, Gl.alpha(n.col, (255 * min(1f, n.life * 2f)).toInt()))
+        if (phase == 4) mkDrawGrid(c, a)
         c.restore()
+        if (phase == 4) { mkDrawUi(c, pal); c.restore(); return }
         if (a.freezeT > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFF60A0FF.toInt(), 36); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
         if (flash > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFFFF3040.toInt(), (70 * flash).toInt()); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
         if (a.potionT > 0f) { pp = Gl.p(); pp.color = Gl.alpha(0xFF60FFB0.toInt(), 14); c.drawRect(0f, 0f, vw, AdvCfg.H, pp) }
@@ -1856,9 +1869,9 @@ class AdvUi(
 
     private fun drawStory(c: Canvas, pal: IntArray) {
         panelBox(c, pal, vw / 2f - 280f, 50f, vw / 2f + 280f, 310f)
-        Gl.text(c, "MUNDO ${world + 1}: ${Worlds.names[world]}", vw / 2f, 92f, 22f, Gl.medium, Gl.white(245), 0.08f)
+        Gl.text(c, "MUNDO ${world + 1}: ${I18n.t(Worlds.names[world])}", vw / 2f, 92f, 22f, Gl.medium, Gl.white(245), 0.08f)
         Gl.text(c, "Jefe: ${AdvCfg.bosses[world].name}", vw / 2f, 118f, 15f, Gl.regular, pal[1])
-        wrapText(c, AdvCfg.worldIntro[world], vw / 2f, 156f, 500f, 17f, 24f)
+        wrapText(c, I18n.t(AdvCfg.worldIntro[world]), vw / 2f, 156f, 500f, 17f, 24f)
         Gl.text(c, "Botón espada: ataque normal   Botón estrella: arma especial (gasta corazones)", vw / 2f, 246f, 12f, Gl.regular, Gl.white(150))
         Gl.text(c, "Explora las salas del mapa (pausa = mapa completo). Ataca junto a una escalera para subir o bajar.", vw / 2f, 264f, 11f, Gl.regular, Gl.white(150))
         Gl.text(c, "Llaves = puertas doradas. Estatuas rojas = curar y guardar. Muros agrietados: rómpelos con el látigo.", vw / 2f, 280f, 11f, Gl.regular, Gl.white(150))
@@ -1868,7 +1881,7 @@ class AdvUi(
     private fun drawPause(c: Canvas, pal: IntArray) {
         val a = adv ?: return
         panelBox(c, pal, 16f, 22f, vw - 16f, 338f)
-        Gl.text(c, "MAPA  -  ${Worlds.names[world]}", (16f + vw - 260f) / 2f, 56f, 18f, Gl.medium, Gl.white(245), 0.05f)
+        Gl.text(c, "MAPA  -  ${I18n.t(Worlds.names[world])}", (16f + vw - 260f) / 2f, 56f, 18f, Gl.medium, Gl.white(245), 0.05f)
         var minX = 99; var maxX = -1; var minY = 99; var maxY = -1
         for (r in a.rooms) if (r.seen) { minX = min(minX, r.gx); maxX = max(maxX, r.gx); minY = min(minY, r.gy); maxY = max(maxY, r.gy) }
         val availW = vw - 300f
@@ -1953,9 +1966,15 @@ class AdvUi(
         val a = ((phT - 0.8f) / 0.6f).coerceIn(0f, 1f)
         if (a <= 0f) return
         panelBox(c, pal, vw / 2f - 280f, 60f, vw / 2f + 280f, 300f)
-        Gl.text(c, "¡${Worlds.names[world]} salvado!", vw / 2f, 108f, 26f, Gl.medium, Gl.white(245), 0.06f)
-        wrapText(c, AdvCfg.worldOutro[world], vw / 2f, 148f, 500f, 18f, 25f)
-        if (savedCount >= AdvCfg.WORLDS) wrapText(c, AdvCfg.finalText, vw / 2f, 196f, 500f, 15f, 21f)
+        if (mkTesting) {
+            Gl.text(c, "¡Sala superada!", vw / 2f, 130f, 28f, Gl.medium, Gl.white(245), 0.06f)
+            Gl.text(c, "Muertes: ${adv?.deaths ?: 0}   Tiempo: ${(adv?.time ?: 0f).toInt()} s", vw / 2f, 180f, 16f, Gl.regular, pal[1])
+            Gl.text(c, "Toca para volver al editor", vw / 2f, 282f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
+            return
+        }
+        Gl.text(c, "¡${I18n.t(Worlds.names[world])} salvado!", vw / 2f, 108f, 26f, Gl.medium, Gl.white(245), 0.06f)
+        wrapText(c, I18n.t(AdvCfg.worldOutro[world]), vw / 2f, 148f, 500f, 18f, 25f)
+        if (savedCount >= AdvCfg.WORLDS) wrapText(c, I18n.t(AdvCfg.finalText), vw / 2f, 196f, 500f, 15f, 21f)
         else Gl.text(c, "Mundos salvados: $savedCount/${AdvCfg.WORLDS}", vw / 2f, 214f, 15f, Gl.regular, pal[1])
         Gl.text(c, "Toca para volver", vw / 2f, 282f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
     }
@@ -1973,5 +1992,352 @@ class AdvUi(
             } else line = t
         }
         if (line.isNotEmpty()) Gl.text(c, line, cx, y, size, Gl.regular, Gl.white(235))
+    }
+
+    // ================================================================== Taller (editor de salas estilo Mario Maker)
+    private class MkTool(val ch: Char, val name: String, val cat: Int)
+
+    private val mkTools: List<MkTool> = ArrayList<MkTool>().apply {
+        add(MkTool('.', "Borrar", 0)); add(MkTool('_', "Suelo", 0)); add(MkTool('#', "Bloque", 0)); add(MkTool('X', "Rompible", 0))
+        add(MkTool('=', "Plataforma", 0)); add(MkTool('k', "Frágil", 0)); add(MkTool('^', "Pinchos", 0)); add(MkTool('S', "Resorte", 0))
+        add(MkTool('M', "Móvil", 0)); add(MkTool('N', "Móvil rápida", 0))
+        add(MkTool('P', "Inicio", 1)); add(MkTool('E', "Meta", 1)); add(MkTool('c', "Vela", 1)); add(MkTool('R', "Premio", 1))
+        add(MkTool('v', "Corazón", 1)); add(MkTool('V', "Carne", 1)); add(MkTool('j', "Fuego", 1)); add(MkTool('p', "Péndulo", 1)); add(MkTool('r', "Roca", 1))
+        val en = arrayOf("Caminante", "Murciélago", "Lanzador", "Saltarín", "Torreta", "Embestidor", "Medusa", "Caballero", "Fantasma", "Araña",
+            "Arquero", "Slime", "Bombardero", "Mago", "Lobo", "Calavera", "Gólem", "Torreta oculta", "Gárgola")
+        for ((i, ch) in AdvMk.ENEMIES.withIndex()) add(MkTool(ch, en[i], 2))
+    }
+    private val mkCats = arrayOf("Terreno", "Objetos", "Enemigos")
+
+    private var mkGrid: Array<CharArray>? = null
+    var mkTheme = 0
+    private var mkElite = false
+    private var mkSlot = 0
+    private var mkTool = '#'
+    private var mkCat = 0
+    private var mkCam = 0f
+    private var mkHand = false
+    private var mkTesting = false
+    private var mkPainting = false
+    private var mkErase = false
+    private var mkMsg = ""
+    private var mkMsgT = -10f
+    private var mkLastX = 0f
+    private var mkDirty = false
+    private var mkMore = false
+    private var mkPalOpen = true
+
+    private fun mkRows(): Array<String> = mkGrid!!.map { String(it) }.toTypedArray()
+
+    /** Abre el Taller (lo llama GameView al entrar en horizontal). */
+    fun startMaker(viewW: Float) {
+        vw = viewW
+        mkSlot = 0
+        val sv = prefs?.makerSlot(0)?.let { AdvMk.decode(it) }
+        mkLoad(sv)
+        phase = 4
+        phT = 0f
+        parts.clear(); nums.clear(); ptrs.clear()
+        mkSay("Elige una pieza arriba y pinta con el dedo")
+    }
+
+    private fun mkLoad(sv: AdvMk.Saved?) {
+        val rows = sv?.rows ?: AdvMk.blank()
+        mkTheme = sv?.theme ?: 0
+        mkElite = sv?.elite ?: false
+        mkGrid = Array(rows.size) { rows[it].toCharArray() }
+        mkCam = 0f
+        mkRebuild()
+    }
+
+    private fun mkRebuild() {
+        world = mkTheme
+        val a = Adv(mkTheme, vw, true)
+        a.makerElite = mkElite
+        a.loadMaker(mkRows())
+        a.camX = mkCam; a.ocam = mkCam
+        adv = a
+    }
+
+    private fun mkSay(s: String) { mkMsg = s; mkMsgT = time }
+
+    private fun mkW(): Int = mkGrid?.get(0)?.size ?: 0
+
+    private fun mkMaxCam(): Float = max(0f, mkW() * 20f - vw + 40f)
+
+    private fun mkBackToEdit() {
+        mkTesting = false
+        phase = 4
+        phT = 0f
+        parts.clear(); nums.clear(); ptrs.clear()
+        inp.left = false; inp.right = false; inp.jumpHeld = false; inp.clearPressed()
+        mkRebuild()
+    }
+
+    private fun mkTest() {
+        val g = mkGrid ?: return
+        var hasP = false; var hasE = false
+        for (r in g) for (ch in r) { if (ch == 'P') hasP = true; if (ch == 'E') hasE = true }
+        if (!hasP || !hasE) { mkSay(if (!hasP) "Falta el inicio (pestaña Objetos)" else "Falta la meta (pestaña Objetos)"); return }
+        val a = Adv(mkTheme, vw, false)
+        a.makerElite = mkElite
+        a.loadMaker(mkRows())
+        adv = a
+        world = mkTheme
+        mkTesting = true
+        phase = 1
+        phT = 0f
+        winSent = false
+        parts.clear(); nums.clear(); ptrs.clear(); trail.clear(); corpses.clear()
+        hpDisp = a.maxHp.toFloat(); hpChip = hpDisp
+        say("¡A jugar! Pausa = volver al editor", 2.2f)
+    }
+
+    private fun mkSave() {
+        prefs?.setMakerSlot(mkSlot, AdvMk.encode(mkRows(), mkTheme, mkElite))
+        mkDirty = false
+        mkSay("Guardado en la ranura ${mkSlot + 1}")
+    }
+
+    /** Pone (o quita) la pieza elegida en la casilla col, j (j = 0 suelo). */
+    private fun mkPaint(col: Int, j: Int, first: Boolean) {
+        val g = mkGrid ?: return
+        if (col !in 0 until mkW() || j !in 0 until AdvMk.ROWS) return
+        val ri = AdvMk.ROWS - 1 - j
+        val cur = g[ri][col]
+        var ch = mkTool
+        if (j == 0) {
+            if (ch == '#' || ch == 'X' || ch == '=') ch = '_'
+            if (ch != '_' && ch != '.' && ch != 'k' && !AdvMk.groundOnly(ch)) { if (first) mkSay("Eso no va en el suelo: ponlo más arriba"); return }
+        } else {
+            if (ch == '_') ch = '#'
+            if (AdvMk.groundOnly(ch)) { if (first) mkSay("Resortes y plataformas móviles van en la fila del suelo"); return }
+        }
+        if (first) mkErase = cur == ch && ch != '.'
+        val put = if (mkErase) (if (j == 0) '.' else '.') else ch
+        if (cur == put) return
+        if (put == 'P' || put == 'E') for (r in g) for (x in r.indices) if (r[x] == put) r[x] = '.'
+        g[ri][col] = put
+        mkDirty = true
+        mkRebuild()
+    }
+
+    private fun mkCell(x: Float, y: Float, out: IntArray): Boolean {
+        val wx = x + mkCam
+        val col = floor(wx / 20f).toInt()
+        val j = if (y >= AdvCfg.GROUND) 0 else floor((AdvCfg.GROUND - y) / 20f).toInt() + 1
+        if (y > AdvCfg.GROUND + 20f || j >= AdvMk.ROWS) return false
+        out[0] = col; out[1] = j
+        return true
+    }
+
+    private val mkTmp = IntArray(2)
+    private val mkHits = ArrayList<Pair<String, RectF>>()
+
+    private fun mkHit(x: Float, y: Float): String? {
+        for (i in mkHits.indices.reversed()) { val (id, r) = mkHits[i]; if (r.contains(x, y)) return id }
+        return null
+    }
+
+    private fun mkTouch(e: MotionEvent, s: Float) {
+        val x = e.getX(e.actionIndex) / s
+        val y = e.getY(e.actionIndex) / s
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val id = mkHit(x, y)
+                if (id != null) { mkPress(id); mkPainting = false; return }
+                mkLastX = x
+                if (mkHand) { mkPainting = true; return }
+                if (mkCell(x, y, mkTmp)) { mkPainting = true; mkPaint(mkTmp[0], mkTmp[1], true) }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!mkPainting) return
+                val mx = e.getX(0) / s
+                val my = e.getY(0) / s
+                if (mkHand || e.pointerCount > 1) {
+                    mkCam = (mkCam - (mx - mkLastX)).coerceIn(0f, mkMaxCam())
+                    adv?.let { it.camX = mkCam; it.ocam = mkCam }
+                    mkLastX = mx
+                } else if (mkCell(mx, my, mkTmp)) mkPaint(mkTmp[0], mkTmp[1], false)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> { mkLastX = e.getX(0) / s }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> mkPainting = false
+        }
+    }
+
+    private fun mkPress(id: String) {
+        sfx(Sfx.CLICK)
+        val g = mkGrid ?: return
+        when {
+            id.startsWith("cat:") -> {
+                val k = id.substring(4).toInt()
+                // tocar la pestaña activa pliega o despliega la paleta (deja libres las filas de arriba)
+                if (k == mkCat && !mkHand) mkPalOpen = !mkPalOpen else mkPalOpen = true
+                mkCat = k; mkHand = false
+            }
+            id.startsWith("tool:") -> { mkTool = id[5]; mkHand = false }
+            id == "hand" -> mkHand = !mkHand
+            id == "left" -> { mkCam = max(0f, mkCam - vw * 0.6f); mkRebuild() }
+            id == "right" -> { mkCam = min(mkMaxCam(), mkCam + vw * 0.6f); mkRebuild() }
+            id == "test" -> mkTest()
+            id == "save" -> mkSave()
+            id == "more" -> mkMore = !mkMore
+            id == "slot" -> {
+                mkSlot = (mkSlot + 1) % 3
+                mkLoad(prefs?.makerSlot(mkSlot)?.let { AdvMk.decode(it) })
+                mkSay("Ranura ${mkSlot + 1}" + if (prefs?.makerSlot(mkSlot).isNullOrEmpty()) " (vacía)" else "")
+            }
+            id == "theme" -> { mkTheme = (mkTheme + 1) % AdvCfg.WORLDS; mkDirty = true; mkRebuild(); mkSay(Worlds.names[mkTheme]) }
+            id == "elite" -> { mkElite = !mkElite; mkDirty = true; mkRebuild() }
+            id == "wider" -> if (mkW() < AdvMk.MAX_W) {
+                mkGrid = Array(AdvMk.ROWS) { r -> CharArray(mkW() + 20) { x -> if (x < mkW()) g[r][x] else if (r == AdvMk.ROWS - 1) '_' else '.' } }
+                mkDirty = true; mkRebuild(); mkSay("Ancho: ${mkW()} casillas")
+            }
+            id == "narrower" -> if (mkW() > AdvMk.MIN_W) {
+                val nw = mkW() - 20
+                mkGrid = Array(AdvMk.ROWS) { r -> CharArray(nw) { x -> g[r][x] } }
+                if (mkGrid!!.none { r -> r.contains('E') }) mkGrid!![AdvMk.ROWS - 2][nw - 4] = 'E'
+                mkCam = min(mkCam, mkMaxCam()); mkDirty = true; mkRebuild(); mkSay("Ancho: ${mkW()} casillas")
+            }
+            id == "clear" -> { mkGrid = AdvMk.blank(mkW()).map { it.toCharArray() }.toTypedArray(); mkDirty = true; mkRebuild(); mkSay("Sala vacía") }
+            id == "exit" -> { if (mkDirty) mkSave(); stop(); onExit() }
+        }
+    }
+
+    /** Cuadrícula sobre el mundo (coordenadas del mundo). */
+    private fun mkDrawGrid(c: Canvas, a: Adv) {
+        val x0 = max(0, floor(mkCam / 20f).toInt())
+        val x1 = min(mkW(), x0 + (vw / 20f).toInt() + 2)
+        val pp = Gl.p()
+        pp.color = Gl.white(28)
+        pp.strokeWidth = 0.6f
+        for (x in x0..x1) c.drawLine(x * 20f, AdvCfg.GROUND - 20f * (AdvMk.ROWS - 1), x * 20f, AdvCfg.GROUND + 20f, pp)
+        for (j in 0..AdvMk.ROWS) {
+            val y = AdvCfg.GROUND + 20f - j * 20f
+            c.drawLine(x0 * 20f, y, x1 * 20f, y, pp)
+        }
+        // fila del suelo marcada y fin de la sala
+        pp.color = Gl.alpha(0xFFFFD060.toInt(), 50)
+        c.drawRect(x0 * 20f, AdvCfg.GROUND, x1 * 20f, AdvCfg.GROUND + 20f, pp)
+        Gl.line(c, mkW() * 20f, 0f, mkW() * 20f, AdvCfg.H, 2f, Gl.alpha(0xFFFF6070.toInt(), 160))
+        // inicio y meta
+        val g = mkGrid ?: return
+        for (r in g.indices) for (x in x0 until x1) {
+            val ch = g[r][x]
+            if (ch != 'P' && ch != 'E') continue
+            val j = AdvMk.ROWS - 1 - r
+            val cx = x * 20f + 10f
+            val cy = AdvCfg.GROUND - 20f * j + 10f
+            if (ch == 'P') {
+                glow(c, cx, cy, 16f, 0xFF60FF90.toInt(), 120)
+                Gl.text(c, "P", cx, cy + 5f, 14f, Gl.medium, Color.WHITE)
+            } else {
+                line(c, cx - 4f, cy + 10f, cx - 4f, cy - 22f, 2f, Gl.white(230))
+                pth.reset(); pth.moveTo(cx - 4f, cy - 22f); pth.lineTo(cx + 12f, cy - 16f); pth.lineTo(cx - 4f, cy - 10f); pth.close()
+                val fp = Gl.p(); fp.color = 0xFFFFD060.toInt(); c.drawPath(pth, fp)
+                glow(c, cx, cy - 10f, 22f, 0xFFFFD060.toInt(), 90)
+            }
+        }
+    }
+
+    private fun mkBtn(c: Canvas, id: String, label: String, l: Float, t: Float, r: Float, b: Float, on: Boolean, pal: IntArray) {
+        Gl.panel(c, l, t, r, b, (b - t) / 2f, if (on) 1.35f else 0.85f, if (on) pal[2] else pal[0])
+        Gl.textFit(c, label, (l + r) / 2f, (t + b) / 2f + 4f, 11f, r - l - 6f, Gl.medium, Gl.white(240))
+        mkHits.add(Pair(id, RectF(l, t, r, b)))
+    }
+
+    /** Ícono de una pieza de la paleta. */
+    private fun mkIcon(c: Canvas, t: MkTool, cx: Float, cy: Float, pal: IntArray) {
+        val pp = Gl.p()
+        when (t.ch) {
+            '.' -> { line(c, cx - 7f, cy - 7f, cx + 7f, cy + 7f, 2.6f, 0xFFFF6070.toInt()); line(c, cx + 7f, cy - 7f, cx - 7f, cy + 7f, 2.6f, 0xFFFF6070.toInt()) }
+            '_', '#' -> gloss(c, 1, cx - 9f, cy - 9f, cx + 9f, cy + 9f, 3f, Gl.darken(pal[1], 0.7f))
+            'X' -> { gloss(c, 1, cx - 9f, cy - 9f, cx + 9f, cy + 9f, 3f, 0xFFB09070.toInt()); line(c, cx - 5f, cy - 6f, cx + 2f, cy + 6f, 1.4f, 0xFF4A3020.toInt()) }
+            '=' -> gloss(c, 1, cx - 10f, cy - 4f, cx + 10f, cy + 2f, 2f, pal[0])
+            'k' -> { gloss(c, 1, cx - 10f, cy - 4f, cx + 10f, cy + 3f, 2f, 0xFFB0A090.toInt()); line(c, cx - 2f, cy - 4f, cx + 1f, cy + 3f, 1.2f, 0xFF504030.toInt()) }
+            '^' -> { pth.reset(); for (k in 0 until 3) { pth.moveTo(cx - 9f + k * 6f, cy + 6f); pth.lineTo(cx - 6f + k * 6f, cy - 7f); pth.lineTo(cx - 3f + k * 6f, cy + 6f) }; pp.color = 0xFFE0E4F0.toInt(); c.drawPath(pth, pp) }
+            'S' -> { gloss(c, 1, cx - 8f, cy + 2f, cx + 8f, cy + 6f, 2f, 0xFFFF80A0.toInt()); line(c, cx - 5f, cy + 2f, cx + 5f, cy - 4f, 1.6f, Gl.white(220)); line(c, cx + 5f, cy - 4f, cx - 5f, cy - 8f, 1.6f, Gl.white(220)) }
+            'M', 'N' -> { gloss(c, 1, cx - 10f, cy - 3f, cx + 10f, cy + 3f, 2f, pal[2]); line(c, cx - 13f, cy + 8f, cx + 13f, cy + 8f, 1.2f, Gl.white(150)) }
+            'P' -> { glow(c, cx, cy, 12f, 0xFF60FF90.toInt(), 150); Gl.text(c, "P", cx, cy + 5f, 14f, Gl.medium, Color.WHITE) }
+            'E' -> { line(c, cx - 4f, cy + 9f, cx - 4f, cy - 9f, 2f, Gl.white(230)); pth.reset(); pth.moveTo(cx - 4f, cy - 9f); pth.lineTo(cx + 9f, cy - 4f); pth.lineTo(cx - 4f, cy + 1f); pth.close(); pp.color = 0xFFFFD060.toInt(); c.drawPath(pth, pp) }
+            'c' -> { line(c, cx, cy + 8f, cx, cy - 2f, 3f, 0xFFF0E0C0.toInt()); glow(c, cx, cy - 5f, 8f, 0xFFFFB040.toInt(), 200) }
+            'R' -> { gloss(c, 1, cx - 7f, cy - 7f, cx + 7f, cy + 7f, 3f, 0xFFFFD060.toInt()); Gl.text(c, "?", cx, cy + 4f, 11f, Gl.medium, 0xFF6A4A10.toInt()) }
+            'v' -> heart(c, cx, cy, 0.8f, 0xFFFF5070.toInt())
+            'V' -> gloss(c, 0, cx - 8f, cy - 6f, cx + 8f, cy + 6f, 0f, 0xFFC0603A.toInt())
+            'j' -> { glow(c, cx, cy, 12f, 0xFFFF8020.toInt(), 200); line(c, cx, cy + 8f, cx, cy - 8f, 4f, 0xFFFFC040.toInt()) }
+            'p' -> { line(c, cx, cy - 10f, cx + 5f, cy + 4f, 1.4f, Gl.white(200)); gloss(c, 0, cx + 1f, cy + 1f, cx + 10f, cy + 10f, 0f, 0xFFC0C8D8.toInt()) }
+            'r' -> gloss(c, 0, cx - 8f, cy - 7f, cx + 8f, cy + 8f, 0f, 0xFFA09080.toInt())
+            else -> {
+                val et = AdvMk.ENEMIES.indexOf(t.ch)
+                if (et >= 0) {
+                    val e = AdvEnemy(AdvMk.TYPES[et], cx, cy + 9f, cx - 10f, cx + 10f, 1)
+                    e.floor = cy + 9f; e.baseY = e.y; e.face = 1; e.age = 1f
+                    if (e.type == Adv.E_POP) { e.st = 2; e.floor = cy + 9f }
+                    if (e.type == Adv.E_CEIL) e.y = cy + 9f
+                    val a = adv
+                    if (a != null) {
+                        c.save(); c.scale(0.62f, 0.62f, cx, cy)
+                        c.clipRect(cx - 32f, cy - 40f, cx + 32f, cy + 26f)
+                        drawEnemy(c, e, a, pal)
+                        c.restore()
+                    }
+                }
+            }
+        }
+    }
+
+    /** Barra de herramientas y paleta del Taller (coordenadas de pantalla). */
+    private fun mkDrawUi(c: Canvas, pal: IntArray) {
+        mkHits.clear()
+        // fondo de la barra superior (vidrio)
+        Gl.panel(c, 4f, 4f, vw - 4f, if (mkPalOpen) 80f else 38f, 16f, 0.9f, pal[0])
+        var x = 10f
+        for (i in mkCats.indices) {
+            mkBtn(c, "cat:$i", mkCats[i], x, 9f, x + 64f, 33f, mkCat == i && !mkHand, pal); x += 68f
+        }
+        mkBtn(c, "hand", "Mover", x, 9f, x + 52f, 33f, mkHand, pal); x += 56f
+        mkBtn(c, "left", "◀", x, 9f, x + 26f, 33f, false, pal); x += 30f
+        mkBtn(c, "right", "▶", x, 9f, x + 26f, 33f, false, pal); x += 34f
+        val right = vw - 10f
+        mkBtn(c, "more", if (mkMore) "Más ▴" else "Más ▾", right - 54f, 9f, right, 33f, mkMore, pal)
+        mkBtn(c, "save", "Guardar", right - 116f, 9f, right - 58f, 33f, false, pal)
+        mkBtn(c, "test", "Probar ▶", right - 186f, 9f, right - 120f, 33f, true, pal)
+        mkBtn(c, "slot", "Ranura ${mkSlot + 1}", right - 252f, 9f, right - 190f, 33f, false, pal)
+        // paleta de la categoría
+        val tools = if (mkPalOpen) mkTools.filter { it.cat == mkCat } else emptyList()
+        val cw = min(40f, (vw - 20f) / tools.size)
+        for ((i, t) in tools.withIndex()) {
+            val cx = 10f + cw * i + cw / 2f
+            val sel = !mkHand && mkTool == t.ch
+            Gl.panel(c, cx - cw / 2f + 2f, 38f, cx + cw / 2f - 2f, 76f, 8f, if (sel) 1.4f else 0.7f, if (sel) pal[2] else pal[1])
+            mkIcon(c, t, cx, 54f, pal)
+            mkHits.add(Pair("tool:${t.ch}", RectF(cx - cw / 2f, 36f, cx + cw / 2f, 78f)))
+        }
+        val cur = mkTools.firstOrNull { it.ch == mkTool }
+        Gl.text(c, if (mkHand) I18n.t("Arrastra para mover la vista") else I18n.t(cur?.name ?: ""), vw / 2f, if (mkPalOpen) 96f else 54f, 12f, Gl.medium, Gl.white(220))
+        if (mkMore) {
+            val l = vw - 180f
+            Gl.panel(c, l, 84f, vw - 6f, 84f + 6 * 32f + 10f, 14f, 1f, pal[1])
+            var yy = 90f
+            mkBtn(c, "theme", I18n.t("Tema") + ": " + I18n.t(Worlds.names[mkTheme]), l + 6f, yy, vw - 12f, yy + 26f, false, pal); yy += 32f
+            mkBtn(c, "elite", I18n.t("Enemigos élite") + ": " + I18n.t(if (mkElite) "Sí" else "No"), l + 6f, yy, vw - 12f, yy + 26f, mkElite, pal); yy += 32f
+            mkBtn(c, "wider", I18n.t("Más ancha") + " (${mkW()})", l + 6f, yy, vw - 12f, yy + 26f, false, pal); yy += 32f
+            mkBtn(c, "narrower", I18n.t("Más angosta"), l + 6f, yy, vw - 12f, yy + 26f, false, pal); yy += 32f
+            mkBtn(c, "clear", I18n.t("Vaciar sala"), l + 6f, yy, vw - 12f, yy + 26f, false, pal); yy += 32f
+            mkBtn(c, "exit", I18n.t("Salir del Taller"), l + 6f, yy, vw - 12f, yy + 26f, false, pal)
+        }
+        // barra de posición abajo
+        val tw = vw - 40f
+        val frac = if (mkMaxCam() > 0f) mkCam / mkMaxCam() else 0f
+        val vis = (vw / (mkW() * 20f)).coerceIn(0.05f, 1f)
+        val bp = Gl.p(); bp.color = Gl.white(40)
+        c.drawRoundRect(RectF(20f, AdvCfg.H - 10f, 20f + tw, AdvCfg.H - 5f), 3f, 3f, bp)
+        bp.color = Gl.white(170)
+        val bx0 = 20f + (tw - tw * vis) * frac
+        c.drawRoundRect(RectF(bx0, AdvCfg.H - 10f, bx0 + tw * vis, AdvCfg.H - 5f), 3f, 3f, bp)
+        if (time - mkMsgT < 2.4f) {
+            val al = (255 * min(1f, (2.4f - (time - mkMsgT)) * 2f)).toInt()
+            Gl.text(c, mkMsg, vw / 2f, AdvCfg.H - 24f, 14f, Gl.medium, Gl.alpha(Color.WHITE, al), 0.04f, null, Gl.alpha(Color.BLACK, al))
+        }
     }
 }

@@ -1,0 +1,3 @@
+niveles=78
+desde=24
+hasta=47

@@ -8,7 +8,7 @@ import base64, os, re, sys, zlib
 
 NUM = r"-?\d+(?:\.\d+)?(?:E-?\d+)?"
 LINE = re.compile(
-    r"^(?:S -?\d+ " + NUM + r"|P -?\d+|O(?: " + NUM + r"){12}|W " + NUM + r" \d|Z " + NUM + " " + NUM + r")$"
+    r"^(?:S -?\d+ " + NUM + r"|P -?\d+|O(?: " + NUM + r"){12,13}|W " + NUM + r" \d|Z " + NUM + " " + NUM + r")$"
 )
 
 

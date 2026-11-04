@@ -27,6 +27,11 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go estela:27;         shot 05e_estela_aurora "estela nueva: Aurora boreal"; alive
   go estela:40;         shot 05f_estela_supernova "estela nueva: Supernova"; alive
   go nivel:1;           shot 06_nivel1 "nivel 1"; alive
+  go nivel:14 7;        shot 06b_nivel14 "nivel 14 (obstáculos de catálogo)"; alive
+  go nivel:75 7;        shot 06c_nivel75 "nivel 75"; alive
+  go nivel:118 7;       shot 06d_nivel118 "nivel 118"; alive
+  go editor:60 6;       shot 06e_editor "editor de niveles"; alive
+  go galeria:60 6;      shot 06f_galeria "galería del catálogo"; alive
   go infinito;          shot 07_infinito "modo infinito"; alive
   go mundos 6;          shot 08_mundos "carrusel de mundos de la Aventura"; alive
   go aventura:0 9;      shot 10_aventura_m1 "Aventura mundo 1, sala inicial"; alive
@@ -34,6 +39,7 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go vitrina:8:1 9;     shot 12_vitrina_b "mago, lobo, calavera"; sleep 2; shot 12b_vitrina_b "1 s después"; alive
   go vitrina:11:2 9;    shot 13_vitrina_c "gólem élite, caballero, arquero élite"; sleep 2; shot 13b_vitrina_c "1 s después"; alive
   go aventura:11 9;     shot 14_aventura_m12 "Aventura mundo 12, sala inicial"; alive
+  go taller 9;          shot 15_taller "Taller: editor de salas de la Aventura"; alive
 } > steps.txt 2>&1
 
 timeout 60 adb logcat -d > full.log 2>&1

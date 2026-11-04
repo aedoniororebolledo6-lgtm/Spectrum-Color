@@ -141,6 +141,10 @@ class Prefs(context: Context) {
     fun advSave(w: Int): String = sp.getString("advS$w", "") ?: ""
     fun setAdvSave(w: Int, v: String) { sp.edit().putString("advS$w", v).apply() }
 
+    /** Salas del Taller (editor de la Aventura): 3 ranuras. */
+    fun makerSlot(i: Int): String = sp.getString("advMk$i", "") ?: ""
+    fun setMakerSlot(i: Int, v: String) { sp.edit().putString("advMk$i", v).apply() }
+
     var advMask: Int
         get() = sp.getInt("advMask", 0)
         set(v) { sp.edit().putInt("advMask", v).apply() }

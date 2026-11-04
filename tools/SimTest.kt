@@ -278,7 +278,7 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
-fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar", "pentágono", "estrella", "ola", "mandíbulas", "ocho").getOrElse(t) { "?" }
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar", "pentágono", "estrella", "ola", "mandíbulas", "ocho", "catálogo").getOrElse(t) { "?" }
 
 val bestStarsTL = ThreadLocal.withInitial { 0 }
 
@@ -315,7 +315,9 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
                 }
                 if (!ok) continue
                 if (fin) return Pair(true, (layer + 1) * grain * Cfg.STEP)
-                val a = sims[0]
+                // la clave sale de la primera bola que todavía no llegó: si la de retraso 0 ya cruzó la meta, se
+                // queda quieta y todas las jugadas parecían iguales (solo sobrevivía "no tocar" y las demás no llegaban)
+                val a = sims.firstOrNull { !it.finished } ?: sims[0]
                 val key = ((a.by / 7f).toInt().toLong() shl 40) xor ((a.bvy / 40f).toInt().toLong() shl 24) xor (a.starCount.toLong() shl 8) xor (a.swCount.toLong() shl 2) xor (if (pend[0] >= 0) 1L else 0L)
                 val key2 = key * 31L + (a.bx / 36f).toInt().toLong()
                 if (seen.add(key2)) next.add(FNode(sims, pend))
@@ -329,7 +331,8 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
             next.shuffle(rnd)
             val keep = beam / 2
             val sorted = ArrayList(next)
-            sorted.sortWith(compareByDescending<FNode> { it.sims[0].starCount }.thenBy { it.sims[0].by })
+            // progreso = la bola más atrasada que aún no llegó (la que ya cruzó la meta no cuenta)
+            sorted.sortWith(compareByDescending<FNode> { it.sims[0].starCount }.thenBy { n -> (n.sims.firstOrNull { !it.finished } ?: n.sims[0]).by })
             val chosen = LinkedHashSet<FNode>()
             for (k in 0 until keep) chosen.add(sorted[k])
             var k = 0
@@ -338,6 +341,11 @@ fun feasible(course: Course, visH: Float, delays: IntArray, grain: Int = 6, maxS
         } else {
             frontier = next
         }
+    }
+    if (System.getenv("FEASDBG") != null) {
+        val b = frontier.maxWithOrNull(compareBy<FNode> { it.sims[0].starCount }.thenBy { -it.sims[0].by })
+        if (b != null) { val a = b.sims[0]; println("  [diag] mejor estado: estrellas=${a.starCount}/${course.obs.size} y=${a.by} meta=${course.finishY} color=${a.color} cambiadores=${a.swCount}/${course.sws.size} vivos=${frontier.size}")
+            for ((k, sm) in b.sims.withIndex()) println("    bola $k: y=${sm.by} vy=${sm.bvy} terminó=${sm.finished} muerta=${sm.dead} estrellas=${sm.starCount} color=${sm.color} t=${sm.t}") }
     }
     return Pair(false, maxSeconds)
 }
@@ -383,7 +391,61 @@ fun diag(level: Int) {
     println("cayó por abajo: ${causeFall[0]}   completó: ${deathsAt[c0.obs.size]}")
 }
 
+/**
+ * Comprueba cada diseño de catálogo por separado: un recorrido con el diseño lento (dificultad baja) y rápido
+ * (dificultad alta), con 2 y 3 colores. Uso: kits [desde] [hasta]
+ */
+fun kitCourse(i: Int, n: Int, slowSpd: Float, fastSpd: Float): Course {
+    val obs = ArrayList<Ob>()
+    val sws = ArrayList<Sw>()
+    var y = -900f
+    var color = 0
+    val probe = Ob(T.KIT, 0f, n, 0, slowSpd, 30f, 300f, 0f, design = i)
+    val reach = probe.reach
+    for ((k, sp) in floatArrayOf(slowSpd, -fastSpd, fastSpd).withIndex()) {
+        y -= reach
+        val o = Ob(T.KIT, y, n, k % n, sp, 40f + k * 77f, 300f, 0f, design = i)
+        if (k == 0) color = Integer.numberOfTrailingZeros(o.present)
+        else {
+            val cands = (0 until n).filter { (o.present and (1 shl it)) != 0 && it != color }
+            if (cands.isNotEmpty()) { color = cands[k % cands.size]; sws.add(Sw(y + reach + 200f, color)) }
+        }
+        obs.add(o)
+        y -= reach + 420f
+    }
+    val d = LevelData(Integer.numberOfTrailingZeros(obs[0].present), y - 300f, obs, sws, ArrayList())
+    return Course.custom(200, d)
+}
+
+fun kitsCheck(from: Int, to: Int): Int {
+    val dl = (System.getenv("DELAYS") ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
+    val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
+    val out = arrayOfNulls<String>(Kit.COUNT)
+    val bad = java.util.concurrent.atomic.AtomicInteger(0)
+    val fams = System.getenv("FAM")?.split(",")?.map { it.trim().toInt() }?.toSet()
+    for (i in from..to) if (fams == null || (i % Kit.FAMILIES) in fams) pool.submit {
+        val res = StringBuilder()
+        var ok = true
+        val ns = (System.getenv("NS") ?: "2,3").split(",").map { it.trim().toInt() }
+        for (n in ns) for ((lo, hi) in listOf(Pair(55f, 70f), Pair(80f, 100f))) {
+            val (f, _) = feasible(kitCourse(i, n, lo, hi), 2400f, dl, maxSeconds = 60f)
+            if (!f) { ok = false; res.append(" n=$n vel=${hi.toInt()}") }
+        }
+        if (!ok) bad.incrementAndGet()
+        out[i] = "diseño %3d %-18s %s%s".format(i, Kit.designs[i].name, if (ok) "POSIBLE" else "NO", res)
+        synchronized(out) { println(out[i]) }
+    }
+    pool.shutdown()
+    pool.awaitTermination(600, TimeUnit.MINUTES)
+    println("diseños imposibles: ${bad.get()}")
+    return bad.get()
+}
+
 fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] == "kits") {
+        val bad = kitsCheck(args.getOrNull(1)?.toInt() ?: 0, args.getOrNull(2)?.toInt() ?: (Kit.COUNT - 1))
+        System.exit(if (bad == 0) 0 else 1)
+    }
     if (args.isNotEmpty() && args[0] == "feas") {
         val dl = (args.getOrNull(1) ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
         val lv = if (args.size > 2) args.drop(2).map { it.toInt() } else (1..Levels.PLAYABLE).toList()
@@ -393,9 +455,31 @@ fun main(args: Array<String>) {
         for ((idx, l) in lv.withIndex()) pool.submit {
             val t0 = System.currentTimeMillis()
             bestStarsTL.set(0)
-            val (ok, secs) = feasible(Course.level(l), 2400f, dl)
+            val (ok, secs) = feasible(Course.level(l), 2400f, dl, maxSeconds = (System.getenv("MAXS") ?: "150").toFloat())
             out[idx] = "nivel %3d  colores %d  obstáculos %2d  %s  (%.1f s de juego, %.1f s de cálculo)%s".format(l, Levels.colors(l), Levels.gates(l), if (ok) "POSIBLE" else "NO ENCONTRADO", secs, (System.currentTimeMillis() - t0) / 1000f, if (ok) "" else "  mejor: ${bestStarsTL.get()} estrellas, se atasca en ${tname(Course.level(l).obs.getOrNull(bestStarsTL.get())?.type ?: -1)} #${bestStarsTL.get()}")
             synchronized(out) { println(out[idx]) }
+        }
+        pool.shutdown()
+        pool.awaitTermination(600, TimeUnit.MINUTES)
+        return
+    }
+    if (args.size >= 3 && args[0] == "pick") {
+        // pick <máx> <nivel>...: para cada nivel, la primera variante (0..máx) que la búsqueda completa.
+        // Empieza por la variante actual (Levels.salt) para no cambiar los niveles que ya andan.
+        val maxSalt = args[1].toInt()
+        val dl = (System.getenv("DELAYS") ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
+        val maxs = (System.getenv("MAXS") ?: "150").toFloat()
+        val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
+        for (l in args.drop(2).map { it.toInt() }) pool.submit {
+            val cur = Levels.salt(l)
+            val from = (System.getenv("SALT_FROM") ?: "0").toInt()
+            val order = if (from > 0) (from..maxSalt).toList() else listOf(cur) + (0..maxSalt).filter { it != cur }
+            var chosen = -1
+            for (sa in order) {
+                val (ok, secs) = feasible(Course.level(l, sa), 2400f, dl, maxSeconds = maxs)
+                if (ok) { chosen = sa; synchronized(System.out) { println("ELEGIDA nivel %3d variante %d  (%.1f s de juego)".format(l, sa, secs)) }; break }
+            }
+            if (chosen < 0) synchronized(System.out) { println("SIN VARIANTE nivel %3d".format(l)) }
         }
         pool.shutdown()
         pool.awaitTermination(600, TimeUnit.MINUTES)
@@ -407,7 +491,8 @@ fun main(args: Array<String>) {
         val dl = (System.getenv("DELAYS") ?: "0,4").split(",").map { it.toInt() }.toIntArray()
         val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
         val jobs = ArrayList<Pair<Int, Int>>()
-        for (l in args.drop(2).map { it.toInt() }) for (sa in 0..maxSalt) jobs.add(Pair(l, sa))
+        val from = (System.getenv("SALT_FROM") ?: "0").toInt()
+        for (l in args.drop(2).map { it.toInt() }) for (sa in from..maxSalt) jobs.add(Pair(l, sa))
         val out = arrayOfNulls<String>(jobs.size)
         for ((idx, j) in jobs.withIndex()) pool.submit {
             val (ok, secs) = feasible(Course.level(j.first, j.second), 2400f, dl)
