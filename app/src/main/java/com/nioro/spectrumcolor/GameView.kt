@@ -2548,7 +2548,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         Gl.text(c, "MUNDO ${i + 1}", 0f, ty, 30f, Gl.medium, Gl.white(150), 0.3f)
         Gl.textFit(c, Worlds.names[i.coerceIn(0, Worlds.names.size - 1)], 0f, ty + 82f, 76f, w - 70f, Gl.light, Gl.white(250))
         val boss = AdvCfg.bosses.getOrNull(i)?.name ?: ""
-        Gl.textFit(c, if (open) "Jefe: $boss" else "Jefe: ???", 0f, ty + 140f, 32f, w - 70f, Gl.regular, Gl.white(170))
+        Gl.textFit(c, if (open) "Jefe: ${I18n.t(boss)}" else "Jefe: ???", 0f, ty + 140f, 32f, w - 70f, Gl.regular, Gl.white(170))
         val by = h / 2f - 92f
         if (open) {
             val id = "advw:$i"
@@ -5847,12 +5847,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun drawEdGallery(c: Canvas, pal: IntArray) {
         hits.clear()
         val dim = Gl.p()
-        dim.color = Color.argb(200, 2, 4, 14)
+        dim.color = Color.argb(242, 4, 6, 18)
         c.drawRect(0f, 0f, Cfg.W, vh, dim)
         hits.add(Hit("edmenux", 0f, 0f, Cfg.W, vh))
         val top = topI + 120f
         Gl.text(c, "CATÁLOGO", 540f, top, 56f, Gl.light, Gl.white(245), 0.2f)
-        Gl.text(c, "${edGalPage * 20 + 1}–${edGalPage * 20 + 20} de ${Kit.COUNT}", 540f, top + 56f, 32f, Gl.regular, Gl.white(180))
+        Gl.text(c, "${edGalPage * 20 + 1}–${edGalPage * 20 + 20} / ${Kit.COUNT}", 540f, top + 56f, 32f, Gl.regular, Gl.white(180))
         val cw = 245f
         val chh = 300f
         val avail = vh - (top + 100f) - 200f

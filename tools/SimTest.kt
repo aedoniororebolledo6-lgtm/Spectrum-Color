@@ -418,7 +418,8 @@ fun kitsCheck(from: Int, to: Int): Int {
     for (i in from..to) if (fams == null || (i % Kit.FAMILIES) in fams) pool.submit {
         val res = StringBuilder()
         var ok = true
-        for (n in intArrayOf(2, 3)) for ((lo, hi) in listOf(Pair(55f, 70f), Pair(80f, 100f))) {
+        val ns = (System.getenv("NS") ?: "2,3").split(",").map { it.trim().toInt() }
+        for (n in ns) for ((lo, hi) in listOf(Pair(55f, 70f), Pair(80f, 100f))) {
             val (f, _) = feasible(kitCourse(i, n, lo, hi), 2400f, dl, maxSeconds = 60f)
             if (!f) { ok = false; res.append(" n=$n vel=${hi.toInt()}") }
         }

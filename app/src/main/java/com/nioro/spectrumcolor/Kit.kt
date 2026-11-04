@@ -203,23 +203,25 @@ object Kit {
 
     /** Vértice i de un polígono o estrella (en coordenadas de pantalla). */
     fun vert(o: Ob, p: KPart, t: Float, i: Int, out: FloatArray) {
-        val k = segs(p, o.n)
-        val r = rad(o, p, t)
-        if (p.kind == KPart.STAR) {
-            val a = (ang(o, p, t) + i * 180f / k) * DEG
-            val rr = if (i % 2 == 0) r else r * p.r2
-            out[0] = cx(o, p, t) + cos(a) * rr
-            out[1] = cy(o, p) + sin(a) * rr * p.ey
-        } else {
-            val a = (ang(o, p, t) + i * 360f / k) * DEG
-            out[0] = cx(o, p, t) + cos(a) * r
-            out[1] = cy(o, p) + sin(a) * r * p.ey
-        }
+        out[0] = vertX(o, p, t, i)
+        out[1] = vertY(o, p, t, i)
     }
 
+    private fun vertAng(o: Ob, p: KPart, t: Float, i: Int): Float {
+        val k = segs(p, o.n)
+        return (ang(o, p, t) + i * (if (p.kind == KPart.STAR) 180f else 360f) / k) * DEG
+    }
+
+    private fun vertR(o: Ob, p: KPart, t: Float, i: Int): Float {
+        val r = rad(o, p, t)
+        return if (p.kind == KPart.STAR && i % 2 == 1) r * p.r2 else r
+    }
+
+    // sin búferes compartidos: la colisión se usa desde varios hilos en las pruebas
+    fun vertX(o: Ob, p: KPart, t: Float, i: Int): Float = cx(o, p, t) + cos(vertAng(o, p, t, i)) * vertR(o, p, t, i)
+    fun vertY(o: Ob, p: KPart, t: Float, i: Int): Float = cy(o, p) + sin(vertAng(o, p, t, i)) * vertR(o, p, t, i) * p.ey
+
     private const val DEG = 3.14159265f / 180f
-    private val va = FloatArray(2)
-    private val vb = FloatArray(2)
 
     /** true si la bola (de ese color) choca con el obstáculo de catálogo en el instante t. */
     fun hits(o: Ob, bx: Float, by: Float, color: Int, t: Float): Boolean {
@@ -244,9 +246,8 @@ object Kit {
                     for (i in 0 until k) {
                         val ci = if (p.kind == KPart.STAR) i / 2 else i
                         if ((ci + o.shift + p.coff) % o.n == color) continue
-                        vert(o, p, t, i, va)
-                        vert(o, p, t, (i + 1) % k, vb)
-                        if (Geo.segDist(bx, by, va[0], va[1], vb[0], vb[1]) < band) return true
+                        val j = (i + 1) % k
+                        if (Geo.segDist(bx, by, vertX(o, p, t, i), vertY(o, p, t, i), vertX(o, p, t, j), vertY(o, p, t, j)) < band) return true
                     }
                 }
                 KPart.SPOKE -> {

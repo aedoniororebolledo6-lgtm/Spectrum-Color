@@ -1869,9 +1869,9 @@ class AdvUi(
 
     private fun drawStory(c: Canvas, pal: IntArray) {
         panelBox(c, pal, vw / 2f - 280f, 50f, vw / 2f + 280f, 310f)
-        Gl.text(c, "MUNDO ${world + 1}: ${Worlds.names[world]}", vw / 2f, 92f, 22f, Gl.medium, Gl.white(245), 0.08f)
+        Gl.text(c, "MUNDO ${world + 1}: ${I18n.t(Worlds.names[world])}", vw / 2f, 92f, 22f, Gl.medium, Gl.white(245), 0.08f)
         Gl.text(c, "Jefe: ${AdvCfg.bosses[world].name}", vw / 2f, 118f, 15f, Gl.regular, pal[1])
-        wrapText(c, AdvCfg.worldIntro[world], vw / 2f, 156f, 500f, 17f, 24f)
+        wrapText(c, I18n.t(AdvCfg.worldIntro[world]), vw / 2f, 156f, 500f, 17f, 24f)
         Gl.text(c, "Botón espada: ataque normal   Botón estrella: arma especial (gasta corazones)", vw / 2f, 246f, 12f, Gl.regular, Gl.white(150))
         Gl.text(c, "Explora las salas del mapa (pausa = mapa completo). Ataca junto a una escalera para subir o bajar.", vw / 2f, 264f, 11f, Gl.regular, Gl.white(150))
         Gl.text(c, "Llaves = puertas doradas. Estatuas rojas = curar y guardar. Muros agrietados: rómpelos con el látigo.", vw / 2f, 280f, 11f, Gl.regular, Gl.white(150))
@@ -1881,7 +1881,7 @@ class AdvUi(
     private fun drawPause(c: Canvas, pal: IntArray) {
         val a = adv ?: return
         panelBox(c, pal, 16f, 22f, vw - 16f, 338f)
-        Gl.text(c, "MAPA  -  ${Worlds.names[world]}", (16f + vw - 260f) / 2f, 56f, 18f, Gl.medium, Gl.white(245), 0.05f)
+        Gl.text(c, "MAPA  -  ${I18n.t(Worlds.names[world])}", (16f + vw - 260f) / 2f, 56f, 18f, Gl.medium, Gl.white(245), 0.05f)
         var minX = 99; var maxX = -1; var minY = 99; var maxY = -1
         for (r in a.rooms) if (r.seen) { minX = min(minX, r.gx); maxX = max(maxX, r.gx); minY = min(minY, r.gy); maxY = max(maxY, r.gy) }
         val availW = vw - 300f
@@ -1972,9 +1972,9 @@ class AdvUi(
             Gl.text(c, "Toca para volver al editor", vw / 2f, 282f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
             return
         }
-        Gl.text(c, "¡${Worlds.names[world]} salvado!", vw / 2f, 108f, 26f, Gl.medium, Gl.white(245), 0.06f)
-        wrapText(c, AdvCfg.worldOutro[world], vw / 2f, 148f, 500f, 18f, 25f)
-        if (savedCount >= AdvCfg.WORLDS) wrapText(c, AdvCfg.finalText, vw / 2f, 196f, 500f, 15f, 21f)
+        Gl.text(c, "¡${I18n.t(Worlds.names[world])} salvado!", vw / 2f, 108f, 26f, Gl.medium, Gl.white(245), 0.06f)
+        wrapText(c, I18n.t(AdvCfg.worldOutro[world]), vw / 2f, 148f, 500f, 18f, 25f)
+        if (savedCount >= AdvCfg.WORLDS) wrapText(c, I18n.t(AdvCfg.finalText), vw / 2f, 196f, 500f, 15f, 21f)
         else Gl.text(c, "Mundos salvados: $savedCount/${AdvCfg.WORLDS}", vw / 2f, 214f, 15f, Gl.regular, pal[1])
         Gl.text(c, "Toca para volver", vw / 2f, 282f, 15f, Gl.regular, Gl.white((150 + 90 * sin(time * 4f)).toInt()))
     }
