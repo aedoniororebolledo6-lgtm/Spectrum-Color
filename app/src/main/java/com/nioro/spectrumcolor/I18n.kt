@@ -523,6 +523,8 @@ object I18n {
         d("¡NUEVO RÉCORD!", "NEW BEST!", "НОВЫЙ РЕКОРД!")
         d("Jugar de nuevo", "Play again", "Играть снова")
         d("Menú", "Menu", "Меню")
+        d("Menú ▾", "Menu ▾", "Меню ▾")
+        d("Menú ▴", "Menu ▴", "Меню ▴")
         d("¡CASI!", "SO CLOSE!", "ПОЧТИ!")
         p("Obstáculos (\\d+) / (\\d+)", "Obstacles $1 / $2", "Препятствия $1 / $2")
         d("Reintentar", "Retry", "Ещё раз")
