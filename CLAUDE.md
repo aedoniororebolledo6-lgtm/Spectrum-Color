@@ -47,6 +47,14 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
   - `tools/run_adv_tests.sh real` — el bot juega la Aventura **con daño** y debe ganar los 12 mundos (hasta 3 intentos).
   - `tools/run_adv_tests.sh god 640 rooms` y `… god 640 structs` — todo se puede recorrer.
   - Las pruebas necesitan `kotlinc` en el PATH (o `$KOTLINC`); `compilar_local.sh` lo descarga a la carpeta de caché.
+- `java -cp <tests.jar> com.nioro.spectrumcolor.SimTestKt kits [desde] [hasta]` — cada diseño de catálogo por separado
+  (variables: `FAM=2,3` familias, `NS=3` colores, `BEAM=6000` amplitud de la búsqueda; con poca amplitud hay falsos "NO").
+- `… SimTestKt feas 0,4,8 <niveles>` — ¿se puede completar el nivel con toques retrasados 0/4/8 pasos? (`MAXS` = segundos
+  de juego máximos, `FEASDBG=1` muestra dónde se atascó). `… salt <máx> <niveles>` prueba variantes (`Levels.salts`).
+- Workflow **"Factibilidad"** (`factibilidad.yml`): corre `feas` para los niveles 11..120, un trabajo por mundo y todos a la
+  vez; se lanza solo al cambiar `Engine.kt`, `Kit.kt` o `SimTest.kt` en una rama. Tarda 10–40 min.
+- Ojo con el estado compartido: las pruebas corren en varios hilos; nada en `Engine.kt`/`Kit.kt` puede usar búferes
+  globales mutables durante la colisión (ya pasó con los vértices de `Kit`).
 - En CI, "Verificar rama" corre lo mismo: compilación dev + estas pruebas + capturas.
 - Revisa los resultados con `mcp__github__actions_*` (y `get_job_logs` si falla). No esperes con `sleep` en primer plano.
 
@@ -55,6 +63,11 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
 - `GameView.kt` — todas las pantallas (menú, niveles, ajustes, apariencias, multijugador, editor, menú de Aventura),
   dibujo, toques, actualización (`checkUpdate`), ventana de "Borrar progreso" (`drawResetDlg`).
 - `Engine.kt` — motor del juego normal: física, colisiones, generación de los 120 niveles y del modo infinito. Sin Android.
+- `Kit.kt` — 200 obstáculos de catálogo (tipo `T.KIT`, campo `Ob.design`): 20 familias × 10 variantes armadas con piezas
+  (aro, polígono, estrella, aspas, satélites, cinta). Se estrenan del nivel 11 al 120 (`Kit.unlockLevel`). Sin Android.
+  `KitDraw.kt` los dibuja (vidrio líquido) y hace las miniaturas de la galería del editor.
+- Taller de la Aventura (editor estilo Mario Maker): interfaz en `AdventureUi.kt` (funciones `mk*`, fase 4), salas en
+  `Adv.loadMaker` y letras de los planos en `AdvMk` (`Adventure.kt`); se guardan en `Prefs.makerSlot(0..2)`.
 - `Adventure.kt` — modo Aventura (estilo Castlevania): mapa de salas, estructuras, enemigos, jefes. Sin Android.
 - `AdvAi.kt` — IA: steering (Seek/Arrive/Pursue/Flee/Wander), tiro balístico y árbol de comportamiento (ideas de gdx-ai).
 - `AdvStructs.kt` — 650+ planos de estructuras. `AdventureUi.kt` — dibujo y controles de la Aventura.
