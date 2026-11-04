@@ -31,7 +31,8 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
 4. La app es un Canvas: no se puede tocar por texto. Para llegar a una pantalla se usan **atajos** (solo versión dev):
    `adb shell am start -S -n com.nioro.spectrumcolor/.MainActivity --es ir <atajo>`, con
    `inicio`, `ajustes`, `borrar1`, `borrar2`, `apariencias`, `esfera:N` y `estela:N` (eligen una y abren su pestaña), `nivel:N`, `infinito`, `mundos`, `aventura:W`
-   (mundo W desde 0, salta la historia) y `vitrina:W:K` (sala con 3 enemigos nuevos, K = 0, 1 o 2, en modo dios).
+   (mundo W desde 0, salta la historia) y `vitrina:W:K` (sala con 3 enemigos nuevos, K = 0, 1 o 2, en modo dios),
+   `taller` (editor de salas de la Aventura), `editor:N` y `galeria:N` (editor de niveles y catálogo de obstáculos).
    Para una pantalla nueva: añade el atajo en `GameView.debugGo` y un paso `go …; shot …` en `ci/smoke.sh`.
 5. El Android virtual está en **inglés**: las capturas sirven también para ver textos sin traducir
    (si un texto sale en español, falta su `d(...)` en `I18n.kt`).

@@ -157,6 +157,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         { advExit() }
     )
     private var advPending = -1
+    /** advPending especial: abrir el Taller (editor de salas) en vez de un mundo. */
+    private val ADV_MAKER = 100
     private var advWait = 0f
     private var advLeaving = false
     /** Solo pruebas (versión dev): al abrir la Aventura, saltar la historia (-1) o mostrar la vitrina k. -2 = nada. */
@@ -165,7 +167,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     /**
      * Atajos para las capturas automáticas (solo versión de desarrollador). Se usan desde ci/smoke.sh con
      * `adb shell am start -S -n com.nioro.spectrumcolor/.MainActivity --es ir <atajo>`:
-     * inicio, ajustes, borrar1, borrar2, apariencias, esfera:N, estela:N, nivel:N, infinito, mundos, aventura:W, vitrina:W:K.
+     * inicio, ajustes, borrar1, borrar2, apariencias, esfera:N, estela:N, nivel:N, infinito, mundos, aventura:W, vitrina:W:K,
+     * taller, editor:N, galeria:N.
      */
     fun debugGo(cmd: String) {
         if (!BuildConfig.DEV) return
@@ -190,6 +193,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "nivel" -> if (Levels.isPlayable(n1)) startLevel(n1)
             "infinito" -> startEndless()
             "mundos" -> scr = Scr.ADV_MENU
+            "taller" -> advStart(ADV_MAKER)
+            "editor" -> if (Levels.isPlayable(n1)) openEditor(n1)
+            "galeria" -> if (Levels.isPlayable(n1)) { openEditor(n1); edOpenGallery() }
             "aventura" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = -1; advStart(n1) }
             "vitrina" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = n2; advStart(n1) }
         }
@@ -592,6 +598,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     audio.play(Sfx.CLICK)
                 }
             }
+            id == "advmaker" -> { advDebug = -2; advStart(ADV_MAKER) }
             id.startsWith("advw:") -> {
                 val w = id.substring(5).toIntOrNull() ?: -1
                 if (w in 0 until AdvCfg.WORLDS && advUnlocked(w)) advStart(w)
@@ -1027,8 +1034,13 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 } else if (advPending >= 0) {
                     if (width > height) {
                         advUi.prefs = prefs
-                        advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0)
-                        if (advDebug != -2) advUi.debugPlay(advDebug)
+                        if (advPending == ADV_MAKER) {
+                            advUi.start(0, width / (height / AdvCfg.H), true)
+                            advUi.startMaker(width / (height / AdvCfg.H))
+                        } else {
+                            advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0)
+                            if (advDebug != -2) advUi.debugPlay(advDebug)
+                        }
                         advDebug = -2
                         advPending = -1
                     }
@@ -2461,6 +2473,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AVENTURA", top + 130f, 56f)
+        button(c, "advmaker", "Taller", 930f, top + 110f, 230f, 96f, cur()[2], 38f)
         val saved = Integer.bitCount(prefs.advMask and ((1 shl AdvCfg.WORLDS) - 1))
         Gl.text(c, "Los colores huyeron de los mundos. Salva cada uno.", 540f, top + 255f, 34f, Gl.light, Gl.white(210))
         Gl.text(c, "Se juega en horizontal  ·  Salvados $saved/${AdvCfg.WORLDS}", 540f, top + 305f, 34f, Gl.regular, Gl.white(160))
@@ -2822,22 +2835,46 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         c.restore()
     }
 
+    /** Meta: portal de vidrio con dos pilares de luz, cortina que brilla y baldosas de colores. */
     private fun drawFinish(c: Canvas, y: Float, pal: IntArray) {
+        // cortina de luz entre los pilares
+        var pp = Gl.p()
+        pp.shader = LinearGradient(0f, y - 260f, 0f, y + 30f, intArrayOf(Gl.alpha(pal[0], 0), Gl.alpha(pal[1], 60), Gl.alpha(pal[2], 25)), floatArrayOf(0f, 0.75f, 1f), Shader.TileMode.CLAMP)
+        c.drawRect(110f, y - 260f, 970f, y + 22f, pp)
+        // rayos que suben por la cortina
+        for (k in 0 until 7) {
+            val u = ((time * 0.35f + k / 7f) % 1f)
+            val x = 150f + k * 130f
+            Gl.line(c, x, y - u * 240f, x, y - u * 240f - 50f, 4f, Gl.white((120 * (1f - u)).toInt()))
+        }
+        // pilares de vidrio
+        for (px in floatArrayOf(110f, 970f)) {
+            Gl.glow(c, px, y - 120f, 120f, pal[3 % pal.size], 60)
+            Gl.panel(c, px - 22f, y - 280f, px + 22f, y + 34f, 22f, 1.1f, pal[0])
+            Gl.glow(c, px, y - 290f, 34f + 6f * sin(time * 4f), Color.WHITE, 140)
+            pp = Gl.p(); pp.color = Gl.white(235); c.drawCircle(px, y - 290f, 10f, pp)
+        }
+        // baldosas de vidrio con brillo que recorre la fila
         val n = 14
-        val sw = 920f / n
+        val sw = 860f / n
         for (i in 0 until n) {
-            val x0 = 80f + i * sw
-            var pp = Gl.p()
-            pp.color = Gl.alpha(pal[i % 4], 150)
-            Gl.rect.set(x0 + 2f, y - 22f, x0 + sw - 2f, y + 22f)
-            c.drawRoundRect(Gl.rect, 10f, 10f, pp)
+            val x0 = 110f + i * sw
+            val sh = (0.5f + 0.5f * sin(time * 3f - i * 0.45f))
+            pp = Gl.p()
+            pp.color = Gl.alpha(pal[i % 4], (120 + 90 * sh).toInt())
+            Gl.rect.set(x0 + 3f, y - 22f, x0 + sw - 3f, y + 22f)
+            c.drawRoundRect(Gl.rect, 12f, 12f, pp)
+            pp = Gl.p()
+            pp.color = Gl.white((60 + 80 * sh).toInt())
+            Gl.rect2.set(x0 + 10f, y - 17f, x0 + sw - 10f, y - 9f)
+            c.drawRoundRect(Gl.rect2, 4f, 4f, pp)
             pp = Gl.p()
             pp.style = Paint.Style.STROKE
             pp.strokeWidth = 2f
-            pp.color = Gl.white(120)
-            c.drawRoundRect(Gl.rect, 10f, 10f, pp)
+            pp.color = Gl.white(130)
+            c.drawRoundRect(Gl.rect, 12f, 12f, pp)
         }
-        Gl.text(c, "META", 540f, y - 60f, 60f, Gl.medium, Gl.white(235), 0.4f, null, Gl.alpha(pal[0], 160))
+        Gl.text(c, "META", 540f, y - 70f, 66f, Gl.medium, Gl.white(240), 0.45f, null, Gl.alpha(pal[0], 200))
     }
 
     private val danger = 0xFFFF2D55.toInt()
@@ -2875,6 +2912,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.WAVE -> drawWave(c, o, t, pal)
             T.JAWS -> drawJaws(c, o, t, pal)
             T.EIGHT -> drawEight(c, o, t, pal)
+            T.KIT -> KitDraw.draw(c, o, t, pal)
             T.COUNTER -> {
                 drawBarLane(c, o, o.y - o.aux, o.phase * 3f + o.speed * t, pal)
                 drawBarLane(c, o, o.y + o.aux, o.phase * 3f - o.speed * Cfg.COUNTER_RATIO * t, pal)
@@ -5078,7 +5116,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private val edTypeNames = arrayOf(
         "Anillo", "Doble", "Barras", "Cuadrado", "Triángulo", "Pinchos", "Péndulo", "Cruz", "Compuerta", "Órbita",
         "Contrabarras", "Arco", "Pulso", "Hexágono", "Láser", "Puerta lateral", "Franja", "Sierras", "Pilar",
-        "Pentágono", "Estrella", "Ola", "Mandíbulas", "Ocho"
+        "Pentágono", "Estrella", "Ola", "Mandíbulas", "Ocho", "Catálogo"
     )
     // etiquetas de tamaño / interior / auxiliar según el tipo (null = no se usa)
     private val edLbl: Array<Array<String?>> = arrayOf(
@@ -5090,7 +5128,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         arrayOf("Amplitud", "Centro", "Hueco"), arrayOf("Largo", null, null), arrayOf("Recorrido", "Cantidad", "Radio"),
         arrayOf("Amplitud", null, "Ancho"),
         arrayOf("Tamaño", null, null), arrayOf("Tamaño", null, null), arrayOf("Amplitud", "Ritmo", null),
-        arrayOf(null, null, "Apertura"), arrayOf("Ancho", null, "Alto")
+        arrayOf(null, null, "Apertura"), arrayOf("Ancho", null, "Alto"), arrayOf("Tamaño", null, null)
     )
     private val edTplNames = arrayOf(
         "Tres anillos", "Barras", "Pinchos y cruz", "Formas", "Órbitas y arco", "Rayos", "Compuertas", "Zona de deslizar", "Viento y sombras", "Los 5 nuevos"
@@ -5156,8 +5194,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             T.WAVE -> { speed = 200f; size = 70f; inner = 1.6f }
             T.JAWS -> { speed = 0.28f; size = 0f; aux = 170f }
             T.EIGHT -> { size = 270f; aux = 110f }
+            T.KIT -> { size = 300f; speed = 60f; n = min(n, 3) }
         }
-        return Ob(type, y, n, 0, speed, 0f, size, inner, aux)
+        return Ob(type, y, n, 0, speed, 0f, size, inner, aux, design = if (type == T.KIT) edLastDesign else -1)
     }
 
     private fun openEditor(l: Int) {
@@ -5406,6 +5445,29 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             id == "edauto" -> { edMenu = 0; edPush(); edAutoColors(); edToast("Cambiadores de color recalculados") }
             id == "edexit" -> { edMenu = 0; edBack() }
+            id == "edgal" -> edOpenGallery()
+            id == "edgalp" -> edGalPage = (edGalPage + 9) % 10
+            id == "edgaln" -> edGalPage = (edGalPage + 1) % 10
+            id.startsWith("edgal:") -> {
+                val k = id.substring(6).toIntOrNull() ?: return
+                edMenu = 0
+                edPush()
+                edLastDesign = k
+                val sel = if (edKind == 0 && edIdx in d.obs.indices) d.obs[edIdx] else null
+                if (sel != null && sel.type == T.KIT) {
+                    edSetOb(sel.copy(design = k))
+                } else {
+                    // sin obstáculo de catálogo elegido: se inserta uno nuevo en el centro de la vista
+                    val o = edDefault(T.KIT, edSnap(edCam + edViewH() / 2f), 3)
+                    d.obs.add(o)
+                    d.obs.sortByDescending { it.y }
+                    edKind = 0
+                    edIdx = d.obs.indexOfFirst { it === o }
+                    edScroll = 0f
+                }
+                edDirty = true
+                edToast(kitName(k))
+            }
             id == "edaddo" -> {
                 edPush()
                 val y = edSnap(edCam + edViewH() / 2f)
@@ -5552,6 +5614,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 edSetOb(edDefault(t, o.y, o.n))
             }
             edRows.add(EdRow("Tipo", edTypeNames[o.type], { cycle(-1) }, { cycle(1) }))
+            if (o.type == T.KIT) {
+                fun setD(dd: Int) { val v = ((dd % Kit.COUNT) + Kit.COUNT) % Kit.COUNT; edLastDesign = v; edSetOb(o.copy(design = v)) }
+                edRows.add(EdRow("Diseño", "${o.design + 1} · ${kitName(o.design)}", { setD(o.design - edStep) }, { setD(o.design + edStep) }))
+                edRows.add(EdRow("Galería", "Abrir", { edOpenGallery() }, { edOpenGallery() }))
+            }
             edRows.add(EdRow("Altura", edFmt(-o.y), { edSetOb(o.copy(y = o.y + 10f * st)) }, { edSetOb(o.copy(y = o.y - 10f * st)) }))
             edRows.add(EdRow("Colores", o.n.toString(),
                 { val n = max(2, o.n - 1); edSetOb(o.copy(n = n, shift = o.shift % n)) },
@@ -5643,7 +5710,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             pp.color = Gl.white(210)
             pp.pathEffect = android.graphics.DashPathEffect(floatArrayOf(22f, 14f), (time * 40f) % 36f)
             c.drawRect(8f, o.y - o.reach, Cfg.W - 8f, o.y + o.reach, pp)
-            if (detail) Gl.text(c, "${edIdx + 1} · ${edTypeNames[o.type]}", 24f, o.y - o.reach - 14f, 32f, Gl.medium, Color.WHITE, 0f, null, 0, Paint.Align.LEFT)
+            val nm = if (o.type == T.KIT) kitName(o.design) else edTypeNames[o.type]
+            if (detail) Gl.text(c, "${edIdx + 1} · $nm", 24f, o.y - o.reach - 14f, 32f, Gl.medium, Color.WHITE, 0f, null, 0, Paint.Align.LEFT)
         } else if (edKind == 1 && edIdx in d.sws.indices) {
             val s = d.sws[edIdx]
             val pp = Gl.p()
@@ -5759,7 +5827,60 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (edMenu != 0) drawEdMenu(c, pal)
     }
 
+    /** Nombre traducido de un diseño de catálogo: familia + número romano. */
+    private fun kitName(i: Int): String {
+        val d = Kit.designs[i.coerceIn(0, Kit.COUNT - 1)]
+        return I18n.t(Kit.familyNames[d.family]) + " " + Kit.roman[d.variant]
+    }
+
+    private var edLastDesign = 0
+    private var edGalPage = 0
+
+    private fun edOpenGallery() {
+        val d = edData
+        val sel = if (d != null && edKind == 0 && edIdx in d.obs.indices) d.obs[edIdx] else null
+        edGalPage = ((if (sel != null && sel.type == T.KIT) sel.design else edLastDesign) / 20).coerceIn(0, 9)
+        edMenu = 3
+    }
+
+    /** Galería de los 200 obstáculos de catálogo: páginas de 20 miniaturas animadas; tocar una la elige. */
+    private fun drawEdGallery(c: Canvas, pal: IntArray) {
+        hits.clear()
+        val dim = Gl.p()
+        dim.color = Color.argb(200, 2, 4, 14)
+        c.drawRect(0f, 0f, Cfg.W, vh, dim)
+        hits.add(Hit("edmenux", 0f, 0f, Cfg.W, vh))
+        val top = topI + 120f
+        Gl.text(c, "CATÁLOGO", 540f, top, 56f, Gl.light, Gl.white(245), 0.2f)
+        Gl.text(c, "${edGalPage * 20 + 1}–${edGalPage * 20 + 20} de ${Kit.COUNT}", 540f, top + 56f, 32f, Gl.regular, Gl.white(180))
+        val cw = 245f
+        val chh = 300f
+        val avail = vh - (top + 100f) - 200f
+        val k = min(1f, avail / (5f * chh))
+        val x0 = 540f - 2f * cw
+        val y0 = top + 100f
+        for (j in 0 until 20) {
+            val id = edGalPage * 20 + j
+            val col = j % 4
+            val row = j / 4
+            val cx = x0 + col * cw + cw / 2f
+            val cy = y0 + (row * chh + chh / 2f) * k
+            val sel = id == edLastDesign
+            Gl.panel(c, cx - cw / 2f + 8f, cy - chh * k / 2f + 6f, cx + cw / 2f - 8f, cy + chh * k / 2f - 6f, 30f, if (sel) 1.3f else 0.8f, if (sel) pal[2] else pal[1])
+            c.save()
+            c.clipRect(cx - cw / 2f + 10f, cy - chh * k / 2f + 8f, cx + cw / 2f - 10f, cy + chh * k / 2f - 50f * k)
+            KitDraw.icon(c, id, cx, cy - 22f * k, 92f * k, pal, time)
+            c.restore()
+            Gl.textFit(c, kitName(id), cx, cy + chh * k / 2f - 22f * k, 26f, cw - 26f, Gl.medium, Gl.white(235))
+            hits.add(Hit("edgal:$id", cx - cw / 2f + 8f, cy - chh * k / 2f + 6f, cx + cw / 2f - 8f, cy + chh * k / 2f - 6f))
+        }
+        val by = vh - 120f
+        button(c, "edgalp", "‹ Anterior", 260f, by, 360f, 100f, 0, 36f)
+        button(c, "edgaln", "Siguiente ›", 820f, by, 360f, 100f, 0, 36f)
+    }
+
     private fun drawEdMenu(c: Canvas, pal: IntArray) {
+        if (edMenu == 3) { drawEdGallery(c, pal); return }
         val dim = Gl.p()
         dim.color = Color.argb(150, 0, 0, 0)
         c.drawRect(0f, 0f, Cfg.W, vh, dim)
@@ -5769,6 +5890,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             items.add("edcont" to "Seguir editando")
             items.add("edmap" to (if (edOverview) "Vista normal" else "Ver mapa completo"))
             items.add("edtpl" to "Plantillas")
+            items.add("edgal" to "Catálogo de obstáculos")
             items.add("edauto" to "Auto cambiadores de color")
             items.add("edstart" to "Ir al inicio")
             items.add("edgoal" to "Ir a la meta")

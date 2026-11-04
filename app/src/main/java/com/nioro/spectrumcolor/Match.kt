@@ -59,7 +59,7 @@ class Match(
         val ROUND_OPTIONS = intArrayOf(1, 3, 5)
 
         /** Sube cuando cambia la forma de generar los recorridos: dos celulares con versiones distintas no se pueden emparejar. */
-        const val PROTO = 3
+        const val PROTO = 4
     }
 
     /** Llamar al conectarse el socket. El invitado se presenta primero. */

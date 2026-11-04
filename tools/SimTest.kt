@@ -278,7 +278,7 @@ fun pexp(trials: Int, jitter: Int, skip: Float, levels: List<Int>) {
  * Sirve para saber si un nivel es POSIBLE y con cuánto margen: cada nodo lleva varias copias del juego
  * con distintos retrasos en el toque (0, 4 y 8 pasos, ~0/33/66 ms) y solo sobrevive si TODAS sobreviven.
  */
-fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar", "pentágono", "estrella", "ola", "mandíbulas", "ocho").getOrElse(t) { "?" }
+fun tname(t: Int): String = arrayOf("anillo", "doble", "barras", "cuadrado", "triángulo", "pinchos", "péndulo", "cruz", "puertas", "órbitas", "opuestas", "arco", "pulso", "hexágono", "rayo", "compuerta", "franja", "sierras", "pilar", "pentágono", "estrella", "ola", "mandíbulas", "ocho", "catálogo").getOrElse(t) { "?" }
 
 val bestStarsTL = ThreadLocal.withInitial { 0 }
 
@@ -383,7 +383,60 @@ fun diag(level: Int) {
     println("cayó por abajo: ${causeFall[0]}   completó: ${deathsAt[c0.obs.size]}")
 }
 
+/**
+ * Comprueba cada diseño de catálogo por separado: un recorrido con el diseño lento (dificultad baja) y rápido
+ * (dificultad alta), con 2 y 3 colores. Uso: kits [desde] [hasta]
+ */
+fun kitCourse(i: Int, n: Int, slowSpd: Float, fastSpd: Float): Course {
+    val obs = ArrayList<Ob>()
+    val sws = ArrayList<Sw>()
+    var y = -900f
+    var color = 0
+    val probe = Ob(T.KIT, 0f, n, 0, slowSpd, 30f, 300f, 0f, design = i)
+    val reach = probe.reach
+    for ((k, sp) in floatArrayOf(slowSpd, -fastSpd, fastSpd).withIndex()) {
+        y -= reach
+        val o = Ob(T.KIT, y, n, k % n, sp, 40f + k * 77f, 300f, 0f, design = i)
+        if (k == 0) color = Integer.numberOfTrailingZeros(o.present)
+        else {
+            val cands = (0 until n).filter { (o.present and (1 shl it)) != 0 && it != color }
+            if (cands.isNotEmpty()) { color = cands[k % cands.size]; sws.add(Sw(y + reach + 200f, color)) }
+        }
+        obs.add(o)
+        y -= reach + 420f
+    }
+    val d = LevelData(Integer.numberOfTrailingZeros(obs[0].present), y - 300f, obs, sws, ArrayList())
+    return Course.custom(200, d)
+}
+
+fun kitsCheck(from: Int, to: Int): Int {
+    val dl = (System.getenv("DELAYS") ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
+    val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
+    val out = arrayOfNulls<String>(Kit.COUNT)
+    val bad = java.util.concurrent.atomic.AtomicInteger(0)
+    val fams = System.getenv("FAM")?.split(",")?.map { it.trim().toInt() }?.toSet()
+    for (i in from..to) if (fams == null || (i % Kit.FAMILIES) in fams) pool.submit {
+        val res = StringBuilder()
+        var ok = true
+        for (n in intArrayOf(2, 3)) for ((lo, hi) in listOf(Pair(55f, 70f), Pair(80f, 100f))) {
+            val (f, _) = feasible(kitCourse(i, n, lo, hi), 2400f, dl, maxSeconds = 60f)
+            if (!f) { ok = false; res.append(" n=$n vel=${hi.toInt()}") }
+        }
+        if (!ok) bad.incrementAndGet()
+        out[i] = "diseño %3d %-18s %s%s".format(i, Kit.designs[i].name, if (ok) "POSIBLE" else "NO", res)
+        synchronized(out) { println(out[i]) }
+    }
+    pool.shutdown()
+    pool.awaitTermination(600, TimeUnit.MINUTES)
+    println("diseños imposibles: ${bad.get()}")
+    return bad.get()
+}
+
 fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] == "kits") {
+        val bad = kitsCheck(args.getOrNull(1)?.toInt() ?: 0, args.getOrNull(2)?.toInt() ?: (Kit.COUNT - 1))
+        System.exit(if (bad == 0) 0 else 1)
+    }
     if (args.isNotEmpty() && args[0] == "feas") {
         val dl = (args.getOrNull(1) ?: "0,4,8").split(",").map { it.toInt() }.toIntArray()
         val lv = if (args.size > 2) args.drop(2).map { it.toInt() } else (1..Levels.PLAYABLE).toList()

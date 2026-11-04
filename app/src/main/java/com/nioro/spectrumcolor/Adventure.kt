@@ -1064,6 +1064,27 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
                         val al = flyerTypes()
                         if (al.isNotEmpty()) addEnemy(al[rnd.nextInt(al.size)], xx, fy, max(lim0 - 20f, xx - 100f), min(lim1 + 20f, xx + 100f))
                     }
+                    'P' -> makerStart = xx
+                    'E' -> makerGoalX = xx.also { makerGoalY = fy }
+                    'v' -> items.add(AdvItem(xx, fy - 6f, IT_HEART, 0))
+                    'V' -> items.add(AdvItem(xx, fy - 6f, IT_MEAT, 0))
+                    else -> {
+                        // enemigos con letra propia (editor "Taller"): se colocan justo en esa casilla
+                        val et = AdvMk.ENEMIES.indexOf(ch)
+                        if (et >= 0) {
+                            val type = AdvMk.TYPES[et]
+                            val e = if (type == E_POP) popAt(xx).also { it.floor = fy; it.y = fy + 26f }
+                            else if (type == E_CEIL) ceilAt(xx, xx - 90f, xx + 90f).also { it.y = top(j) + 10f; it.baseY = it.y }
+                            else if (flyer(type)) addEnemy(type, xx, fy, xx - 110f, xx + 110f).also { it.y = fy - 6f; it.baseY = it.y }
+                            else if (type == E_SPIDER) addEnemy(type, xx, fy, max(lim0 - 30f, xx - 80f), min(lim1 + 30f, xx + 80f))
+                            else {
+                                val pr = patrol(xx, fy, lim0 - 30f, lim1 + 30f)
+                                addEnemy(type, xx, fy, pr[0], pr[1])
+                            }
+                            e.elite = false
+                            if (makerElite) makeElite(e)
+                        }
+                    }
                 }
             }
         }
@@ -1132,6 +1153,45 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
      * Vitrina para las capturas de prueba (versión de desarrollador): una sala plana con tres enemigos a la vista.
      * k = 0: arquero, slime, bombardero; 1: mago, lobo, calavera; 2: gólem élite, caballero y arquero élite.
      */
+    // ------------------------------------------------------------------ Taller (editor estilo Mario Maker)
+    /** Plano del Taller cargado (filas de arriba hacia abajo, la última es el suelo) o null en la Aventura normal. */
+    var maker: Array<String>? = null
+    var makerStart = 40f
+    var makerGoalX = -1f
+    var makerGoalY = AdvCfg.GROUND
+    /** En el Taller todos los enemigos pueden salir élite (opción del editor). */
+    var makerElite = false
+
+    /** Arma una sala desde un plano del Taller. El jugador empieza en 'P' y gana al tocar la meta 'E'. */
+    fun loadMaker(rows: Array<String>) {
+        maker = rows
+        noExit = true
+        clearRoom()
+        cur = 0
+        arenaX = 1e9f
+        bossStarted = false
+        makerStart = 40f
+        makerGoalX = -1f
+        val bp = AdvStructs.Bp(-1, "taller", 0, 0, rows, false)
+        val end = placeBp(bp, 0f)
+        roomLen = max(end, viewW + 40f)
+        if (roomLen > end) ground(end, roomLen)
+        endX = roomLen
+        rooms[0].len = roomLen
+        rooms[0].secret = false
+        px = makerStart; py = AdvCfg.GROUND
+        // empezar sobre la superficie más alta bajo la 'P'
+        py = groundBelow(px, 0f).let { if (it > AdvCfg.H) AdvCfg.GROUND else it }
+        pvx = 0f; pvy = 0f; onGround = true; face = 1
+        opx = px; opy = py
+        safeX = px; safeY = py
+        camX = (px - viewW * 0.38f).coerceIn(0f, max(0f, endX - viewW)); ocam = camX
+        pendRoom = -1
+        enterCd = 1f
+        won = false
+        bossStarted = false
+    }
+
     /** En la vitrina no se sale de la sala (un golpe podía empujar al jugador por la puerta). */
     var noExit = false
 
@@ -1547,6 +1607,16 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     private fun lastAmbushActive(): AdvAmbush? { for (a in ambushes) if (a.st == 1) return a; return null }
 
     private fun respawn() {
+        val mk = maker
+        if (mk != null) { // sala del Taller: se vuelve a armar desde el principio
+            hp = maxHp
+            deadT = 0f
+            potionT = 0f
+            loadMaker(mk)
+            invuln = 1.5f
+            fade = 1f
+            return
+        }
         hp = maxHp
         hearts = max(hearts, 5)
         invuln = 1.5f
@@ -1976,6 +2046,10 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
             for (s in spikes) if (px + 6f > s[0] && px - 6f < s[1] && py >= AdvCfg.GROUND - 2f) playerHurt(2, (s[0] + s[1]) / 2f)
         }
         roomLogic(inp)
+        if (maker != null && makerGoalX >= 0f && !won && abs(px - makerGoalX) < 18f && abs(py - makerGoalY) < 40f) {
+            won = true
+            ev(EV_WIN, px, py - 20f)
+        }
         if (!bossStarted && px > arenaX + 60f && bstate != BS_DEAD) {
             bossStarted = true
             bstate = BS_INTRO
@@ -3120,4 +3194,49 @@ class Adv(val world: Int, val viewW: Float, val god: Boolean = false) {
     }
 
     init { buildWorld(); enterRoom(0, 0, 0f); saveRoom = 0 }
+}
+
+/** Taller (editor de salas estilo Mario Maker): letras de los planos y utilidades. */
+object AdvMk {
+    /** Letras de los enemigos en los planos, en el mismo orden que TYPES. */
+    const val ENEMIES = "wbthugmKGdALBZWOHTC"
+    val TYPES = intArrayOf(
+        Adv.E_WALKER, Adv.E_BAT, Adv.E_THROWER, Adv.E_HOPPER, Adv.E_TURRET, Adv.E_CHARGER, Adv.E_MEDUSA, Adv.E_KNIGHT,
+        Adv.E_GHOST, Adv.E_SPIDER, Adv.E_ARCHER, Adv.E_SLIME, Adv.E_BOMBER, Adv.E_MAGE, Adv.E_WOLF, Adv.E_SKULL,
+        Adv.E_GOLEM, Adv.E_POP, Adv.E_CEIL
+    )
+    /** Filas del plano: 0 = suelo (abajo) y 14 encima. */
+    const val ROWS = 15
+    const val MAX_W = 240
+    const val MIN_W = 40
+
+    /** Sala nueva: suelo de punta a punta, inicio a la izquierda y meta a la derecha. */
+    fun blank(w: Int = 100): Array<String> {
+        val g = Array(ROWS) { CharArray(w) { '.' } }
+        for (x in 0 until w) g[ROWS - 1][x] = '_'
+        g[ROWS - 2][2] = 'P'
+        g[ROWS - 2][w - 4] = 'E'
+        return Array(ROWS) { String(g[it]) }
+    }
+
+    /** Texto para guardar: "1|tema|élites|fila/fila/...". */
+    fun encode(rows: Array<String>, theme: Int, elite: Boolean): String =
+        "1|" + theme + "|" + (if (elite) 1 else 0) + "|" + rows.joinToString("/")
+
+    class Saved(val rows: Array<String>, val theme: Int, val elite: Boolean)
+
+    fun decode(s: String): Saved? {
+        return try {
+            val p = s.split("|")
+            if (p.size < 4 || p[0] != "1") return null
+            val rows = p[3].split("/").toTypedArray()
+            if (rows.size != ROWS) return null
+            val w = rows[0].length
+            if (w < MIN_W || w > MAX_W || rows.any { it.length != w }) return null
+            Saved(rows, p[1].toInt().coerceIn(0, AdvCfg.WORLDS - 1), p[2] == "1")
+        } catch (e: Exception) { null }
+    }
+
+    /** ¿Qué letras se pueden poner en la fila del suelo? */
+    fun groundOnly(ch: Char) = ch == '_' || ch == 'S' || ch == 'M' || ch == 'N'
 }

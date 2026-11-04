@@ -7,5 +7,5 @@ KOTLINC="${KOTLINC:-kotlinc}"
 SRC=app/src/main/java/com/nioro/spectrumcolor
 OUT="${TMPDIR:-/tmp}/spectrum-tests"
 mkdir -p "$OUT"
-"$KOTLINC" "$SRC/Engine.kt" "$SRC/Net.kt" "$SRC/Match.kt" tools/SimTest.kt -include-runtime -d "$OUT/tests.jar" 2>&1 | grep -v "^warning" || true
+"$KOTLINC" "$SRC/Engine.kt" "$SRC/Kit.kt" "$SRC/Net.kt" "$SRC/Match.kt" tools/SimTest.kt -include-runtime -d "$OUT/tests.jar" 2>&1 | grep -v "^warning" || true
 java -cp "$OUT/tests.jar" com.nioro.spectrumcolor.SimTestKt "$@"
