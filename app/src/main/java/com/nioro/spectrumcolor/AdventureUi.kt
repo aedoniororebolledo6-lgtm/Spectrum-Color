@@ -2025,6 +2025,7 @@ class AdvUi(
     private var mkLastX = 0f
     private var mkDirty = false
     private var mkMore = false
+    private var mkPalOpen = true
 
     private fun mkRows(): Array<String> = mkGrid!!.map { String(it) }.toTypedArray()
 
@@ -2168,7 +2169,12 @@ class AdvUi(
         sfx(Sfx.CLICK)
         val g = mkGrid ?: return
         when {
-            id.startsWith("cat:") -> { mkCat = id.substring(4).toInt(); mkHand = false }
+            id.startsWith("cat:") -> {
+                val k = id.substring(4).toInt()
+                // tocar la pestaña activa pliega o despliega la paleta (deja libres las filas de arriba)
+                if (k == mkCat && !mkHand) mkPalOpen = !mkPalOpen else mkPalOpen = true
+                mkCat = k; mkHand = false
+            }
             id.startsWith("tool:") -> { mkTool = id[5]; mkHand = false }
             id == "hand" -> mkHand = !mkHand
             id == "left" -> { mkCam = max(0f, mkCam - vw * 0.6f); mkRebuild() }
@@ -2284,7 +2290,7 @@ class AdvUi(
     private fun mkDrawUi(c: Canvas, pal: IntArray) {
         mkHits.clear()
         // fondo de la barra superior (vidrio)
-        Gl.panel(c, 4f, 4f, vw - 4f, 80f, 16f, 0.9f, pal[0])
+        Gl.panel(c, 4f, 4f, vw - 4f, if (mkPalOpen) 80f else 38f, 16f, 0.9f, pal[0])
         var x = 10f
         for (i in mkCats.indices) {
             mkBtn(c, "cat:$i", mkCats[i], x, 9f, x + 64f, 33f, mkCat == i && !mkHand, pal); x += 68f
@@ -2298,7 +2304,7 @@ class AdvUi(
         mkBtn(c, "test", "Probar ▶", right - 186f, 9f, right - 120f, 33f, true, pal)
         mkBtn(c, "slot", "Ranura ${mkSlot + 1}", right - 252f, 9f, right - 190f, 33f, false, pal)
         // paleta de la categoría
-        val tools = mkTools.filter { it.cat == mkCat }
+        val tools = if (mkPalOpen) mkTools.filter { it.cat == mkCat } else emptyList()
         val cw = min(40f, (vw - 20f) / tools.size)
         for ((i, t) in tools.withIndex()) {
             val cx = 10f + cw * i + cw / 2f
@@ -2308,7 +2314,7 @@ class AdvUi(
             mkHits.add(Pair("tool:${t.ch}", RectF(cx - cw / 2f, 36f, cx + cw / 2f, 78f)))
         }
         val cur = mkTools.firstOrNull { it.ch == mkTool }
-        Gl.text(c, if (mkHand) I18n.t("Arrastra para mover la vista") else I18n.t(cur?.name ?: ""), vw / 2f, 96f, 12f, Gl.medium, Gl.white(220))
+        Gl.text(c, if (mkHand) I18n.t("Arrastra para mover la vista") else I18n.t(cur?.name ?: ""), vw / 2f, if (mkPalOpen) 96f else 54f, 12f, Gl.medium, Gl.white(220))
         if (mkMore) {
             val l = vw - 180f
             Gl.panel(c, l, 84f, vw - 6f, 84f + 6 * 32f + 10f, 14f, 1f, pal[1])
