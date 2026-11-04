@@ -472,7 +472,8 @@ fun main(args: Array<String>) {
         val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
         for (l in args.drop(2).map { it.toInt() }) pool.submit {
             val cur = Levels.salt(l)
-            val order = listOf(cur) + (0..maxSalt).filter { it != cur }
+            val from = (System.getenv("SALT_FROM") ?: "0").toInt()
+            val order = if (from > 0) (from..maxSalt).toList() else listOf(cur) + (0..maxSalt).filter { it != cur }
             var chosen = -1
             for (sa in order) {
                 val (ok, secs) = feasible(Course.level(l, sa), 2400f, dl, maxSeconds = maxs)
@@ -490,7 +491,8 @@ fun main(args: Array<String>) {
         val dl = (System.getenv("DELAYS") ?: "0,4").split(",").map { it.toInt() }.toIntArray()
         val pool = Executors.newFixedThreadPool(max(1, Runtime.getRuntime().availableProcessors()))
         val jobs = ArrayList<Pair<Int, Int>>()
-        for (l in args.drop(2).map { it.toInt() }) for (sa in 0..maxSalt) jobs.add(Pair(l, sa))
+        val from = (System.getenv("SALT_FROM") ?: "0").toInt()
+        for (l in args.drop(2).map { it.toInt() }) for (sa in from..maxSalt) jobs.add(Pair(l, sa))
         val out = arrayOfNulls<String>(jobs.size)
         for ((idx, j) in jobs.withIndex()) pool.submit {
             val (ok, secs) = feasible(Course.level(j.first, j.second), 2400f, dl)

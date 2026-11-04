@@ -524,14 +524,69 @@ object Levels {
 
     /** Variante del recorrido de cada nivel (0 por defecto). Se usa para cambiar un nivel que resultó muy difícil. */
     private val salts = IntArray(BASE + 1).also {
-        // variantes elegidas con `DELAYS=0,4,8 tools/run_tests.sh salt`: posibles incluso con 66 ms de retraso al tocar
+        // variantes elegidas con `SimTestKt pick` (workflow Factibilidad): con los obstáculos de catálogo cada nivel
+        // usa la primera variante que la búsqueda completa con toques retrasados 0/4/8 pasos
         it[11] = 3
         it[12] = 2
         it[13] = 1
-        it[15] = 2
-        it[17] = 5
-        it[18] = 1
-        it[20] = 1
+        it[14] = 2
+        it[15] = 4
+        it[17] = 1
+        it[18] = 4
+        it[23] = 2
+        it[25] = 3
+        it[26] = 3
+        it[27] = 3
+        it[28] = 2
+        it[29] = 1
+        it[30] = 1
+        it[31] = 1
+        it[32] = 1
+        it[33] = 1
+        it[34] = 2
+        it[36] = 5
+        it[39] = 3
+        it[40] = 2
+        it[42] = 4
+        it[43] = 4
+        it[48] = 6
+        it[49] = 1
+        it[50] = 6
+        it[52] = 6
+        it[53] = 3
+        it[54] = 6
+        it[55] = 3
+        it[56] = 1
+        it[57] = 7
+        it[58] = 3
+        it[59] = 1
+        it[60] = 2
+        it[61] = 6
+        it[64] = 6
+        it[65] = 1
+        it[66] = 4
+        it[67] = 2
+        it[68] = 3
+        it[69] = 7
+        it[73] = 3
+        it[74] = 3
+        it[75] = 1
+        it[76] = 2
+        it[79] = 1
+        it[80] = 1
+        it[82] = 2
+        it[86] = 3
+        it[87] = 1
+        it[93] = 3
+        it[95] = 1
+        it[96] = 1
+        it[99] = 1
+        it[104] = 2
+        it[106] = 4
+        it[108] = 1
+        it[110] = 1
+        it[114] = 1
+        it[119] = 3
     }
 
     fun salt(level: Int): Int = if (level in 1..BASE) salts[level] else 0
