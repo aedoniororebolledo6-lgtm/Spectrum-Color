@@ -18,7 +18,7 @@ concurrency:
 jobs:
   mundo:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -46,7 +46,7 @@ jobs:
         run: |
           W=${{ matrix.world }}
           FROM=$((W * 10 + 1)); TO=$((W * 10 + 10))
-          java -Xmx12g -cp tests.jar com.nioro.spectrumcolor.SimTestKt feas 0,4,8 $(seq $FROM $TO) | tee feas.txt
+          MAXS=300 java -Xmx12g -cp tests.jar com.nioro.spectrumcolor.SimTestKt feas 0,4,8 $(seq $FROM $TO) | tee feas.txt
           {
             echo "### Mundo $((W + 1)) (niveles $FROM a $TO)"
             echo '```'

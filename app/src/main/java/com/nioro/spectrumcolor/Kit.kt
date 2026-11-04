@@ -125,12 +125,13 @@ object Kit {
             )
             // dos aros apilados que giran juntos: donde se tocan tienen el mismo color
             11 -> arrayOf(
-                KPart(KPart.ARC, dy = -225f, r = 210f, cnt = 0, spd = s(0.9f, 1.1f)),
-                KPart(KPart.ARC, dy = 225f, r = 210f, cnt = 0, spd = s(0.9f, 1.1f))
+                KPart(KPart.ARC, dy = -225f, r = 210f, cnt = 0, spd = s(1.05f, 1.2f)),
+                KPart(KPart.ARC, dy = 225f, r = 210f, cnt = 0, spd = s(1.05f, 1.2f))
             )
+            // hexágono con dos gemas que giran por dentro al revés
             12 -> arrayOf(
                 KPart(KPart.POLY, r = 325f, cnt = 6, spd = s(0.85f, 1.05f)),
-                KPart(KPart.POLY, r = 195f, cnt = 6, spd = s(0.85f, 1.05f))
+                KPart(KPart.DOTS, r = 150f, r2 = 28f, cnt = 2, spd = s(-1.0f, -1.25f), coff = 1)
             )
             13 -> arrayOf(KPart(KPart.ARC, r = 285f, cnt = 0, spd = s(0.9f, 1.05f), sway = s(55f, 150f)))
             14 -> arrayOf(KPart(KPart.ARC, r = 300f, cnt = 0, spd = s(0.9f, 1.05f), breathe = s(0.1f, 0.24f)))

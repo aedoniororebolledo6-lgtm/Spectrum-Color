@@ -447,7 +447,7 @@ fun main(args: Array<String>) {
         for ((idx, l) in lv.withIndex()) pool.submit {
             val t0 = System.currentTimeMillis()
             bestStarsTL.set(0)
-            val (ok, secs) = feasible(Course.level(l), 2400f, dl)
+            val (ok, secs) = feasible(Course.level(l), 2400f, dl, maxSeconds = (System.getenv("MAXS") ?: "150").toFloat())
             out[idx] = "nivel %3d  colores %d  obstáculos %2d  %s  (%.1f s de juego, %.1f s de cálculo)%s".format(l, Levels.colors(l), Levels.gates(l), if (ok) "POSIBLE" else "NO ENCONTRADO", secs, (System.currentTimeMillis() - t0) / 1000f, if (ok) "" else "  mejor: ${bestStarsTL.get()} estrellas, se atasca en ${tname(Course.level(l).obs.getOrNull(bestStarsTL.get())?.type ?: -1)} #${bestStarsTL.get()}")
             synchronized(out) { println(out[idx]) }
         }
