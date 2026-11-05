@@ -15,6 +15,7 @@ import kotlin.math.sqrt
  * halo suave del color, cuerpo translúcido, filo interior más oscuro y brillos blancos.
  */
 object KitDraw {
+    private val ORB_STOPS = floatArrayOf(0f, 0.45f, 1f)
     private const val DEG = 3.14159265f / 180f
     private val va = FloatArray(2)
     private val vb = FloatArray(2)
@@ -131,14 +132,11 @@ object KitDraw {
 
     fun orb(c: Canvas, x: Float, y: Float, r: Float, cc: Int) {
         Gl.glow(c, x, y, r * 1.9f, cc, 80)
-        var pp = Gl.p()
-        pp.shader = RadialGradient(
-            x - r * 0.3f, y - r * 0.35f, r * 1.4f,
-            intArrayOf(Gl.white(220), Gl.alpha(cc, 225), Gl.alpha(Gl.darken(cc, 0.55f), 235)),
-            floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP
+        Gl.shadedCircle(
+            c, x, y, r, 3, cc, -0.3f, -0.35f, 1.4f,
+            intArrayOf(Gl.white(220), Gl.alpha(cc, 225), Gl.alpha(Gl.darken(cc, 0.55f), 235)), ORB_STOPS
         )
-        c.drawCircle(x, y, r, pp)
-        pp = Gl.p()
+        val pp = Gl.p()
         pp.style = Paint.Style.STROKE
         pp.strokeWidth = 2.2f
         pp.color = Gl.white(150)

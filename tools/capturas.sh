@@ -11,7 +11,7 @@ BASE="https://github.com/$REPO/releases/download/diagnostico"
 mkdir -p "$DEST"
 curl -sSL -f -o "$DEST/report.txt" "$BASE/report.txt" || { echo "Todavía no hay informe (release diagnostico)"; exit 1; }
 # nombres de las capturas: salen de los pasos "[nombre]" del informe
-grep -o '^\[[0-9][0-9a-z_]*\]' "$DEST/report.txt" | tr -d '[]' | sort -u | while read -r n; do
+grep -v 'Total frames' "$DEST/report.txt" | grep -o '^\[[0-9a-z][0-9a-z_]*\]' | tr -d '[]' | sort -u | while read -r n; do
   case "$n" in "$FILTRO"*) ;; *) continue ;; esac
   curl -sSL -f -o "$DEST/$n.png" "$BASE/$n.png" && echo "ok  $n.png" || echo "sin captura: $n"
 done

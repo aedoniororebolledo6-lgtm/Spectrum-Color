@@ -36,8 +36,14 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
    `adb shell am start -S -n com.nioro.spectrumcolor/.MainActivity --es ir <atajo>`, con
    `inicio`, `ajustes`, `borrar1`, `borrar2`, `apariencias`, `esfera:N` y `estela:N` (eligen una y abren su pestaña), `nivel:N`, `infinito`, `mundos`, `aventura:W`
    (mundo W desde 0, salta la historia) y `vitrina:W:K` (sala con 3 enemigos nuevos, K = 0, 1 o 2, en modo dios),
-   `taller` (editor de salas de la Aventura), `editor:N` y `galeria:N` (editor de niveles y catálogo de obstáculos).
+   `taller` (editor de salas de la Aventura), `editor:N` y `galeria:N` (editor de niveles y catálogo de obstáculos),
+   `niveles`, `temas`, `multi`, `pausa:N`, `ganar:N`, `idioma:L` (0 español, 1 inglés, 2 ruso), `icono:K` y `legado:1`
+   (dibujo antiguo, para comparar fluidez). Se pueden encadenar con coma: `legado:1,nivel:14`.
    Para una pantalla nueva: añade el atajo en `GameView.debugGo` y un paso `go …; shot …` en `ci/smoke.sh`.
+7. `report.txt` también trae **FLUIDEZ** (cuadros en 8 s por pantalla; el Android virtual no tiene tarjeta gráfica, así que
+   solo sirve comparar dentro de la misma corrida: sección "NUEVO vs ANTIGUO"), **MEMORIA**, las capturas en ruso (`ru_*`)
+   y español (`es_*`), y **TEXTOS SIN TRADUCIR** (la versión dev registra con la marca `I18N` cada texto mostrado que no está
+   en `I18n.kt`). Esa lista debe quedar vacía.
 5. El Android virtual está en **inglés**: las capturas sirven también para ver textos sin traducir
    (si un texto sale en español, falta su `d(...)` en `I18n.kt`).
 6. **Después de cualquier cambio visual, mira las capturas** antes de dar el trabajo por terminado.
@@ -84,6 +90,9 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
 ## Reglas del proyecto
 - Todo en "unidades de diseño": el ancho del juego normal vale 1080; la Aventura mide 360 de alto.
 - `Engine.kt`, `Adventure.kt`, `AdvAi.kt`, `Net.kt` y `Match.kt` no deben depender de Android (se prueban en la JVM).
+- Dibujo: no crear degradados (`RadialGradient`/`LinearGradient`) en cada cuadro para cosas que se repiten; usa `Gl.glow`,
+  `Gl.shadedCircle` y `Gl.panel`, que los reutilizan. Evita `clipPath` donde baste dibujar la misma forma.
+- Android 16 (versión 36): el botón Atrás llega por `OnBackInvokedCallback` (`MainActivity.registerBack`), no por `onBackPressed`.
 - Textos visibles: en español en el código y traducidos en `I18n.kt`.
 - No incluir identificadores de modelo en commits, PR ni código.
 

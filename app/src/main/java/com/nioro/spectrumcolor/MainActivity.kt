@@ -35,7 +35,9 @@ class MainActivity : Activity(), HostApi {
         game = GameView(this, this)
         setContentView(game)
         hideSystemBars()
+        watchSystemBars()
         requestHighRefresh()
+        registerBack()
         debugIntent(intent)
     }
 
@@ -54,10 +56,15 @@ class MainActivity : Activity(), HostApi {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
+        // segunda pasada cuando la ventana ya está lista (al volver de otra app a veces la primera no alcanza)
+        window.decorView.postDelayed(rehide, 600)
+        window.decorView.removeCallbacks(barCheck)
+        window.decorView.postDelayed(barCheck, 2000)
         game.resume()
     }
 
     override fun onPause() {
+        window.decorView.removeCallbacks(barCheck)
         game.pause()
         super.onPause()
     }
@@ -72,9 +79,54 @@ class MainActivity : Activity(), HostApi {
         if (hasFocus) hideSystemBars()
     }
 
+    // Si la barra de navegación vuelve a aparecer sola (pasaba en 1 de cada 15 capturas al abrir el juego),
+    // se esconde de nuevo a los 1,5 s; ese margen deja usarla cuando el jugador la saca a propósito.
+    private val rehide = Runnable { hideSystemBars() }
+
+    // Revisión cada 2 s mientras el juego está abierto: si las barras volvieron, se esconden (no cuesta nada si no).
+    private val barCheck = object : Runnable {
+        @Suppress("DEPRECATION")
+        override fun run() {
+            val v = window.decorView
+            if (v.systemUiVisibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0) {
+                if (BuildConfig.DEV) android.util.Log.w("ColorFlow", "barras visibles: se esconden")
+                hideSystemBars()
+            }
+            v.postDelayed(this, 2000)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun watchSystemBars() {
+        window.decorView.setOnSystemUiVisibilityChangeListener { vis ->
+            if (vis and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0 || vis and View.SYSTEM_UI_FLAG_FULLSCREEN == 0) {
+                window.decorView.removeCallbacks(rehide)
+                window.decorView.postDelayed(rehide, 1500)
+            }
+        }
+    }
+
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         if (!game.onBack()) super.onBackPressed()
+    }
+
+    // Android 13+: el botón/gesto "Atrás" llega por aquí. En Android 16 (app para la versión 36) es la ÚNICA vía:
+    // onBackPressed ya no se llama y sin esto "Atrás" cerraría el juego en vez de volver a la pantalla anterior.
+    private var backCb: Any? = null
+
+    private fun registerBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        try {
+            val cb = android.window.OnBackInvokedCallback {
+                val handled = try { game.onBack() } catch (e: Exception) { true }
+                if (!handled) finish()
+            }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            backCb = cb
+        } catch (e: Exception) {
+            // si el sistema no lo admite, queda onBackPressed
+        }
     }
 
     override fun setLandscape(on: Boolean) {
@@ -142,6 +194,8 @@ class MainActivity : Activity(), HostApi {
 
     @Suppress("DEPRECATION")
     private fun hideSystemBars() {
+        // Se probó WindowInsetsController (Android 11+), pero en el Android virtual la barra de navegación volvía a
+        // aparecer en 1 de cada 10 capturas; esta forma (obsoleta pero vigente en todas las versiones) no falla.
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION

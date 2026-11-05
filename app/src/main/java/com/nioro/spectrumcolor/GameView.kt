@@ -62,7 +62,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private class Room(val name: String, val ip: String, val port: Int, var seen: Long)
 
     private val gold = 0xFFFFD84D.toInt()
-    private val prefs = Prefs(context).also { I18n.lang = it.lang }
+    private val prefs = Prefs(context).also { I18n.lang = it.lang; I18n.collectMissing = BuildConfig.DEV }
     private val audio = Audio(context, prefs)
     private val rnd = Random(System.nanoTime())
     private val handler = Handler(Looper.getMainLooper())
@@ -174,6 +174,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
      */
     fun debugGo(cmd: String) {
         if (!BuildConfig.DEV) return
+        // varios atajos seguidos separados por coma, p. ej. "legado:1,nivel:14"
+        if (cmd.contains(',')) { for (part in cmd.split(',')) debugGo(part.trim()); return }
         val p = cmd.split(":")
         val n1 = p.getOrNull(1)?.toIntOrNull() ?: 0
         val n2 = p.getOrNull(2)?.toIntOrNull() ?: 0
@@ -192,7 +194,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 skinTab = 2
                 skinScroll = ((n1 / 4) * 280f - 300f).coerceAtLeast(0f)
             }
-            "nivel" -> if (Levels.isPlayable(n1)) startLevel(n1)
+            "nivel" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1) }
             "infinito" -> startEndless()
             "mundos" -> scr = Scr.ADV_MENU
             "taller" -> advStart(ADV_MAKER)
@@ -202,6 +204,14 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "vitrina" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = n2; advStart(n1) }
             // dibuja el ícono de la app (esfera Aurora boreal sobre el fondo del menú) para recortarlo de la captura
             "icono" -> { goHome(); iconShot = n1 + 1 }
+            "legado" -> Gl.legacy = n1 == 1
+            // cambia el idioma (0 español, 1 inglés, 2 ruso) y vuelve al menú: para revisar traducciones
+            "idioma" -> if (n1 in 0..2) { prefs.lang = n1; I18n.lang = n1; goHome() }
+            "niveles" -> scr = Scr.LEVELS
+            "temas" -> scr = Scr.THEMES
+            "multi" -> scr = Scr.MP_MENU
+            "pausa" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1); ov = Ov.PAUSE; ovT0 = time }
+            "ganar" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1); endHandled = true; earnedStars = 3; ov = Ov.WIN; ovT0 = time }
         }
     }
 
@@ -419,6 +429,18 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
+        if (BuildConfig.DEV) logMissingTexts()
+    }
+
+    // Solo versión dev: escribe en el registro los textos sin traducción (ci/smoke.sh los junta en report.txt).
+    private var missLogged = 0
+    private fun logMissingTexts() {
+        val m = I18n.missing
+        if (m.size == missLogged) return
+        synchronized(m) {
+            for ((i, s) in m.withIndex()) if (i >= missLogged) Log.w("I18N", "FALTA[${I18n.lang}]: ${s.replace('\n', '|')}")
+            missLogged = m.size
+        }
     }
 
     override fun onSizeChanged(nw: Int, nh: Int, ow: Int, oh: Int) {
@@ -737,7 +759,17 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         return null
     }
 
-    override fun onTouchEvent(e: MotionEvent): Boolean {
+    // Un error al procesar un toque no debe cerrar el juego: se registra y se ignora ese toque.
+    override fun onTouchEvent(e: MotionEvent): Boolean = try {
+        touchImpl(e)
+    } catch (ex: Exception) {
+        Log.e("ColorFlow", "touch", ex)
+        pressedId = null
+        dragSlider = null
+        true
+    }
+
+    private fun touchImpl(e: MotionEvent): Boolean {
         if (scr == Scr.ADV) {
             if (advUi.active) advUi.touch(e, width, height)
             return true
@@ -1575,13 +1607,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 }
                 continue
             }
-            var q = Gl.p()
-            q.shader = android.graphics.RadialGradient(
-                x - s * 0.25f, y - s * 0.3f, s * 1.1f,
-                intArrayOf(Gl.white(6), Gl.white(10), Gl.white(52)), floatArrayOf(0f, 0.65f, 1f), Shader.TileMode.CLAMP
+            Gl.shadedCircle(
+                c, x, y, s, 1, 0, -0.25f, -0.3f, 1.1f,
+                intArrayOf(Gl.white(6), Gl.white(10), Gl.white(52)), BUBBLE_STOPS
             )
-            c.drawCircle(x, y, s, q)
-            q = Gl.p()
+            var q = Gl.p()
             q.style = Paint.Style.STROKE
             q.strokeWidth = 1.6f
             q.color = Gl.white(48)
@@ -3272,14 +3302,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun orb(c: Canvas, x: Float, y: Float, col: Int) {
         val r = Cfg.ORB_R
         Gl.glow(c, x, y, r * 1.9f, col, 80)
-        var pp = Gl.p()
-        pp.shader = android.graphics.RadialGradient(
-            x - r * 0.3f, y - r * 0.35f, r * 1.4f,
-            intArrayOf(Gl.white(220), Gl.alpha(col, 225), Gl.alpha(Gl.darken(col, 0.55f), 235)),
-            floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP
+        Gl.shadedCircle(
+            c, x, y, r, 3, col, -0.3f, -0.35f, 1.4f,
+            intArrayOf(Gl.white(220), Gl.alpha(col, 225), Gl.alpha(Gl.darken(col, 0.55f), 235)), ORB_STOPS
         )
-        c.drawCircle(x, y, r, pp)
-        pp = Gl.p()
+        var pp = Gl.p()
         pp.style = Paint.Style.STROKE
         pp.strokeWidth = 2.2f
         pp.color = Gl.white(150)
@@ -3546,9 +3573,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         path.moveTo(x, y - g * 0.8f); path.lineTo(x + g * 0.35f, y - g * 0.1f); path.lineTo(x - g * 0.2f, y - g * 0.15f); path.close()
         pp = Gl.p(); pp.color = Gl.white(170); c.drawPath(path, pp)
         // brillo de vidrio y borde
-        pp = Gl.p()
-        pp.shader = android.graphics.RadialGradient(x - r * 0.3f, y - r * 0.35f, r * 1.2f, Gl.white(140), Gl.white(0), Shader.TileMode.CLAMP)
-        c.drawCircle(x, y, r, pp)
+        Gl.shadedCircle(c, x, y, r, 4, 0, -0.3f, -0.35f, 1.2f, intArrayOf(Gl.white(140), Gl.white(0)), null)
         pp = Gl.p(); pp.style = Paint.Style.STROKE; pp.strokeWidth = 2.6f; pp.color = Gl.white(180)
         c.drawCircle(x, y, r, pp)
         Gl.arc(c, x, y, r * 0.78f, 200f, 60f, 2.6f, Gl.white(150))
@@ -3637,15 +3662,17 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     /** La bola siempre conserva el color de juego; la apariencia solo cambia el diseño. */
+    private val BALL_STOPS = floatArrayOf(0f, 0.42f, 1f)
+    private val ORB_STOPS = floatArrayOf(0f, 0.45f, 1f)
+    private val BUBBLE_STOPS = floatArrayOf(0f, 0.65f, 1f)
+
     private fun drawBallAt(c: Canvas, x: Float, y: Float, r: Float, col: Int, skin: Int, tm: Float, glow: Boolean) {
         if (glow) Gl.glow(c, x, y, r * 2.8f, col, 110)
-        var pp = Gl.p()
-        pp.shader = android.graphics.RadialGradient(
-            x - r * 0.35f, y - r * 0.4f, r * 1.5f,
-            intArrayOf(Gl.white(235), Gl.alpha(col, 235), Gl.alpha(Gl.darken(col, 0.5f), 245)),
-            floatArrayOf(0f, 0.42f, 1f), Shader.TileMode.CLAMP
+        Gl.shadedCircle(
+            c, x, y, r, 2, col, -0.35f, -0.4f, 1.5f,
+            intArrayOf(Gl.white(235), Gl.alpha(col, 235), Gl.alpha(Gl.darken(col, 0.5f), 245)), BALL_STOPS
         )
-        c.drawCircle(x, y, r, pp)
+        var pp: Paint
 
         // diseño interior (recortado a la bola)
         c.save()
@@ -5729,7 +5756,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun drawEdWorld(c: Canvas, d: LevelData, pal: IntArray, y0: Float, y1: Float, detail: Boolean) {
         drawFinish(c, d.finishY, pal)
         Gl.line(c, 140f, 0f, 940f, 0f, 3f, Gl.white(120))
-        if (detail) Gl.text(c, "INICIO", 540f, 40f, 30f, Gl.medium, Gl.white(150), 0.2f)
+        // debajo de la bola de inicio (antes la bola tapaba la palabra)
+        if (detail) Gl.text(c, "INICIO", 540f, Cfg.BALL_R + 46f, 30f, Gl.medium, Gl.white(150), 0.2f)
         edDot(c, Cfg.W / 2f, 0f, Cfg.BALL_R, pal[d.startColor % 4])
         for ((i, z) in d.zones.withIndex()) {
             if (z.bottom < y0 - 40f || z.top > y1 + 40f) continue
@@ -6161,6 +6189,16 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         }
     }
 
+    /** Panel de las ventanas (pausa, ganar, perder): el cristal con un fondo oscuro debajo, para que el texto se lea
+     *  bien aunque detrás pase un obstáculo brillante. */
+    private fun glassWindow(c: Canvas, l: Float, t: Float, r: Float, b: Float, cr: Float, k: Float, tint: Int) {
+        val pp = Gl.p()
+        pp.color = Gl.alpha(Color.BLACK, 120)
+        Gl.rect.set(l, t, r, b)
+        c.drawRoundRect(Gl.rect, cr, cr, pp)
+        Gl.panel(c, l, t, r, b, cr, k, tint)
+    }
+
     /** Ventanas emergentes: aparecen con un resorte suave y se desvanecen, como en iOS. */
     private fun popOverlay(c: Canvas, a: Float, draw: () -> Unit) {
         if (a >= 1f) {
@@ -6181,7 +6219,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val ph = 250f + rows * 150f + 10f
         val cy = vh / 2f
         val t = cy - ph / 2f
-        Gl.panel(c, 120f, t, 960f, t + ph, 70f, 1f, pal[0])
+        glassWindow(c, 120f, t, 960f, t + ph, 70f, 1f, pal[0])
         Gl.text(c, "PAUSA", 540f, t + 130f, 70f, Gl.light, Gl.white(245), 0.25f)
         var y = t + 250f
         button(c, "resume", "Continuar", 540f, y, 680f, 120f, pal[0], 52f)
@@ -6200,7 +6238,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         dim(c, 140)
         val cy = vh / 2f
         if (mode == Mode.ENDLESS) {
-            Gl.panel(c, 110f, cy - 430f, 970f, cy + 430f, 70f, 1f, pal[0])
+            glassWindow(c, 110f, cy - 430f, 970f, cy + 430f, 70f, 1f, pal[0])
             Gl.text(c, "FIN DEL JUEGO", 540f, cy - 300f, 54f, Gl.medium, Gl.white(225), 0.25f)
             val shader = LinearGradient(300f, 0f, 780f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
             Gl.text(c, sm.starCount.toString(), 540f, cy - 70f, 240f, Gl.thin, Color.WHITE, 0f, shader)
@@ -6212,7 +6250,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             button(c, "retry", "Jugar de nuevo", 540f, cy + 180f, 680f, 130f, pal[0], 52f)
             button(c, "exit", "Menú", 540f, cy + 340f, 680f, 120f, 0, 48f)
         } else {
-            Gl.panel(c, 110f, cy - 400f, 970f, cy + 400f, 70f, 1f, pal[1])
+            glassWindow(c, 110f, cy - 400f, 970f, cy + 400f, 70f, 1f, pal[1])
             Gl.text(c, "¡CASI!", 540f, cy - 250f, 78f, Gl.medium, Gl.white(245), 0.2f)
             Gl.text(c, "Nivel $level", 540f, cy - 170f, 44f, Gl.regular, Gl.white(180))
             Gl.text(c, "Obstáculos ${sm.starCount} / ${cr.totalGates}", 540f, cy - 70f, 52f, Gl.medium, Gl.white(225))
@@ -6226,7 +6264,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val cy = vh / 2f
         val last = level >= Levels.PLAYABLE
         // panel centrado: los botones quedan dentro con el mismo margen arriba y abajo
-        Gl.panel(c, 100f, cy - 480f, 980f, cy + 490f, 70f, 1f, pal[0])
+        glassWindow(c, 100f, cy - 480f, 980f, cy + 490f, 70f, 1f, pal[0])
         Gl.textFit(c, "¡NIVEL COMPLETADO!", 540f, cy - 355f, 64f, 780f, Gl.medium, Gl.white(245), 0.08f)
         Gl.text(c, "Nivel $level", 540f, cy - 285f, 42f, Gl.regular, Gl.white(180))
         for (k in 0 until 3) {
@@ -6254,7 +6292,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val cy = vh / 2f
         if (m.phase == Match.Phase.CLOSED) {
             dim(c, 170)
-            Gl.panel(c, 110f, cy - 260f, 970f, cy + 260f, 70f, 1f, pal[1])
+            glassWindow(c, 110f, cy - 260f, 970f, cy + 260f, 70f, 1f, pal[1])
             Gl.text(c, "El rival se desconectó", 540f, cy - 60f, 56f, Gl.medium, Gl.white(245))
             button(c, "exit", "Salir", 540f, cy + 120f, 600f, 130f, pal[0], 52f)
             return
@@ -6273,7 +6311,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                     Gl.text(c, "¡YA!", 540f, cy, 200f, Gl.medium, Gl.white(a), 0f, null, pal[0])
                 }
                 if (m.myDone && ov != Ov.PAUSE) {
-                    Gl.panel(c, 130f, cy - 130f, 950f, cy + 130f, 60f, 1f, pal[1])
+                    glassWindow(c, 130f, cy - 130f, 950f, cy + 130f, 60f, 1f, pal[1])
                     Gl.text(c, if (mpFrozen) "¡Se acabó el tiempo!" else "Eliminado", 540f, cy - 20f, 56f, Gl.medium, Gl.white(245))
                     Gl.text(c, "Esperando al rival" + dots(), 540f, cy + 60f, 38f, Gl.regular, Gl.white(190))
                 } else if (m.oppDone && !m.myDone) {
@@ -6282,7 +6320,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             }
             Match.Phase.ROUND_END -> {
                 dim(c, 130)
-                Gl.panel(c, 110f, cy - 380f, 970f, cy + 380f, 70f, 1f, pal[0])
+                glassWindow(c, 110f, cy - 380f, 970f, cy + 380f, 70f, 1f, pal[0])
                 Gl.text(c, "RONDA ${m.round} DE ${m.rounds}", 540f, cy - 260f, 54f, Gl.medium, Gl.white(235), 0.15f)
                 val mine = m.myRounds.lastOrNull() ?: 0
                 val theirs = m.oppRounds.lastOrNull() ?: 0
@@ -6294,7 +6332,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Match.Phase.MATCH_END -> {
                 dim(c, 150)
                 val res = m.result()
-                Gl.panel(c, 100f, cy - 560f, 980f, cy + 560f, 70f, 1f, if (res >= 0) gold else pal[1])
+                glassWindow(c, 100f, cy - 560f, 980f, cy + 560f, 70f, 1f, if (res >= 0) gold else pal[1])
                 val word = if (res > 0) "¡GANASTE!" else if (res < 0) "PERDISTE" else "EMPATE"
                 val shader = LinearGradient(250f, 0f, 830f, 0f, intArrayOf(pal[0], pal[3], pal[1]), null, Shader.TileMode.CLAMP)
                 Gl.text(c, word, 540f, cy - 380f, 110f, Gl.medium, Color.WHITE, 0.08f, if (res > 0) null else shader, if (res > 0) gold else 0)
