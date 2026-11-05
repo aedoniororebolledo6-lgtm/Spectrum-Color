@@ -52,6 +52,31 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go infinito;          shot 26_play_infinito "Play: modo infinito"; alive
 } > steps.txt 2>&1
 
+# Fluidez: cuadros dibujados y cuántos fueron lentos en 8 s de cada pantalla (con toques en las que se juegan).
+# El Android virtual dibuja sin tarjeta gráfica: los números sirven para comparar antes/después, no son los de un teléfono.
+perf() {
+  local name="$1" taps="$2"
+  timeout 20 adb shell dumpsys gfxinfo $P reset > /dev/null 2>&1
+  for i in 1 2 3 4 5 6 7 8; do
+    [ "$taps" = "1" ] && timeout 5 adb shell input tap 540 1700 > /dev/null 2>&1
+    sleep 1
+  done
+  echo "[$name] $(timeout 20 adb shell dumpsys gfxinfo $P | grep -E 'Total frames rendered|Janky frames:|50th percentile|90th percentile|99th percentile' | head -5 | sed 's/^ *//' | tr '\n' ';')"
+}
+{
+  echo "== FLUIDEZ (8 s por pantalla)"
+  go inicio 6;        perf menu 0
+  go apariencias 5;   perf apariencias 0
+  go nivel:14 6;      perf nivel14_jugando 1
+  go nivel:118 6;     perf nivel118_jugando 1
+  go infinito 5;      perf infinito_jugando 1
+  go mundos 5;        perf mundos 0
+  go aventura:0 8;    perf aventura_m1 0
+  go vitrina:11:2 8;  perf aventura_enemigos 0
+  echo "== MEMORIA"
+  timeout 20 adb shell dumpsys meminfo $P | grep -E "TOTAL PSS|TOTAL:|Java Heap|Native Heap|Graphics" | head -6
+} > perf.txt 2>&1
+
 timeout 60 adb logcat -d > full.log 2>&1
 {
   echo "== instalacion"; cat install.txt
@@ -62,5 +87,6 @@ timeout 60 adb logcat -d > full.log 2>&1
   grep -E -A14 "FATAL EXCEPTION" full.log | head -80
   grep -E "ColorFlow" full.log | head -30
   echo; cat steps.txt
+  echo; cat perf.txt
   echo "== lineas clave del log"; grep -E "spectrumcolor|AndroidRuntime|ANR|OutOfMemory|has died|Fatal|SIGSEGV|Davey" live.log | cut -c1-240 | tail -n 60
 } > report.txt 2>&1
