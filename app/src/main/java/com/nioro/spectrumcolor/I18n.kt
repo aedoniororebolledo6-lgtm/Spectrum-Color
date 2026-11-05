@@ -626,11 +626,29 @@ object I18n {
             return out
         }
         // "nombre  ·  1.2.3.4" u otros nombres propios: sin cambios
-        if (collectMissing && s.count { it.isLetter() } >= 3) synchronized(missing) { missing.add(s) }
+        if (collectMissing && s.count { it.isLetter() } >= 3 && s !in noTranslate && !isOutput(s)) synchronized(missing) { missing.add(s) }
         return s
     }
 
     /** Solo versión dev: junta los textos mostrados que no tienen traducción (las capturas automáticas los listan). */
     @Volatile var collectMissing = false
+
+    /** Textos iguales en todos los idiomas (marca del juego y nombres de los idiomas). */
+    private val noTranslate = hashSetOf("COLOR", "FLOW", "Color Flow", "Español", "English", "Русский")
+
+    // textos que ya vienen traducidos (p. ej. nombres armados con varias partes): no cuentan como faltantes
+    private var outputs: HashSet<String>? = null
+    private fun isOutput(s: String): Boolean {
+        var o = outputs
+        if (o == null) {
+            o = HashSet()
+            for (v in dict.values) o.addAll(v)
+            outputs = o
+        }
+        if (s in o) return true
+        // nombre traducido + número romano ("Joya I", "Самоцвет IV")
+        val sp = s.lastIndexOf(' ')
+        return sp > 0 && s.substring(sp + 1).all { it == 'I' || it == 'V' || it == 'X' } && s.substring(0, sp) in o
+    }
     val missing = LinkedHashSet<String>()
 }

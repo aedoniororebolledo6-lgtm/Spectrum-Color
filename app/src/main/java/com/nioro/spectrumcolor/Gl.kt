@@ -16,6 +16,7 @@ object Gl {
     val rect = RectF()
     val rect2 = RectF()
     val path = Path()
+    private val legacyClip = Path()
 
     val thin: Typeface = Typeface.create("sans-serif-thin", Typeface.NORMAL)
     val light: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -46,8 +47,17 @@ object Gl {
     private const val GLOW_R = 256f
     private val glowCache = HashMap<Int, RadialGradient>()
 
+    /** Solo pruebas (atajo `legado:1`): dibuja como antes, sin reutilizar degradados, para comparar la fluidez. */
+    @Volatile var legacy = false
+
     fun glow(c: Canvas, x: Float, y: Float, rad: Float, color: Int, a: Int) {
         if (rad <= 0.5f || a <= 0) return
+        if (legacy) {
+            val lp = p()
+            lp.shader = RadialGradient(x, y, rad, alpha(color, a), alpha(color, 0), Shader.TileMode.CLAMP)
+            c.drawCircle(x, y, rad, lp)
+            return
+        }
         val key = alpha(color, a)
         var sh = glowCache[key]
         if (sh == null) {
@@ -75,6 +85,12 @@ object Gl {
         ox: Float, oy: Float, rk: Float, colors: IntArray, stops: FloatArray?
     ) {
         if (r <= 0.2f) return
+        if (legacy) {
+            val lp = p()
+            lp.shader = RadialGradient(x + ox * r, y + oy * r, rk * r, colors, stops, Shader.TileMode.CLAMP)
+            c.drawCircle(x, y, r, lp)
+            return
+        }
         val key = (kind.toLong() shl 32) or (col.toLong() and 0xFFFFFFFFL)
         var sh = orbCache[key]
         if (sh == null) {
@@ -185,6 +201,28 @@ object Gl {
         rect2.set(l - 2f, t + 6f, r + 2f, b + 16f)
         c.drawRoundRect(rect2, cr, cr, pp)
 
+        if (legacy) {
+            pp = p()
+            pp.shader = LinearGradient(l, t, r, b, intArrayOf(white((70 * k).toInt()), white((22 * k).toInt())), null, Shader.TileMode.CLAMP)
+            c.drawRoundRect(rect, cr, cr, pp)
+            c.save()
+            legacyClip.reset()
+            legacyClip.addRoundRect(rect, cr, cr, Path.Direction.CW)
+            c.clipPath(legacyClip)
+            pp = p()
+            pp.shader = RadialGradient(l + (r - l) * 0.25f, t, max1((r - l) * 0.8f), white((90 * k).toInt()), white(0), Shader.TileMode.CLAMP)
+            c.drawRect(rect, pp)
+            pp = p()
+            pp.shader = RadialGradient(r, b, max1((r - l) * 0.7f), alpha(tint, (60 * k).toInt()), alpha(tint, 0), Shader.TileMode.CLAMP)
+            c.drawRect(rect, pp)
+            c.restore()
+            pp = p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 2.4f
+            pp.shader = LinearGradient(l, t, r, b, intArrayOf(white((200 * k).toInt()), white((30 * k).toInt()), white((120 * k).toInt())), floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+            c.drawRoundRect(rect, cr, cr, pp)
+            return
+        }
         val sh = panelShaders(l, t, r, b, k, tint)
         pp = p()
         pp.shader = sh.fill

@@ -112,6 +112,16 @@ perf() {
   go mundos 5;        perf mundos 0
   go aventura:0 8;    perf aventura_m1 0
   go vitrina:11:2 8;  perf aventura_enemigos 0
+  # comparación justa en la misma máquina: dibujo nuevo (degradados reutilizados) contra el antiguo, alternados
+  echo "== NUEVO vs ANTIGUO (misma prueba, alternados)"
+  for k in 1 2; do
+    go inicio 6;                perf "menu_nuevo$k" 0
+    go legado:1,inicio 6;       perf "menu_antiguo$k" 0
+    go apariencias 5;           perf "apariencias_nuevo$k" 0
+    go legado:1,apariencias 5;  perf "apariencias_antiguo$k" 0
+    go nivel:14 6;              perf "nivel14_nuevo$k" 1
+    go legado:1,nivel:14 6;     perf "nivel14_antiguo$k" 1
+  done
   echo "== MEMORIA"
   timeout 20 adb shell dumpsys meminfo $P | grep -E "TOTAL PSS|TOTAL:|Java Heap|Native Heap|Graphics" | head -6
 } > perf.txt 2>&1

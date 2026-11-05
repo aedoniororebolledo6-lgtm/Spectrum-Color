@@ -2242,7 +2242,8 @@ class AdvUi(
 
     private fun mkBtn(c: Canvas, id: String, label: String, l: Float, t: Float, r: Float, b: Float, on: Boolean, pal: IntArray) {
         Gl.panel(c, l, t, r, b, (b - t) / 2f, if (on) 1.35f else 0.85f, if (on) pal[2] else pal[0])
-        Gl.textFit(c, label, (l + r) / 2f, (t + b) / 2f + 4f, 11f, r - l - 6f, Gl.medium, Gl.white(240))
+        // margen de media altura a cada lado: en ruso los textos tocaban los bordes redondeados
+        Gl.textFit(c, label, (l + r) / 2f, (t + b) / 2f + 4f, 11f, r - l - (b - t) * 0.7f, Gl.medium, Gl.white(240))
         mkHits.add(Pair(id, RectF(l, t, r, b)))
     }
 

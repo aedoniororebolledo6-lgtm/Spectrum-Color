@@ -161,20 +161,8 @@ class MainActivity : Activity(), HostApi {
 
     @Suppress("DEPRECATION")
     private fun hideSystemBars() {
-        // Android 11+: la forma nueva (la antigua está obsoleta y en versiones nuevas puede dejar ver las barras)
-        if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                window.setDecorFitsSystemWindows(false)
-                val ic = window.insetsController
-                if (ic != null) {
-                    ic.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
-                    ic.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    return
-                }
-            } catch (e: Exception) {
-                // se usa la forma antigua
-            }
-        }
+        // Se probó WindowInsetsController (Android 11+), pero en el Android virtual la barra de navegación volvía a
+        // aparecer en 1 de cada 10 capturas; esta forma (obsoleta pero vigente en todas las versiones) no falla.
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
