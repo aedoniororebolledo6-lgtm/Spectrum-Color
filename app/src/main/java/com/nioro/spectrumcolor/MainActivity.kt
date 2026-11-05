@@ -35,6 +35,7 @@ class MainActivity : Activity(), HostApi {
         game = GameView(this, this)
         setContentView(game)
         hideSystemBars()
+        watchSystemBars()
         requestHighRefresh()
         registerBack()
         debugIntent(intent)
@@ -55,6 +56,8 @@ class MainActivity : Activity(), HostApi {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
+        // segunda pasada cuando la ventana ya está lista (al volver de otra app a veces la primera no alcanza)
+        window.decorView.postDelayed(rehide, 600)
         game.resume()
     }
 
@@ -71,6 +74,20 @@ class MainActivity : Activity(), HostApi {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
+    }
+
+    // Si la barra de navegación vuelve a aparecer sola (pasaba en 1 de cada 15 capturas al abrir el juego),
+    // se esconde de nuevo a los 1,5 s; ese margen deja usarla cuando el jugador la saca a propósito.
+    private val rehide = Runnable { if (hasWindowFocus()) hideSystemBars() }
+
+    @Suppress("DEPRECATION")
+    private fun watchSystemBars() {
+        window.decorView.setOnSystemUiVisibilityChangeListener { vis ->
+            if (vis and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0 || vis and View.SYSTEM_UI_FLAG_FULLSCREEN == 0) {
+                window.decorView.removeCallbacks(rehide)
+                window.decorView.postDelayed(rehide, 1500)
+            }
+        }
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
