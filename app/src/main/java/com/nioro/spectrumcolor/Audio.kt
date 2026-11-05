@@ -157,11 +157,7 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
             } else if (id == "data") {
                 val n = minOf(len, bytes.size - p - 8) / 2
                 val out = ShortArray(n)
-                var q = p + 8
-                for (i in 0 until n) {
-                    out[i] = ((bytes[q].toInt() and 255) or (bytes[q + 1].toInt() shl 8)).toShort()
-                    q += 2
-                }
+                java.nio.ByteBuffer.wrap(bytes, p + 8, n * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(out)
                 return Triple(out, rate, ch)
             }
             p += 8 + len + (len and 1)
@@ -169,12 +165,46 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
         return null
     }
 
+    // La canción se lee en segundo plano (antes se leía en el hilo del dibujo y el juego se trababa un instante al
+    // entrar o salir de un nivel). Las 3 últimas quedan en memoria para que cambiar de pantalla sea instantáneo.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private var gen = 0
+    private var loadingRes = -1
+    private val pcmCache = LinkedHashMap<Int, Triple<ShortArray, Int, Int>>(4, 0.75f, true)
+
     /** Bucle sin corte: el WAV completo en memoria y AudioTrack repitiéndolo (MediaPlayer deja un hueco al reiniciar). */
     private fun startPlayer() {
+        val res = if (track == 0) (when (cur) { 0 -> R.raw.music_menu; 1 -> R.raw.music_menu2; 2 -> R.raw.music_menu3; else -> R.raw.music_menu4 })
+        else (if (cur == 0) R.raw.music_game else R.raw.music_game2)
+        val cached = synchronized(pcmCache) { pcmCache[res] }
+        if (cached != null) {
+            buildTrack(cached)
+            return
+        }
+        if (loadingRes == res) return
+        loadingRes = res
+        val g = ++gen
         try {
-            val res = if (track == 0) (when (cur) { 0 -> R.raw.music_menu; 1 -> R.raw.music_menu2; 2 -> R.raw.music_menu3; else -> R.raw.music_menu4 })
-            else (if (cur == 0) R.raw.music_game else R.raw.music_game2)
-            val (pcm, rate, ch) = readWav(res) ?: return
+            Thread({
+                val w = try { readWav(res) } catch (e: Throwable) { null }
+                if (w != null) synchronized(pcmCache) {
+                    pcmCache[res] = w
+                    while (pcmCache.size > 3) pcmCache.remove(pcmCache.keys.first())
+                }
+                main.post {
+                    if (g != gen) return@post
+                    loadingRes = -1
+                    if (w != null && mp == null && prefs.musicOn && track >= 0) buildTrack(w)
+                }
+            }, "audio-load").apply { isDaemon = true }.start()
+        } catch (e: Throwable) {
+            loadingRes = -1
+        }
+    }
+
+    private fun buildTrack(w: Triple<ShortArray, Int, Int>) {
+        try {
+            val (pcm, rate, ch) = w
             val mask = if (ch == 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
             val attrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME)
@@ -198,6 +228,8 @@ class Audio(private val ctx: Context, private val prefs: Prefs) {
     }
 
     private fun releasePlayer() {
+        gen++ // una canción que se esté leyendo ya no se usará
+        loadingRes = -1
         val m = mp ?: return
         mp = null
         try {

@@ -36,6 +36,7 @@ class MainActivity : Activity(), HostApi {
         setContentView(game)
         hideSystemBars()
         requestHighRefresh()
+        registerBack()
         debugIntent(intent)
     }
 
@@ -75,6 +76,24 @@ class MainActivity : Activity(), HostApi {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         if (!game.onBack()) super.onBackPressed()
+    }
+
+    // Android 13+: el botón/gesto "Atrás" llega por aquí. En Android 16 (app para la versión 36) es la ÚNICA vía:
+    // onBackPressed ya no se llama y sin esto "Atrás" cerraría el juego en vez de volver a la pantalla anterior.
+    private var backCb: Any? = null
+
+    private fun registerBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        try {
+            val cb = android.window.OnBackInvokedCallback {
+                val handled = try { game.onBack() } catch (e: Exception) { true }
+                if (!handled) finish()
+            }
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+            backCb = cb
+        } catch (e: Exception) {
+            // si el sistema no lo admite, queda onBackPressed
+        }
     }
 
     override fun setLandscape(on: Boolean) {
@@ -142,6 +161,20 @@ class MainActivity : Activity(), HostApi {
 
     @Suppress("DEPRECATION")
     private fun hideSystemBars() {
+        // Android 11+: la forma nueva (la antigua está obsoleta y en versiones nuevas puede dejar ver las barras)
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                window.setDecorFitsSystemWindows(false)
+                val ic = window.insetsController
+                if (ic != null) {
+                    ic.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                    ic.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    return
+                }
+            } catch (e: Exception) {
+                // se usa la forma antigua
+            }
+        }
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION

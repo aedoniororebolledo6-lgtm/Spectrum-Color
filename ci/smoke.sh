@@ -50,7 +50,46 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
   go nivel:75 7;        shot 24_play_nivel75 "Play: nivel 75"; alive
   go nivel:112 7;       shot 25_play_nivel112 "Play: nivel 112"; alive
   go infinito;          shot 26_play_infinito "Play: modo infinito"; alive
+  # pantallas que antes no se veían
+  go niveles;           shot 30_niveles "lista de niveles"; alive
+  go temas;             shot 31_temas "temas"; alive
+  go multi;             shot 32_multi "multijugador local"; alive
+  go pausa:20;          shot 33_pausa "pausa en el nivel 20"; alive
+  go ganar:20 6;        shot 34_ganar "nivel superado"; alive
+  go nivel:2 5; adb shell input tap 540 1700; sleep 7; shot 35_perder "perder (un toque y la bola cae)"; alive
 } > steps.txt 2>&1
+
+# Idiomas: las mismas pantallas en ruso (el más largo) y en español, para ver textos que se salen o sin traducir.
+# Los textos sin traducción quedan en el registro con la marca "I18N" (versión dev) y salen en report.txt.
+tour() {
+  local L="$1"
+  go inicio 6;          shot ${L}_01_inicio "$L menú"
+  go ajustes;           shot ${L}_02_ajustes "$L ajustes"
+  go borrar1;           shot ${L}_03_borrar "$L borrar progreso"
+  go borrar2;           shot ${L}_04_seguro "$L ¿seguro?"
+  go apariencias;       shot ${L}_05_apariencias "$L apariencias"
+  go estela:27;         shot ${L}_06_estelas "$L estelas"
+  go temas;             shot ${L}_07_temas "$L temas"
+  go niveles;           shot ${L}_08_niveles "$L niveles"
+  go nivel:14 6;        shot ${L}_09_nivel "$L nivel 14"
+  go pausa:20;          shot ${L}_10_pausa "$L pausa"
+  go ganar:20 6;        shot ${L}_11_ganar "$L nivel superado"
+  go nivel:2 5; adb shell input tap 540 1700; sleep 7; shot ${L}_12_perder "$L perder"
+  go infinito;          shot ${L}_13_infinito "$L infinito"
+  go multi;             shot ${L}_14_multi "$L multijugador"
+  go mundos 6;          shot ${L}_15_mundos "$L mundos de la Aventura"
+  go aventura:0 9;      shot ${L}_16_aventura "$L Aventura"
+  go taller 9;          shot ${L}_17_taller "$L Taller"
+  go editor:60 6;       shot ${L}_18_editor "$L editor"
+  go galeria:60 6;      shot ${L}_19_galeria "$L galería"
+  alive
+}
+{
+  echo "== IDIOMAS"
+  go idioma:2 4; tour ru
+  go idioma:0 4; tour es
+  go idioma:1 4  # deja el inglés, como estaba
+} > idiomas.txt 2>&1
 
 # Fluidez: cuadros dibujados y cuántos fueron lentos en 8 s de cada pantalla (con toques en las que se juegan).
 # El Android virtual dibuja sin tarjeta gráfica: los números sirven para comparar antes/después, no son los de un teléfono.
@@ -88,5 +127,8 @@ timeout 60 adb logcat -d > full.log 2>&1
   grep -E "ColorFlow" full.log | head -30
   echo; cat steps.txt
   echo; cat perf.txt
+  echo; cat idiomas.txt
+  echo "== TEXTOS SIN TRADUCIR ([1] inglés, [2] ruso)"
+  grep -a "I18N" live.log | sed 's/.*FALTA/FALTA/' | sort -u | head -300
   echo "== lineas clave del log"; grep -E "spectrumcolor|AndroidRuntime|ANR|OutOfMemory|has died|Fatal|SIGSEGV|Davey" live.log | cut -c1-240 | tail -n 60
 } > report.txt 2>&1

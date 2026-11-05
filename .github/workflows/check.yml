@@ -68,7 +68,7 @@ jobs:
   smoke:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

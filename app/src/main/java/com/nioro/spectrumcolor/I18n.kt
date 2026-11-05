@@ -621,6 +621,11 @@ object I18n {
             return out
         }
         // "nombre  ·  1.2.3.4" u otros nombres propios: sin cambios
+        if (collectMissing && s.count { it.isLetter() } >= 3) synchronized(missing) { missing.add(s) }
         return s
     }
+
+    /** Solo versión dev: junta los textos mostrados que no tienen traducción (las capturas automáticas los listan). */
+    @Volatile var collectMissing = false
+    val missing = LinkedHashSet<String>()
 }
