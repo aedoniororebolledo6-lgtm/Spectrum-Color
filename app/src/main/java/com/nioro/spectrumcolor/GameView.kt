@@ -192,7 +192,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 skinTab = 2
                 skinScroll = ((n1 / 4) * 280f - 300f).coerceAtLeast(0f)
             }
-            "nivel" -> if (Levels.isPlayable(n1)) startLevel(n1)
+            "nivel" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1) }
             "infinito" -> startEndless()
             "mundos" -> scr = Scr.ADV_MENU
             "taller" -> advStart(ADV_MAKER)
@@ -207,8 +207,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "niveles" -> scr = Scr.LEVELS
             "temas" -> scr = Scr.THEMES
             "multi" -> scr = Scr.MP_MENU
-            "pausa" -> if (Levels.isPlayable(n1)) { startLevel(n1); ov = Ov.PAUSE; ovT0 = time }
-            "ganar" -> if (Levels.isPlayable(n1)) { startLevel(n1); endHandled = true; ov = Ov.WIN; ovT0 = time }
+            "pausa" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1); ov = Ov.PAUSE; ovT0 = time }
+            "ganar" -> if (Levels.isPlayable(n1)) { prefs.allOpen = true; startLevel(n1); endHandled = true; ov = Ov.WIN; ovT0 = time }
         }
     }
 
@@ -5753,7 +5753,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private fun drawEdWorld(c: Canvas, d: LevelData, pal: IntArray, y0: Float, y1: Float, detail: Boolean) {
         drawFinish(c, d.finishY, pal)
         Gl.line(c, 140f, 0f, 940f, 0f, 3f, Gl.white(120))
-        if (detail) Gl.text(c, "INICIO", 540f, 40f, 30f, Gl.medium, Gl.white(150), 0.2f)
+        // debajo de la bola de inicio (antes la bola tapaba la palabra)
+        if (detail) Gl.text(c, "INICIO", 540f, Cfg.BALL_R + 46f, 30f, Gl.medium, Gl.white(150), 0.2f)
         edDot(c, Cfg.W / 2f, 0f, Cfg.BALL_R, pal[d.startColor % 4])
         for ((i, z) in d.zones.withIndex()) {
             if (z.bottom < y0 - 40f || z.top > y1 + 40f) continue
