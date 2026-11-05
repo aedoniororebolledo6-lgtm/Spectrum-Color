@@ -138,6 +138,8 @@ timeout 60 adb logcat -d > full.log 2>&1
   echo; cat steps.txt
   echo; cat perf.txt
   echo; cat idiomas.txt
+  echo "== BARRAS DEL SISTEMA (veces que reaparecieron y se escondieron de nuevo)"
+  grep -ac "barras visibles" live.log
   echo "== TEXTOS SIN TRADUCIR ([1] inglés, [2] ruso)"
   grep -a "I18N" live.log | sed 's/.*FALTA/FALTA/' | sort -u | head -300
   echo "== lineas clave del log"; grep -E "spectrumcolor|AndroidRuntime|ANR|OutOfMemory|has died|Fatal|SIGSEGV|Davey" live.log | cut -c1-240 | tail -n 60

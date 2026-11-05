@@ -58,10 +58,13 @@ class MainActivity : Activity(), HostApi {
         hideSystemBars()
         // segunda pasada cuando la ventana ya está lista (al volver de otra app a veces la primera no alcanza)
         window.decorView.postDelayed(rehide, 600)
+        window.decorView.removeCallbacks(barCheck)
+        window.decorView.postDelayed(barCheck, 2000)
         game.resume()
     }
 
     override fun onPause() {
+        window.decorView.removeCallbacks(barCheck)
         game.pause()
         super.onPause()
     }
@@ -78,7 +81,20 @@ class MainActivity : Activity(), HostApi {
 
     // Si la barra de navegación vuelve a aparecer sola (pasaba en 1 de cada 15 capturas al abrir el juego),
     // se esconde de nuevo a los 1,5 s; ese margen deja usarla cuando el jugador la saca a propósito.
-    private val rehide = Runnable { if (hasWindowFocus()) hideSystemBars() }
+    private val rehide = Runnable { hideSystemBars() }
+
+    // Revisión cada 2 s mientras el juego está abierto: si las barras volvieron, se esconden (no cuesta nada si no).
+    private val barCheck = object : Runnable {
+        @Suppress("DEPRECATION")
+        override fun run() {
+            val v = window.decorView
+            if (v.systemUiVisibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0) {
+                if (BuildConfig.DEV) android.util.Log.w("ColorFlow", "barras visibles: se esconden")
+                hideSystemBars()
+            }
+            v.postDelayed(this, 2000)
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun watchSystemBars() {
