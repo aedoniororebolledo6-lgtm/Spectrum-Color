@@ -16,6 +16,10 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
 
 {
   echo "== PASOS"
+  go intro:6 4;         shot 00i_intro_06 "intro nioro a los 0,6 s"; alive
+  go intro:14 4;        shot 00i_intro_14 "intro: el arco de luz pasando"; alive
+  go intro:21 4;        shot 00i_intro_21 "intro: destello final"; alive
+  go intro:30 4;        shot 00i_intro_30 "intro: logo completo"; alive
   go terminos 6;        shot 00_terminos "términos y condiciones (primera vez)"; alive
   go terminos:1 5; timeout 10 adb shell input swipe 540 1500 540 500 400; sleep 3; shot 00c_terminos_final "términos: al final y con la casilla marcada"; alive
   go inicio 8;          shot 01_inicio "menú principal"; alive

@@ -182,6 +182,15 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         // varios atajos seguidos separados por coma, p. ej. "legado:1,nivel:14"
         if (cmd.contains(',')) { for (part in cmd.split(',')) debugGo(part.trim()); return }
         val p = cmd.split(":")
+        if (p[0] == "intro") {
+            val i = Intro()
+            val target = (p.getOrNull(1)?.toIntOrNull() ?: 15) / 10f
+            while (i.t < target) i.update(1f / 60f) // con sus chispas, como si se hubiera reproducido
+            intro = i
+            introFreeze = true
+            return
+        }
+        endIntro()
         val n1 = p.getOrNull(1)?.toIntOrNull() ?: 0
         val n2 = p.getOrNull(2)?.toIntOrNull() ?: 0
         when (p[0]) {
@@ -261,6 +270,22 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 scrT0 = time
             }
         }
+
+    // Animación de inicio del estudio (Intro.kt): se ve cada vez que se abre el juego; tocar o "atrás" la salta.
+    private var intro: Intro? = Intro().also { it.onChime = { audio.play(Sfx.STAR) } }
+    /** Solo pruebas (atajo intro:T): la intro queda quieta en el segundo T/10 para la captura. */
+    private var introFreeze = false
+
+    private fun endIntro() {
+        if (intro == null) return
+        intro = null
+        introFreeze = false
+        scrT0 = time // la primera pantalla entra con su animación de siempre
+        if (!musicStarted && running) {
+            musicStarted = true
+            audio.setTrack(0)
+        }
+    }
 
     init {
         // primera vez (o términos nuevos): antes de jugar hay que aceptar los términos y condiciones
@@ -388,7 +413,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     // ======================================================================
 
     fun resume() {
-        if (!musicStarted) {
+        if (!musicStarted && intro == null) {
             musicStarted = true
             audio.setTrack(0)
         }
@@ -582,6 +607,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     /** true si el juego manejó el botón "atrás"; false = que la app se cierre. */
     fun onBack(): Boolean {
+        if (intro != null) { endIntro(); return true }
         when (scr) {
             Scr.HOME, Scr.TERMS -> return false
             Scr.ADV_MENU -> goHome()
@@ -880,6 +906,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     }
 
     private fun touchImpl(e: MotionEvent): Boolean {
+        val itr = intro
+        if (itr != null) {
+            if (e.actionMasked == MotionEvent.ACTION_DOWN && itr.t > 0.3f) endIntro()
+            return true
+        }
         if (scr == Scr.ADV) {
             if (advUi.active) advUi.touch(e, width, height)
             return true
@@ -1171,6 +1202,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun update(dt: Float) {
         time += dt
+        val itr = intro
+        if (itr != null) {
+            if (!introFreeze) itr.update(dt)
+            if (itr.done()) endIntro() else return
+        }
         if (scr == Scr.ADV) {
             if (advUi.active) advUi.update(dt)
             else {
@@ -1627,6 +1663,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     private fun drawAll(c: Canvas) {
         uiIdx = 0
+        intro?.let { it.draw(c, vh); return }
         val a = ((time - scrT0) / 0.40f).coerceIn(0f, 1f)
         val e = easeOut(a)
         if (scr == Scr.PLAY) {
