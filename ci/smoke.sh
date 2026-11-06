@@ -116,6 +116,31 @@ fotos() {
   go idioma:1 4; fotos en   # termina en inglés, como estaba
 } >> idiomas.txt 2>&1
 
+# Filmación del anuncio (solo si existe ci/filmar.txt): cada escena se dibuja cuadro a cuadro en la app (modo
+# filmación de GameView) y se baja a film/<nombre>/; al final se empaqueta en film.zip (lo sube publicar_diagnostico.sh).
+if [ -f ci/filmar.txt ]; then
+  {
+    echo "== FILMACIÓN"
+    mkdir -p film
+    grep -v '^#' ci/filmar.txt | while read -r atajos nombre; do
+      [ -z "$nombre" ] && continue
+      adb logcat -c < /dev/null
+      timeout 60 adb shell am start -S -W -n $P/.MainActivity --es ir "$atajos" < /dev/null >> start.txt 2>&1
+      ok=0
+      for i in $(seq 1 240); do
+        if timeout 10 adb logcat -d -s ColorFlow:I < /dev/null 2>/dev/null | grep -q "FILM_DONE $nombre "; then ok=1; break; fi
+        sleep 3
+      done
+      timeout 120 adb pull "/sdcard/Android/data/$P/files/film/$nombre" "film/" < /dev/null > /dev/null 2>&1
+      echo "[$nombre] terminada=$ok cuadros=$(ls film/$nombre 2>/dev/null | wc -l)"
+      timeout 10 adb logcat -d < /dev/null 2>/dev/null | grep -E "FATAL|ColorFlow.*film" | head -5
+    done
+    (cd film && zip -qr ../film.zip .)
+    ls -la film.zip
+    go idioma:1 4
+  } > filmacion.txt 2>&1
+fi
+
 # Fluidez: cuadros dibujados y cuántos fueron lentos en 8 s de cada pantalla (con toques en las que se juegan).
 # El Android virtual dibuja sin tarjeta gráfica: los números sirven para comparar antes/después, no son los de un teléfono.
 perf() {
@@ -163,6 +188,7 @@ timeout 60 adb logcat -d > full.log 2>&1
   echo; cat steps.txt
   echo; cat perf.txt
   echo; cat idiomas.txt
+  [ -f filmacion.txt ] && { echo; cat filmacion.txt; }
   echo "== BARRAS DEL SISTEMA (veces que reaparecieron y se escondieron de nuevo)"
   grep -ac "barras visibles" live.log
   echo "== TEXTOS SIN TRADUCIR ([1] inglés, [2] ruso)"

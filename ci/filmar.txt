@@ -1,0 +1,12 @@
+# Escenas para el anuncio (las graba ci/smoke.sh si este archivo existe; borrarlo cuando no haga falta).
+# Cada línea: <atajos para --es ir> <nombre>   (el atajo filmar:<nombre>:<cuadros>[:jefe] graba a 30 cuadros por segundo)
+idioma:0,tienda:1,esfera:56,inicio,filmar:menu:90 menu
+idioma:0,tienda:1,nivel:5,filmar:n5:150 n5
+idioma:0,tienda:1,nivel:33,filmar:n33:150 n33
+idioma:0,tienda:1,nivel:75,filmar:n75:150 n75
+idioma:0,tienda:1,nivel:112,filmar:n112:150 n112
+idioma:0,tienda:1,esfera:56,filmar:skins:90 skins
+idioma:0,filmadv:0,filmar:adv0:210 adv0
+idioma:0,filmadv:4,filmar:adv4:180 adv4
+idioma:0,filmadv:2,filmar:jefe2:180:jefe jefe2
+idioma:0,taller,filmar:taller:75 taller

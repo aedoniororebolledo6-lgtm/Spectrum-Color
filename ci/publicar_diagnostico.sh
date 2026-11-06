@@ -6,7 +6,7 @@ set +e
   | tr -cd '\11\12\15\40-\176\200-\377' | head -c 60000 > notes.txt
 gh release delete diagnostico --yes --cleanup-tag || true
 gh release create diagnostico --title "Diagnóstico" --notes-file notes.txt --prerelease || echo "No se pudo crear el release"
-for f in report.txt *.png; do
+for f in report.txt *.png film.zip; do
   [ -f "$f" ] && { gh release upload diagnostico "$f" --clobber || echo "No se pudo subir $f"; }
 done
 exit 0

@@ -211,6 +211,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "icono" -> { goHome(); iconShot = n1 + 1 }
             "legado" -> Gl.legacy = n1 == 1
             "tienda" -> storeLook = n1 == 1
+            // filmación del anuncio: "filmar:nombre:cuadros[:jefe]" graba esa cantidad de cuadros de la pantalla actual;
+            // "filmadv:W" abre el mundo W de la Aventura en modo dios para que lo juegue el bot
+            "filmar" -> if (p.size >= 3) film = Film(p[1], n2.coerceIn(1, 1800), p.getOrNull(3) == "jefe")
+            "filmadv" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = -3; advStart(n1) }
             // cambia el idioma (0 español, 1 inglés, 2 ruso) y vuelve al menú: para revisar traducciones
             "idioma" -> if (n1 in 0..2) { prefs.lang = n1; I18n.lang = n1; goHome() }
             "niveles" -> scr = Scr.LEVELS
@@ -418,6 +422,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
+        if (film != null) {
+            try { filmTick() } catch (e: Exception) { Log.e("ColorFlow", "film", e); film = null }
+            Choreographer.getInstance().postFrameCallback(this)
+            return
+        }
         val raw = if (lastNanos == 0L) 0.016f else (frameTimeNanos - lastNanos) / 1_000_000_000f
         lastNanos = frameTimeNanos
         // Suaviza el dt (promedio de los últimos cuadros) para absorber el jitter del vsync; si hubo una pausa larga, reinicia.
@@ -436,6 +445,88 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
         if (BuildConfig.DEV) logMissingTexts()
+    }
+
+    // ======================================================================
+    // Filmación del anuncio (solo versión dev; ci/smoke.sh con ci/filmar.txt). Cada cuadro avanza exactamente 1/30 s y
+    // se dibuja en una imagen que se guarda como JPG: el video sale fluido aunque el teléfono virtual dibuje lento.
+    // En los niveles juega el piloto automático (Piloto.kt) y en la Aventura el bot (AdvBot.kt) en modo dios.
+    // ======================================================================
+    private class Film(val name: String, val frames: Int, val boss: Boolean) {
+        var i = 0
+        var pre = 0
+        var step = 0
+        var t = 0
+        var bossReady = false
+        var plan: Piloto.Plan? = null
+        var bmp: android.graphics.Bitmap? = null
+        var dir: java.io.File? = null
+    }
+    private var film: Film? = null
+    private val FILM_DT = 1f / 30f
+
+    private fun filmTick() {
+        val f = film ?: return
+        if (width == 0 || height == 0) return
+        if (scr == Scr.ADV) {
+            if (!advUi.active) { update(FILM_DT); return } // la Aventura todavía está abriendo
+            if (f.boss && !f.bossReady) {
+                // avanzar sin dibujar hasta que empiece la pelea con el jefe (máximo 10 minutos de juego)
+                for (k in 0 until 90) { advUi.autoStep(f.t++); update(FILM_DT) }
+                if (advUi.bossOn() || f.t > 18000) f.bossReady = true
+                return
+            }
+            advUi.autoStep(f.t++)
+        } else if (scr == Scr.PLAY) {
+            val sm = sim
+            if (sm != null) {
+                if (f.pre < 12) { // medio segundo de entrada antes del primer toque
+                    f.pre++
+                    repeat(4) { sm.step() }
+                } else {
+                    var plan = f.plan
+                    if (plan == null) { plan = Piloto.plan(sm, (f.frames - f.i) / 30f + 2f); f.plan = plan }
+                    repeat(4) {
+                        val k = f.step++
+                        if (k < plan.tap.size) {
+                            if (plan.tap[k]) sm.tap()
+                            sm.targetX = if (plan.move[k] == 0) sm.bx else sm.bx + plan.move[k] * 5000f
+                        }
+                        sm.step()
+                    }
+                }
+            }
+        }
+        update(FILM_DT)
+        // dibujar: 1920 de ancho en horizontal (Aventura) y 540 en vertical (se monta dentro del video)
+        val k = if (width > height) 1920f / width else 540f / width
+        val bw = (width * k).toInt()
+        val bh = (height * k).toInt()
+        var bmp = f.bmp
+        if (bmp == null || bmp.width != bw || bmp.height != bh) {
+            bmp = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888)
+            f.bmp = bmp
+        }
+        val cv = Canvas(bmp!!)
+        cv.drawColor(Color.BLACK)
+        cv.scale(k, k)
+        onDraw(cv)
+        var dir = f.dir
+        if (dir == null) {
+            dir = java.io.File(context.getExternalFilesDir("film"), f.name)
+            dir.deleteRecursively()
+            dir.mkdirs()
+            f.dir = dir
+        }
+        java.io.FileOutputStream(java.io.File(dir, String.format(java.util.Locale.US, "%04d.jpg", f.i))).use {
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+        }
+        f.i++
+        if (f.i >= f.frames) {
+            Log.i("ColorFlow", "FILM_DONE ${f.name} ${f.i}")
+            film = null
+            lastNanos = 0L
+        }
     }
 
     // Solo versión dev: escribe en el registro los textos sin traducción (ci/smoke.sh los junta en report.txt).
@@ -1081,8 +1172,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                             advUi.start(0, width / (height / AdvCfg.H), true)
                             advUi.startMaker(width / (height / AdvCfg.H))
                         } else {
-                            advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0)
-                            if (advDebug != -2) advUi.debugPlay(advDebug)
+                            advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0 || advDebug == -3)
+                            if (advDebug != -2) advUi.debugPlay(if (advDebug == -3) -1 else advDebug)
                         }
                         advDebug = -2
                         advPending = -1
@@ -1137,7 +1228,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             return
         }
         if (ov == Ov.PAUSE) return
-        stepSim(sm, dt)
+        if (film == null) stepSim(sm, dt)
         afterStep(sm)
         if (sm.dead || sm.finished) {
             endTimer += dt

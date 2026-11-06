@@ -103,6 +103,17 @@ class AdvUi(
         phT = 0f
     }
 
+    /** Filmación del anuncio: el bot de las pruebas (AdvBot.kt) decide los botones de este cuadro. */
+    fun autoStep(t: Int) {
+        val a = adv ?: return
+        if (phase != 1) return
+        if (a.god && a.whip < 2) a.whip = 2
+        inp.clearPressed()
+        bot(a, inp, t, planGoal(a))
+    }
+
+    fun bossOn(): Boolean = adv?.bossStarted == true
+
     /** La app pasa a segundo plano: si se estaba jugando, abre la pausa y suelta los botones. */
     fun pauseGame() {
         ptrs.clear()

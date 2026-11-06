@@ -9,5 +9,5 @@ KOTLINC="${KOTLINC:-kotlinc}"
 SRC=app/src/main/java/com/nioro/spectrumcolor
 OUT="${TMPDIR:-/tmp}/spectrum-adv-tests"
 mkdir -p "$OUT"
-"$KOTLINC" "$SRC/Adventure.kt" "$SRC/AdvStructs.kt" "$SRC/AdvAi.kt" tools/AdvTest.kt -include-runtime -d "$OUT/adv.jar" 2>&1 | grep -v "^warning" || true
+"$KOTLINC" "$SRC/Adventure.kt" "$SRC/AdvStructs.kt" "$SRC/AdvAi.kt" "$SRC/AdvBot.kt" tools/AdvTest.kt -include-runtime -d "$OUT/adv.jar" 2>&1 | grep -v "^warning" || true
 java -cp "$OUT/adv.jar" AdvTestKt "${1:-real}" "${2:-640}" "${3:-full}"
