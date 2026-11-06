@@ -16,7 +16,7 @@ Variable opcional `PLAY_TRACK` (pestaña Variables): `internal` (por defecto), `
 `beta` (prueba abierta) o `production`. También se puede elegir al lanzar el workflow a mano.
 
 ## Una sola vez, en Play Console
-1. **Crear la app**: nombre "Color Flow", juego, gratis. Paquete: `com.nioro.spectrumcolor`.
+1. **Crear la app**: nombre "Color Flow", juego, gratis. Paquete en Play: `nioro.color.flow` (la versión `play` usa ese `applicationId`; la de GitHub sigue como `com.nioro.spectrumcolor`).
 2. **Primera subida a mano** (Google no deja crear la app por la API): Pruebas → Prueba interna → Crear versión →
    subir `ColorFlow.aab` del release `play`. Aceptar la **firma de apps de Play** (Google guarda la llave final;
    la nuestra es solo de subida).
