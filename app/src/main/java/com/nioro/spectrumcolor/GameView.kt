@@ -165,6 +165,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var advLeaving = false
     /** Solo pruebas (versión dev): al abrir la Aventura, saltar la historia (-1) o mostrar la vitrina k. -2 = nada. */
     private var advDebug = -2
+    /** Solo versión dev (atajo `tienda:1`): se dibuja como la versión de la tienda (sin botones de desarrollador),
+     *  para las capturas de la ficha de Google Play. */
+    private var storeLook = false
     /** Solo versión dev (atajo `icono:K`): 0 = normal; 1 o 2 = dibujar el ícono de la app (2 = con disco de vidrio). */
     private var iconShot = 0
 
@@ -207,6 +210,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             // dibuja el ícono de la app (esfera Aurora boreal sobre el fondo del menú) para recortarlo de la captura
             "icono" -> { goHome(); iconShot = n1 + 1 }
             "legado" -> Gl.legacy = n1 == 1
+            "tienda" -> storeLook = n1 == 1
             // cambia el idioma (0 español, 1 inglés, 2 ruso) y vuelve al menú: para revisar traducciones
             "idioma" -> if (n1 in 0..2) { prefs.lang = n1; I18n.lang = n1; goHome() }
             "niveles" -> scr = Scr.LEVELS
@@ -1880,7 +1884,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         button(c, "endless", "Modo infinito", 540f, b0 + 160f, 760f, 130f, 0, 50f)
         button(c, "adv", "Aventura", 540f, b0 + 320f, 760f, 130f, pal[2], 50f)
         button(c, "mp", "Multijugador local", 540f, b0 + 480f, 760f, 130f, pal[1], 50f)
-        if (BuildConfig.DEV) button(c, "edit", "Editar", 540f, b0 + 625f, 440f, 100f, pal[2], 44f)
+        if (BuildConfig.DEV && !storeLook) button(c, "edit", "Editar", 540f, b0 + 625f, 440f, 100f, pal[2], 44f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -2237,7 +2241,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AJUSTES", top + 130f)
-        val dev = BuildConfig.DEV
+        val dev = BuildConfig.DEV && !storeLook
         val start = top + 250f
         // alturas en unidades de diseño; si la pantalla es baja se comprimen las filas
         val soundH = 20f + 2f * 190f + 112f
@@ -2374,7 +2378,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         items.add("Los mundos salvados de la Aventura")
         items.add("Las partidas guardadas de la Aventura")
         items.add("Las apariencias que se abren con estrellas o récord")
-        if (BuildConfig.DEV) items.add("«Abrir todos» (desarrollador)")
+        if (BuildConfig.DEV && !storeLook) items.add("«Abrir todos» (desarrollador)")
         val ph = when (resetDlg) { 1 -> 520f + items.size * 74f + 330f; 2 -> 900f; else -> 700f }
         val cy = vh / 2f
         val t = cy - ph / 2f

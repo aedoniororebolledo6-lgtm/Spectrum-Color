@@ -88,8 +88,33 @@ tour() {
   echo "== IDIOMAS"
   go idioma:2 4; tour ru
   go idioma:0 4; tour es
-  go idioma:1 4  # deja el inglés, como estaba
 } > idiomas.txt 2>&1
+
+# Capturas para la ficha de Google Play: modo tienda (sin botones de desarrollador), esfera Aurora boreal y la bola
+# en movimiento (unos toques justo antes de la foto). Primero en español (p_es_*), después en inglés (p_en_*).
+# tools/ficha_capturas.py les pone el título y las deja en docs/play/.
+toques() { for i in 1 2 3; do timeout 5 adb shell input tap 540 1700 > /dev/null 2>&1; sleep 0.25; done; }
+fotos() {
+  local L="$1"
+  go tienda:1,esfera:56 5;   shot p_${L}_07_apariencias "Play $L: apariencias"
+  go tienda:1,inicio 6;      shot p_${L}_01_menu "Play $L: menú"
+  go tienda:1,nivel:5 6;     toques; shot p_${L}_02_nivel5 "Play $L: nivel 5 jugando"
+  go tienda:1,nivel:33 6;    toques; shot p_${L}_03_nivel33 "Play $L: nivel 33 jugando"
+  go tienda:1,nivel:75 6;    toques; shot p_${L}_04_nivel75 "Play $L: nivel 75 jugando"
+  go tienda:1,nivel:112 6;   toques; shot p_${L}_05_nivel112 "Play $L: nivel 112 jugando"
+  go tienda:1,infinito 6;    toques; shot p_${L}_06_infinito "Play $L: infinito jugando"
+  go tienda:1,ganar:30 6;    shot p_${L}_08_ganar "Play $L: nivel superado"
+  go tienda:1,mundos 6;      shot p_${L}_09_mundos "Play $L: mundos de la Aventura"
+  go aventura:5 9;           shot p_${L}_10_aventura "Play $L: Aventura"
+  go vitrina:8:1 9;          shot p_${L}_11_enemigos "Play $L: enemigos"
+  go taller 9;               shot p_${L}_12_taller "Play $L: Taller"
+  alive
+}
+{
+  echo "== CAPTURAS PARA GOOGLE PLAY"
+  fotos es
+  go idioma:1 4; fotos en   # termina en inglés, como estaba
+} >> idiomas.txt 2>&1
 
 # Fluidez: cuadros dibujados y cuántos fueron lentos en 8 s de cada pantalla (con toques en las que se juegan).
 # El Android virtual dibuja sin tarjeta gráfica: los números sirven para comparar antes/después, no son los de un teléfono.
