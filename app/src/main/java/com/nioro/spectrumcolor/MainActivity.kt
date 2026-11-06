@@ -168,6 +168,18 @@ class MainActivity : Activity(), HostApi {
         }
     }
 
+    override fun openStore() {
+        val id = packageName
+        try {
+            val i = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=$id"))
+            i.setPackage("com.android.vending") // directo a la app Play Store
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(i)
+        } catch (e: Exception) {
+            openUrl("https://play.google.com/store/apps/details?id=$id") // sin Play Store: en el navegador
+        }
+    }
+
     override fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit) {
         runOnUiThread {
             try {

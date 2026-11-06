@@ -510,6 +510,7 @@ object I18n {
         d("Atraviesa solo el color de tu pelota", "Only pass through your ball's color", "Проходите только через цвет шара")
         d("META", "FINISH", "ФИНИШ")
         d("INICIO", "START", "СТАРТ")
+        d("Google Play", "Google Play", "Google Play")
         d("Ocultar", "Hide", "Скрыть")
         d("Herramientas", "Tools", "Инструменты")
         d("Auto", "Auto", "Авто")

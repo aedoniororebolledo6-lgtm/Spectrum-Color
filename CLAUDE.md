@@ -15,7 +15,7 @@ Las actualizaciones le llegan solas al celular (`checkUpdate` en `GameView.kt` c
    (`git fetch origin main && git checkout -B <rama> origin/main`; si no hay commits nuevos en la rama no hace falta forzar).
 6. Cambios solo de documentación (`*.md`, `tools/`, `ci/`) no disparan una compilación nueva en `main`.
 7. Si la compilación de `main` falla, el error queda en el release **`build-error`** (sus notas traen las líneas clave).
-8. **Google Play:** `play.yml` compila en `main` la versión `play` (`BuildConfig.STORE`: sin botón de actualizar) como
+8. **Google Play:** `play.yml` compila en `main` la versión `play` (`BuildConfig.STORE`: el botón "Actualización" abre la ficha en Google Play) como
    `ColorFlow.aab`, la deja en el release **`play`** y la sube sola a Play Console (pista `PLAY_TRACK`, por defecto `internal`)
    con los secrets `UPLOAD_KEYSTORE_B64`, `UPLOAD_KEYSTORE_PASSWORD` y `PLAY_SERVICE_ACCOUNT_JSON`. Guía: `docs/google_play.md`.
    Textos e imágenes de la ficha en `docs/play/`. Nada que Play prohíba (descargar APK, actualizarse sola) en la versión `play`.
