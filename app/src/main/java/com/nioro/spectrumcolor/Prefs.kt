@@ -98,6 +98,11 @@ class Prefs(context: Context) {
         set(v) { sp.edit().putInt("theme", v).apply() }
 
     /** Idioma: 0 = español, 1 = inglés, 2 = ruso. */
+    /** Versión de los términos y condiciones que aceptó el jugador (0 = ninguna todavía). */
+    var termsAccepted: Int
+        get() = sp.getInt("terms", 0)
+        set(v) { sp.edit().putInt("terms", v).apply() }
+
     var lang: Int
         get() = sp.getInt("lang", I18n.systemDefault()).coerceIn(0, 2)
         set(v) { sp.edit().putInt("lang", v).apply() }

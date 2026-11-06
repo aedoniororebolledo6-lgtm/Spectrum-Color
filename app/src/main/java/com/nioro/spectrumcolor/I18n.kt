@@ -510,6 +510,54 @@ object I18n {
         d("Atraviesa solo el color de tu pelota", "Only pass through your ball's color", "Проходите только через цвет шара")
         d("META", "FINISH", "ФИНИШ")
         d("INICIO", "START", "СТАРТ")
+        d("Google Play", "Google Play", "Google Play")
+        // términos y condiciones (Terminos.kt)
+        d("TÉRMINOS Y CONDICIONES", "TERMS AND CONDITIONS", "УСЛОВИЯ ИСПОЛЬЗОВАНИЯ")
+        d("Antes de jugar, lee y acepta", "Before you play, please read and accept", "Перед игрой прочитайте и примите")
+        d("Desliza para leer todo", "Scroll to read everything", "Прокрутите, чтобы прочитать всё")
+        d("He leído y acepto los términos y condiciones", "I have read and accept the terms and conditions", "Я прочитал(а) и принимаю условия")
+        d("Aceptar y jugar", "Accept and play", "Принять и играть")
+        d("Privacidad", "Privacy", "Конфиденциальность")
+        d("Bienvenido a Color Flow. Antes de jugar, lee estos términos. Al marcar la casilla y tocar «Aceptar y jugar» confirmas que los aceptas.",
+            "Welcome to Color Flow. Before you play, please read these terms. By ticking the box and tapping “Accept and play” you confirm that you accept them.",
+            "Добро пожаловать в Color Flow. Перед игрой прочитайте эти условия. Отметив флажок и нажав «Принять и играть», вы подтверждаете, что принимаете их.")
+        d("1. Licencia de uso", "1. License", "1. Лицензия")
+        d("Con tu compra en Google Play obtienes una licencia personal, no exclusiva e intransferible para jugar Color Flow en tus dispositivos. El juego, sus gráficos, su música y su código pertenecen a su creador.",
+            "Your purchase on Google Play gives you a personal, non-exclusive and non-transferable license to play Color Flow on your devices. The game, its graphics, music and code belong to its creator.",
+            "Покупка в Google Play даёт вам личную, неисключительную и непередаваемую лицензию на игру в Color Flow на ваших устройствах. Игра, её графика, музыка и код принадлежат её автору.")
+        d("2. Compras y reembolsos", "2. Purchases and refunds", "2. Покупки и возвраты")
+        d("Color Flow se compra una sola vez: no tiene anuncios ni compras dentro del juego. Los pagos y los reembolsos los gestiona Google Play según sus propias políticas.",
+            "Color Flow is a one-time purchase: there are no ads and no in-game purchases. Payments and refunds are handled by Google Play under its own policies.",
+            "Color Flow покупается один раз: в игре нет рекламы и внутриигровых покупок. Платежи и возвраты обрабатывает Google Play по своим правилам.")
+        d("3. Uso correcto", "3. Fair use", "3. Правила использования")
+        d("No está permitido copiar, modificar, descompilar, revender ni distribuir el juego, ni usarlo con fines ilegales. En el multijugador local, usa nombres respetuosos.",
+            "You may not copy, modify, decompile, resell or distribute the game, or use it for illegal purposes. In local multiplayer, please use respectful names.",
+            "Запрещается копировать, изменять, декомпилировать, перепродавать или распространять игру, а также использовать её в незаконных целях. В локальной сетевой игре используйте уважительные имена.")
+        d("4. Tu contenido", "4. Your content", "4. Ваш контент")
+        d("Tu progreso y las salas que crees en el Taller se guardan solo en tu teléfono. Si desinstalas el juego o borras el progreso, se pierden.",
+            "Your progress and the rooms you build in the Maker are stored only on your phone. If you uninstall the game or reset your progress, they are lost.",
+            "Ваш прогресс и комнаты, созданные в Мастерской, хранятся только на вашем телефоне. Если удалить игру или сбросить прогресс, они будут потеряны.")
+        d("5. Privacidad", "5. Privacy", "5. Конфиденциальность")
+        d("Color Flow no recopila datos personales y no necesita internet para funcionar. Puedes leer la política de privacidad completa con el botón «Privacidad».",
+            "Color Flow does not collect personal data and does not need the internet to work. You can read the full privacy policy with the “Privacy” button.",
+            "Color Flow не собирает личные данные и работает без интернета. Полную политику конфиденциальности можно прочитать по кнопке «Конфиденциальность».")
+        d("6. Aviso de salud", "6. Health warning", "6. Предупреждение о здоровье")
+        d("El juego tiene luces, destellos y cambios rápidos de color. Si tú o alguien de tu familia ha tenido crisis de epilepsia o es sensible a la luz, consulta a un médico antes de jugar. Si sientes mareo, molestias en la vista o malestar, deja de jugar y descansa.",
+            "The game has lights, flashes and fast color changes. If you or anyone in your family has had epileptic seizures or is sensitive to light, consult a doctor before playing. If you feel dizzy, have eye strain or feel unwell, stop playing and rest.",
+            "В игре есть вспышки и быстрая смена цветов. Если у вас или ваших родственников были эпилептические приступы или есть чувствительность к свету, перед игрой посоветуйтесь с врачом. Если почувствуете головокружение, усталость глаз или недомогание, прекратите игру и отдохните.")
+        d("7. Garantía y responsabilidad", "7. Warranty and liability", "7. Гарантии и ответственность")
+        d("El juego se ofrece tal como está. Trabajamos para que funcione bien, pero no podemos garantizar que no tenga errores. En la medida en que lo permita la ley, el creador no responde por daños indirectos derivados de su uso.",
+            "The game is provided as is. We work to make it run well, but we cannot guarantee it is free of errors. To the extent permitted by law, the creator is not liable for indirect damages arising from its use.",
+            "Игра предоставляется «как есть». Мы стараемся, чтобы она работала хорошо, но не можем гарантировать отсутствие ошибок. В пределах, допускаемых законом, автор не несёт ответственности за косвенный ущерб от её использования.")
+        d("8. Cambios en los términos", "8. Changes to these terms", "8. Изменения условий")
+        d("Estos términos pueden actualizarse. Si cambian, el juego te pedirá que los aceptes de nuevo.",
+            "These terms may be updated. If they change, the game will ask you to accept them again.",
+            "Эти условия могут обновляться. Если они изменятся, игра попросит принять их снова.")
+        d("9. Contacto y ley aplicable", "9. Contact and governing law", "9. Контакты и применимое право")
+        d("Si tienes dudas o problemas, escribe al correo de contacto de la ficha de Google Play. Estos términos se rigen por las leyes de Chile, sin perjuicio de los derechos que te da como consumidor la ley de tu país.",
+            "If you have questions or problems, write to the contact email on the Google Play listing. These terms are governed by the laws of Chile, without prejudice to the rights your local law grants you as a consumer.",
+            "Если у вас есть вопросы или проблемы, напишите на контактный адрес со страницы игры в Google Play. Эти условия регулируются законами Чили без ущерба для прав, которые даёт вам как потребителю закон вашей страны.")
+        d("Última actualización: 6 de noviembre de 2026", "Last updated: November 6, 2026", "Последнее обновление: 6 ноября 2026 г.")
         d("Ocultar", "Hide", "Скрыть")
         d("Herramientas", "Tools", "Инструменты")
         d("Auto", "Auto", "Авто")

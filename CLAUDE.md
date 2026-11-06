@@ -15,7 +15,7 @@ Las actualizaciones le llegan solas al celular (`checkUpdate` en `GameView.kt` c
    (`git fetch origin main && git checkout -B <rama> origin/main`; si no hay commits nuevos en la rama no hace falta forzar).
 6. Cambios solo de documentación (`*.md`, `tools/`, `ci/`) no disparan una compilación nueva en `main`.
 7. Si la compilación de `main` falla, el error queda en el release **`build-error`** (sus notas traen las líneas clave).
-8. **Google Play:** `play.yml` compila en `main` la versión `play` (`BuildConfig.STORE`: sin botón de actualizar) como
+8. **Google Play:** `play.yml` compila en `main` la versión `play` (`BuildConfig.STORE`: el botón "Actualización" abre la ficha en Google Play) como
    `ColorFlow.aab`, la deja en el release **`play`** y la sube sola a Play Console (pista `PLAY_TRACK`, por defecto `internal`)
    con los secrets `UPLOAD_KEYSTORE_B64`, `UPLOAD_KEYSTORE_PASSWORD` y `PLAY_SERVICE_ACCOUNT_JSON`. Guía: `docs/google_play.md`.
    Textos e imágenes de la ficha en `docs/play/`. Nada que Play prohíba (descargar APK, actualizarse sola) en la versión `play`.
@@ -37,7 +37,7 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
    `inicio`, `ajustes`, `borrar1`, `borrar2`, `apariencias`, `esfera:N` y `estela:N` (eligen una y abren su pestaña), `nivel:N`, `infinito`, `mundos`, `aventura:W`
    (mundo W desde 0, salta la historia) y `vitrina:W:K` (sala con 3 enemigos nuevos, K = 0, 1 o 2, en modo dios),
    `taller` (editor de salas de la Aventura), `editor:N` y `galeria:N` (editor de niveles y catálogo de obstáculos),
-   `niveles`, `temas`, `multi`, `pausa:N`, `ganar:N`, `idioma:L` (0 español, 1 inglés, 2 ruso), `icono:K` y `legado:1`
+   `niveles`, `temas`, `multi`, `pausa:N`, `ganar:N`, `terminos[:1]` (términos; `:1` con la casilla marcada), `idioma:L` (0 español, 1 inglés, 2 ruso), `tienda:1` (sin botones de desarrollador), `icono:K` y `legado:1`
    (dibujo antiguo, para comparar fluidez). Se pueden encadenar con coma: `legado:1,nivel:14`.
    Para una pantalla nueva: añade el atajo en `GameView.debugGo` y un paso `go …; shot …` en `ci/smoke.sh`.
 7. `report.txt` también trae **FLUIDEZ** (cuadros en 8 s por pantalla; el Android virtual no tiene tarjeta gráfica, así que
@@ -82,6 +82,8 @@ No hay SDK de Android en el contenedor, pero la app **sí se puede ver**:
 - `AdvAi.kt` — IA: steering (Seek/Arrive/Pursue/Flee/Wander), tiro balístico y árbol de comportamiento (ideas de gdx-ai).
 - `AdvStructs.kt` — 650+ planos de estructuras. `AdventureUi.kt` — dibujo y controles de la Aventura.
 - `Net.kt` + `Match.kt` — multijugador local (TCP + aviso UDP de salas) y reglas de la partida.
+- `Terminos.kt` — términos y condiciones que se aceptan al abrir el juego por primera vez (`GameView.drawTerms`; subir
+  `Terminos.VERSION` si cambian para pedirlos de nuevo). Copia web en `docs/terminos.md`.
 - `Prefs.kt` (guardado), `Audio.kt`, `I18n.kt` (español/inglés/ruso: todo texto nuevo va con su `d(...)`),
   `Skins.kt`, `Trails.kt`, `Theme.kt`, `Spooky.kt`/`Cats.kt`/`Dogs.kt` (temas), `Gl.kt` (ayudas de dibujo).
 - `tools/` — pruebas (`SimTest.kt`, `AdvTest.kt`), `apply_levels.py` (niveles publicados desde el editor), audio.

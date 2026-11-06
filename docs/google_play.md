@@ -1,7 +1,7 @@
 # Publicar Color Flow en Google Play
 
 Funciona igual que las actualizaciones de GitHub: cada cambio que llega a `main` lo compila
-`.github/workflows/play.yml` como paquete de Play (`ColorFlow.aab`, versión **play**: sin botón de actualizar,
+`.github/workflows/play.yml` como paquete de Play (`ColorFlow.aab`, versión **play**: el botón "Actualización" abre la ficha del juego en Google Play,
 porque Play no permite que una app se actualice sola) y, si está la cuenta de servicio, **lo sube solo a Play Console**.
 El paquete también queda en el release **`play`** de GitHub.
 

@@ -37,6 +37,8 @@ interface HostApi {
     fun prompt(title: String, initial: String, hint: String, onOk: (String) -> Unit)
     fun quit()
     fun openUrl(url: String)
+    /** Abre la página del juego en Google Play (app Play Store; si no está, el navegador). */
+    fun openStore()
     fun setLandscape(on: Boolean)
 }
 
@@ -46,7 +48,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ADV_MENU, ADV }
+    private enum class Scr { TERMS, HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ADV_MENU, ADV }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -163,6 +165,9 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var advLeaving = false
     /** Solo pruebas (versión dev): al abrir la Aventura, saltar la historia (-1) o mostrar la vitrina k. -2 = nada. */
     private var advDebug = -2
+    /** Solo versión dev (atajo `tienda:1`): se dibuja como la versión de la tienda (sin botones de desarrollador),
+     *  para las capturas de la ficha de Google Play. */
+    private var storeLook = false
     /** Solo versión dev (atajo `icono:K`): 0 = normal; 1 o 2 = dibujar el ícono de la app (2 = con disco de vidrio). */
     private var iconShot = 0
 
@@ -205,6 +210,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             // dibuja el ícono de la app (esfera Aurora boreal sobre el fondo del menú) para recortarlo de la captura
             "icono" -> { goHome(); iconShot = n1 + 1 }
             "legado" -> Gl.legacy = n1 == 1
+            "tienda" -> storeLook = n1 == 1
+            "terminos" -> { scr = Scr.TERMS; termsChecked = n1 == 1; skinScroll = 0f; skinVel = 0f }
+            // filmación del anuncio: "filmar:nombre:cuadros[:jefe]" graba esa cantidad de cuadros de la pantalla actual;
+            // "filmadv:W" abre el mundo W de la Aventura en modo dios para que lo juegue el bot
+            "filmar" -> if (p.size >= 3) film = Film(p[1], n2.coerceIn(1, 1800), p.getOrNull(3) == "jefe")
+            "filmadv" -> if (n1 in 0 until AdvCfg.WORLDS) { advDebug = -3; advStart(n1) }
             // cambia el idioma (0 español, 1 inglés, 2 ruso) y vuelve al menú: para revisar traducciones
             "idioma" -> if (n1 in 0..2) { prefs.lang = n1; I18n.lang = n1; goHome() }
             "niveles" -> scr = Scr.LEVELS
@@ -237,7 +248,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var ovT0 = -10f
     private var uiIdx = 0
     private fun depthOf(s: Scr): Int = when (s) {
-        Scr.HOME -> 0
+        Scr.HOME, Scr.TERMS -> 0
         Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME, Scr.ADV_MENU -> 1
         Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
         Scr.PLAY, Scr.ADV -> 3
@@ -250,6 +261,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 scrT0 = time
             }
         }
+
+    init {
+        // primera vez (o términos nuevos): antes de jugar hay que aceptar los términos y condiciones
+        if (prefs.termsAccepted < Terminos.VERSION) scr = Scr.TERMS
+    }
     private var mode = Mode.LEVEL
     private var ov = Ov.NONE
         set(v) {
@@ -412,6 +428,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
 
     override fun doFrame(frameTimeNanos: Long) {
         if (!running) return
+        if (film != null) {
+            try { filmTick() } catch (e: Exception) { Log.e("ColorFlow", "film", e); film = null }
+            Choreographer.getInstance().postFrameCallback(this)
+            return
+        }
         val raw = if (lastNanos == 0L) 0.016f else (frameTimeNanos - lastNanos) / 1_000_000_000f
         lastNanos = frameTimeNanos
         // Suaviza el dt (promedio de los últimos cuadros) para absorber el jitter del vsync; si hubo una pausa larga, reinicia.
@@ -430,6 +451,89 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         invalidate()
         Choreographer.getInstance().postFrameCallback(this)
         if (BuildConfig.DEV) logMissingTexts()
+    }
+
+    // ======================================================================
+    // Filmación del anuncio (solo versión dev; ci/smoke.sh con ci/filmar.txt). Cada cuadro avanza exactamente 1/30 s y
+    // se dibuja en una imagen que se guarda como JPG: el video sale fluido aunque el teléfono virtual dibuje lento.
+    // En los niveles juega el piloto automático (Piloto.kt) y en la Aventura el bot (AdvBot.kt) en modo dios.
+    // ======================================================================
+    private class Film(val name: String, val frames: Int, val boss: Boolean) {
+        var i = 0
+        var pre = 0
+        var step = 0
+        var t = 0
+        var bossReady = false
+        var plan: Piloto.Plan? = null
+        var bmp: android.graphics.Bitmap? = null
+        var dir: java.io.File? = null
+    }
+    private var film: Film? = null
+    private val FILM_DT = 1f / 30f
+
+    private fun filmTick() {
+        val f = film ?: return
+        if (width == 0 || height == 0) return
+        if (scr == Scr.ADV) {
+            if (!advUi.active) { update(FILM_DT); return } // la Aventura todavía está abriendo
+            advUi.hideControls = true
+            if (f.boss && !f.bossReady) {
+                // avanzar sin dibujar hasta que empiece la pelea con el jefe (máximo 10 minutos de juego)
+                for (k in 0 until 90) { advUi.autoStep(f.t++); update(FILM_DT) }
+                if (advUi.bossOn() || f.t > 18000) f.bossReady = true
+                return
+            }
+            advUi.autoStep(f.t++)
+        } else if (scr == Scr.PLAY) {
+            val sm = sim
+            if (sm != null) {
+                if (f.pre < 12) { // medio segundo de entrada antes del primer toque
+                    f.pre++
+                    repeat(4) { sm.step() }
+                } else {
+                    var plan = f.plan
+                    if (plan == null) { plan = Piloto.plan(sm, (f.frames - f.i) / 30f + 2f); f.plan = plan }
+                    repeat(4) {
+                        val k = f.step++
+                        if (k < plan.tap.size) {
+                            if (plan.tap[k]) sm.tap()
+                            sm.targetX = if (plan.move[k] == 0) sm.bx else sm.bx + plan.move[k] * 5000f
+                        }
+                        sm.step()
+                    }
+                }
+            }
+        }
+        update(FILM_DT)
+        // dibujar: 1920 de ancho en horizontal (Aventura) y 540 en vertical (se monta dentro del video)
+        val k = if (width > height) 1920f / width else 540f / width
+        val bw = (width * k).toInt()
+        val bh = (height * k).toInt()
+        var bmp = f.bmp
+        if (bmp == null || bmp.width != bw || bmp.height != bh) {
+            bmp = android.graphics.Bitmap.createBitmap(bw, bh, android.graphics.Bitmap.Config.ARGB_8888)
+            f.bmp = bmp
+        }
+        val cv = Canvas(bmp!!)
+        cv.drawColor(Color.BLACK)
+        cv.scale(k, k)
+        onDraw(cv)
+        var dir = f.dir
+        if (dir == null) {
+            dir = java.io.File(context.getExternalFilesDir("film"), f.name)
+            dir.deleteRecursively()
+            dir.mkdirs()
+            f.dir = dir
+        }
+        java.io.FileOutputStream(java.io.File(dir, String.format(java.util.Locale.US, "%04d.jpg", f.i))).use {
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+        }
+        f.i++
+        if (f.i >= f.frames) {
+            Log.i("ColorFlow", "FILM_DONE ${f.name} ${f.i}")
+            film = null
+            lastNanos = 0L
+        }
     }
 
     // Solo versión dev: escribe en el registro los textos sin traducción (ci/smoke.sh los junta en report.txt).
@@ -479,7 +583,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     /** true si el juego manejó el botón "atrás"; false = que la app se cierre. */
     fun onBack(): Boolean {
         when (scr) {
-            Scr.HOME -> return false
+            Scr.HOME, Scr.TERMS -> return false
             Scr.ADV_MENU -> goHome()
             Scr.ADV -> { if (advUi.active) advUi.back() else if (!advLeaving) advExit() }
             Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
@@ -668,7 +772,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 prefs.lang = (prefs.lang + 1) % 3
                 I18n.lang = prefs.lang
             }
-            id == "update" && !BuildConfig.STORE -> {
+            id == "update" && BuildConfig.STORE -> api.openStore()
+            id == "update" -> {
                 if (updState == 3) api.openUrl("https://github.com/aedoniororebolledo6-lgtm/Spectrum-Color/releases/latest/download/" + (if (BuildConfig.DEV) "ColorFlowDev.apk" else "ColorFlow.apk"))
                 else checkUpdate()
             }
@@ -701,6 +806,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "tname" || id == "mp_name" -> api.prompt(I18n.t("Tu nombre"), prefs.name, I18n.t("Nombre")) { prefs.name = it }
             id == "topen" -> if (BuildConfig.DEV) prefs.allOpen = !prefs.allOpen
             id == "treset" -> { resetDlg = 1; resetDlgT = time }
+            // términos y condiciones
+            id == "tchk" -> termsChecked = !termsChecked
+            id == "tok" -> if (termsChecked) { prefs.termsAccepted = Terminos.VERSION; goHome() }
+            id == "tpriv" -> api.openUrl(Terminos.PRIVACY_URL)
+            id == "tquit" -> api.quit()
             id == "rdl_yes" -> if (resetDlg == 1) { resetDlg = 2; resetDlgT = time }
             id == "rdl_ok" -> if (resetDlg == 2) {
                 prefs.resetProgress()
@@ -825,7 +935,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (scr == Scr.PLAY) moveSlide(e)
                 if (dragSlider != null) setSlider(x)
                 val dtm = (e.eventTime - lastMoveT) / 1000f
-                if (scr == Scr.SKINS) {
+                if (scr == Scr.SKINS || scr == Scr.TERMS) {
                     if (!dragged && abs(y - downY) > 22f) {
                         dragged = true
                         pressedId = null
@@ -879,7 +989,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (dragSlider != null) {
                     dragSlider = null
                     audio.play(Sfx.CLICK)
-                } else if (scr == Scr.SKINS && dragged) {
+                } else if ((scr == Scr.SKINS || scr == Scr.TERMS) && dragged) {
                     // era un deslizamiento, no un toque: sigue con inercia (ver update)
                     if (abs(skinVel) < 120f) skinVel = 0f
                 } else if (scr == Scr.EDITOR && (dragged || (id == null && edDrag in 1..2) || (id == null && edDrag == 4))) {
@@ -988,7 +1098,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             levelOff *= exp(-12f * dt)
             if (abs(levelOff) < 0.5f) levelOff = 0f
         }
-        val touchingSkins = touching && scr == Scr.SKINS && dragged
+        val touchingSkins = touching && (scr == Scr.SKINS || scr == Scr.TERMS) && dragged
         if (!touchingSkins) {
             if (skinScroll < 0f || skinScroll > skinMax) {
                 skinVel = 0f
@@ -1074,8 +1184,8 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                             advUi.start(0, width / (height / AdvCfg.H), true)
                             advUi.startMaker(width / (height / AdvCfg.H))
                         } else {
-                            advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0)
-                            if (advDebug != -2) advUi.debugPlay(advDebug)
+                            advUi.start(advPending, width / (height / AdvCfg.H), advDebug >= 0 || advDebug == -3)
+                            if (advDebug != -2) advUi.debugPlay(if (advDebug == -3) -1 else advDebug)
                         }
                         advDebug = -2
                         advPending = -1
@@ -1130,7 +1240,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             return
         }
         if (ov == Ov.PAUSE) return
-        stepSim(sm, dt)
+        if (film == null) stepSim(sm, dt)
         afterStep(sm)
         if (sm.dead || sm.finished) {
             endTimer += dt
@@ -1550,6 +1660,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.EDITOR -> drawEditor(c)
             Scr.EDIT_HOME -> drawEditHome(c)
             Scr.ADV_MENU -> drawAdvMenu(c)
+            Scr.TERMS -> drawTerms(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -1877,7 +1988,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         button(c, "endless", "Modo infinito", 540f, b0 + 160f, 760f, 130f, 0, 50f)
         button(c, "adv", "Aventura", 540f, b0 + 320f, 760f, 130f, pal[2], 50f)
         button(c, "mp", "Multijugador local", 540f, b0 + 480f, 760f, 130f, pal[1], 50f)
-        if (BuildConfig.DEV) button(c, "edit", "Editar", 540f, b0 + 625f, 440f, 100f, pal[2], 44f)
+        if (BuildConfig.DEV && !storeLook) button(c, "edit", "Editar", 540f, b0 + 625f, 440f, 100f, pal[2], 44f)
         val total = Levels.PLAYABLE * 3
         Gl.text(
             c, "Estrellas ${prefs.totalStars()}/$total   ·   Récord infinito ${prefs.endlessBest}",
@@ -2234,12 +2345,12 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val top = topI
         iconButton(c, "back", 110f, top + 110f, 56f) { cc, x, y, r -> iconChevron(cc, x, y, r, -1) }
         title(c, "AJUSTES", top + 130f)
-        val dev = BuildConfig.DEV
+        val dev = BuildConfig.DEV && !storeLook
         val start = top + 250f
         // alturas en unidades de diseño; si la pantalla es baja se comprimen las filas
         val soundH = 20f + 2f * 190f + 112f
         val gameH = 20f + 4f * 112f
-        val dataH = 20f + (1f + (if (BuildConfig.STORE) 0f else 1f) + (if (dev) 1f else 0f)) * 112f
+        val dataH = 20f + (if (dev) 3f else 2f) * 112f
         val fixed = 3f * 64f + 2f * 28f
         val avail = vh - 110f - start
         val k = min(1f, (avail - fixed) / (soundH + gameH + dataH))
@@ -2309,10 +2420,10 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         ry = y + 10f * k
         label("Progreso", ry + rh / 2f)
         button(c, "treset", "Borrar progreso", bx, ry + rh / 2f, bw, bh, 0xFFFF4F6B.toInt(), 34f)
-        // la versión de Google Play la actualiza la tienda: sin botón propio (las reglas de Play lo prohíben)
-        if (!BuildConfig.STORE) {
         ry += rh; sep(ry)
-        val ul = when (updState) {
+        // versión de Google Play: el botón lleva a la página del juego en la tienda (Play no permite que la app se
+        // actualice sola); la de GitHub busca y descarga la compilación nueva
+        val ul = if (BuildConfig.STORE) "Google Play" else when (updState) {
             1 -> "Buscando…"
             2 -> "Estás al día"
             3 -> "Descargar nueva"
@@ -2321,8 +2432,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             else -> "Buscar"
         }
         label("Actualización", ry + rh / 2f)
-        button(c, "update", ul, bx, ry + rh / 2f, bw, bh, if (updState == 3) pal[2] else 0, 38f)
-        }
+        button(c, "update", ul, bx, ry + rh / 2f, bw, bh, if (updState == 3 || BuildConfig.STORE) pal[2] else 0, 38f)
         if (dev) {
             ry += rh; sep(ry)
             label("Niveles", ry + rh / 2f)
@@ -2372,7 +2482,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         items.add("Los mundos salvados de la Aventura")
         items.add("Las partidas guardadas de la Aventura")
         items.add("Las apariencias que se abren con estrellas o récord")
-        if (BuildConfig.DEV) items.add("«Abrir todos» (desarrollador)")
+        if (BuildConfig.DEV && !storeLook) items.add("«Abrir todos» (desarrollador)")
         val ph = when (resetDlg) { 1 -> 520f + items.size * 74f + 330f; 2 -> 900f; else -> 700f }
         val cy = vh / 2f
         val t = cy - ph / 2f
@@ -6187,6 +6297,89 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Ov.WIN -> popOverlay(c, oa) { drawWin(c, pal) }
             Ov.NONE -> {}
         }
+    }
+
+    // ---------------- TÉRMINOS Y CONDICIONES ----------------
+    private var termsChecked = false
+    // renglones ya partidos, por idioma (texto, tamaño, ¿título?)
+    private var termsLines: List<Triple<String, Float, Boolean>> = emptyList()
+    private var termsLang = -1
+
+    private fun termsLayout(maxW: Float): List<Triple<String, Float, Boolean>> {
+        if (termsLang == I18n.lang && termsLines.isNotEmpty()) return termsLines
+        val out = ArrayList<Triple<String, Float, Boolean>>()
+        for (l in Gl.wrap(I18n.t(Terminos.INTRO), 34f, Gl.regular, maxW)) out.add(Triple(l, 34f, false))
+        for ((h, b) in Terminos.SECTIONS) {
+            out.add(Triple("", 22f, false))
+            for (l in Gl.wrap(I18n.t(h), 38f, Gl.medium, maxW)) out.add(Triple(l, 38f, true))
+            for (l in Gl.wrap(I18n.t(b), 33f, Gl.regular, maxW)) out.add(Triple(l, 33f, false))
+        }
+        out.add(Triple("", 22f, false))
+        out.add(Triple(I18n.t(Terminos.UPDATED), 28f, false))
+        termsLines = out
+        termsLang = I18n.lang
+        return out
+    }
+
+    private fun drawTerms(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        Gl.textFit(c, "TÉRMINOS Y CONDICIONES", 540f, top + 120f, 56f, 940f, Gl.light, Gl.white(245), 0.1f)
+        Gl.textFit(c, "Antes de jugar, lee y acepta", 540f, top + 180f, 34f, 900f, Gl.regular, Gl.white(185))
+        val l = 60f
+        val r = 1020f
+        val t = top + 230f
+        val b = vh - 440f
+        Gl.panel(c, l, t, r, b, 50f, 0.9f, pal[0])
+        val lines = termsLayout(r - l - 110f)
+        var total = 40f
+        for (ln in lines) total += ln.second * 1.45f
+        skinMax = max(0f, total + 40f - (b - t))
+        // texto con desplazamiento, recortado al panel
+        c.save()
+        c.clipRect(l + 6f, t + 6f, r - 6f, b - 6f)
+        var y = t + 60f - skinScroll
+        for ((txt, size, head) in lines) {
+            if (y > t - 60f && y < b + 60f && txt.isNotEmpty()) {
+                Gl.text(c, txt, l + 50f, y, size, if (head) Gl.medium else Gl.regular,
+                    if (head) Gl.white(250) else Gl.white(215), 0f, null, 0, Paint.Align.LEFT, false)
+            }
+            y += size * 1.45f
+        }
+        c.restore()
+        // barra de desplazamiento
+        if (skinMax > 0f) {
+            val trackH = b - t - 60f
+            val barH = max(60f, trackH * trackH / (trackH + skinMax))
+            val by0 = t + 30f + (trackH - barH) * (skinScroll / skinMax).coerceIn(0f, 1f)
+            val pp = Gl.p()
+            pp.color = Gl.white(110)
+            Gl.rect.set(r - 22f, by0, r - 14f, by0 + barH)
+            c.drawRoundRect(Gl.rect, 4f, 4f, pp)
+        }
+        val atEnd = skinMax <= 0f || skinScroll >= skinMax - 40f
+        if (!atEnd) Gl.text(c, "Desliza para leer todo", 540f, b + 46f, 28f, Gl.regular, Gl.white(150))
+        // casilla "He leído y acepto"
+        val cy = vh - 330f
+        val bx = 120f
+        Gl.panel(c, bx - 30f, cy - 30f, bx + 30f, cy + 30f, 14f, if (termsChecked) 1.3f else 0.8f, pal[2])
+        if (termsChecked) {
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 8f
+            pp.strokeCap = Paint.Cap.ROUND
+            pp.strokeJoin = Paint.Join.ROUND
+            pp.color = Color.WHITE
+            val ph = Gl.path
+            ph.reset()
+            ph.moveTo(bx - 16f, cy + 1f); ph.lineTo(bx - 4f, cy + 14f); ph.lineTo(bx + 18f, cy - 14f)
+            c.drawPath(ph, pp)
+        }
+        Gl.textFit(c, "He leído y acepto los términos y condiciones", bx + 54f, cy + 12f, 34f, 860f, Gl.medium, Gl.white(235), 0f, Paint.Align.LEFT)
+        hits.add(Hit("tchk", 60f, cy - 50f, 1020f, cy + 50f))
+        button(c, "tok", "Aceptar y jugar", 540f, vh - 210f, 760f, 116f, pal[2], 46f, termsChecked)
+        button(c, "tpriv", "Privacidad", 330f, vh - 85f, 380f, 84f, 0, 34f)
+        button(c, "tquit", "Salir", 750f, vh - 85f, 380f, 84f, 0, 34f)
     }
 
     /** Panel de las ventanas (pausa, ganar, perder): el cristal con un fondo oscuro debajo, para que el texto se lea

@@ -103,6 +103,17 @@ class AdvUi(
         phT = 0f
     }
 
+    /** Filmación del anuncio: el bot de las pruebas (AdvBot.kt) decide los botones de este cuadro. */
+    fun autoStep(t: Int) {
+        val a = adv ?: return
+        if (phase != 1) return
+        if (a.god && a.whip < 2) a.whip = 2
+        inp.clearPressed()
+        bot(a, inp, t, planGoal(a))
+    }
+
+    fun bossOn(): Boolean = adv?.bossStarted == true
+
     /** La app pasa a segundo plano: si se estaba jugando, abre la pausa y suelta los botones. */
     fun pauseGame() {
         ptrs.clear()
@@ -1832,7 +1843,11 @@ class AdvUi(
         c.drawRect(vw - 27f, 24f, vw - 22f, 40f, pp)
     }
 
+    /** Filmación del anuncio: sin los botones táctiles (el bot no los necesita y taparían los títulos). */
+    var hideControls = false
+
     private fun drawControls(c: Canvas) {
+        if (hideControls) return
         for (b in buttons()) {
             if (b.id == "P") continue
             val held = ptrs.containsValue(b.id)

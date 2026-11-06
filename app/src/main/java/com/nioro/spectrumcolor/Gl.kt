@@ -159,9 +159,10 @@ object Gl {
     fun text(
         c: Canvas, s: String, x: Float, y: Float, size: Float, tf: Typeface, color: Int,
         spacing: Float = 0f, shader: Shader? = null, glowColor: Int = 0,
-        align: Paint.Align = Paint.Align.CENTER
+        align: Paint.Align = Paint.Align.CENTER, translate: Boolean = true
     ) {
-        val str = I18n.t(s)
+        // translate = false: el texto ya viene traducido (p. ej. una línea de un párrafo largo partido en renglones)
+        val str = if (translate) I18n.t(s) else s
         val pp = p()
         pp.textAlign = align
         pp.textSize = size
@@ -173,12 +174,26 @@ object Gl {
         c.drawText(str, x, y, pp)
     }
 
-    fun textWidth(s: String, size: Float, tf: Typeface, spacing: Float = 0f): Float {
+    fun textWidth(s: String, size: Float, tf: Typeface, spacing: Float = 0f, translate: Boolean = true): Float {
         val pp = p()
         pp.textSize = size
         pp.typeface = tf
         pp.letterSpacing = spacing
-        return pp.measureText(I18n.t(s))
+        return pp.measureText(if (translate) I18n.t(s) else s)
+    }
+
+    /** Parte un texto (ya traducido) en renglones que quepan en maxW. */
+    fun wrap(s: String, size: Float, tf: Typeface, maxW: Float): List<String> {
+        val out = ArrayList<String>()
+        for (para in s.split('\n')) {
+            var line = ""
+            for (w in para.split(' ')) {
+                val t = if (line.isEmpty()) w else "$line $w"
+                if (line.isNotEmpty() && textWidth(t, size, tf, 0f, false) > maxW) { out.add(line); line = w } else line = t
+            }
+            out.add(line)
+        }
+        return out
     }
 
     /** Texto que se achica solo si no cabe en maxW. */
