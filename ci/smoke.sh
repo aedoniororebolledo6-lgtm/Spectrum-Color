@@ -16,6 +16,8 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
 
 {
   echo "== PASOS"
+  go terminos 6;        shot 00_terminos "términos y condiciones (primera vez)"; alive
+  go terminos:1 5; timeout 10 adb shell input swipe 540 1500 540 500 400; sleep 3; shot 00c_terminos_final "términos: al final y con la casilla marcada"; alive
   go inicio 8;          shot 01_inicio "menú principal"; alive
   go icono:0;           shot 00_icono_a "ícono: esfera Aurora boreal"; alive
   go icono:1;           shot 00_icono_b "ícono: con disco de vidrio"; alive
@@ -63,6 +65,7 @@ alive() { adb shell pidof $P > /dev/null 2>&1 && echo "  app viva" || echo "  LA
 # Los textos sin traducción quedan en el registro con la marca "I18N" (versión dev) y salen en report.txt.
 tour() {
   local L="$1"
+  go terminos 6;        shot ${L}_00_terminos "$L términos y condiciones"
   go inicio 6;          shot ${L}_01_inicio "$L menú"
   go ajustes;           shot ${L}_02_ajustes "$L ajustes"
   go borrar1;           shot ${L}_03_borrar "$L borrar progreso"

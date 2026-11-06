@@ -48,7 +48,7 @@ interface HostApi {
  */
 class GameView(context: Context, private val api: HostApi) : View(context), Choreographer.FrameCallback, android.hardware.SensorEventListener {
 
-    private enum class Scr { HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ADV_MENU, ADV }
+    private enum class Scr { TERMS, HOME, LEVELS, SETTINGS, PLAY, MP_MENU, MP_HOST, MP_JOIN, SKINS, THEMES, EDITOR, EDIT_HOME, ADV_MENU, ADV }
     private enum class Mode { LEVEL, ENDLESS, MP }
     private enum class Ov { NONE, PAUSE, DEAD, WIN }
 
@@ -211,6 +211,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             "icono" -> { goHome(); iconShot = n1 + 1 }
             "legado" -> Gl.legacy = n1 == 1
             "tienda" -> storeLook = n1 == 1
+            "terminos" -> { scr = Scr.TERMS; termsChecked = n1 == 1; skinScroll = 0f; skinVel = 0f }
             // filmación del anuncio: "filmar:nombre:cuadros[:jefe]" graba esa cantidad de cuadros de la pantalla actual;
             // "filmadv:W" abre el mundo W de la Aventura en modo dios para que lo juegue el bot
             "filmar" -> if (p.size >= 3) film = Film(p[1], n2.coerceIn(1, 1800), p.getOrNull(3) == "jefe")
@@ -247,7 +248,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     private var ovT0 = -10f
     private var uiIdx = 0
     private fun depthOf(s: Scr): Int = when (s) {
-        Scr.HOME -> 0
+        Scr.HOME, Scr.TERMS -> 0
         Scr.LEVELS, Scr.SETTINGS, Scr.MP_MENU, Scr.SKINS, Scr.EDIT_HOME, Scr.ADV_MENU -> 1
         Scr.THEMES, Scr.MP_HOST, Scr.MP_JOIN, Scr.EDITOR -> 2
         Scr.PLAY, Scr.ADV -> 3
@@ -260,6 +261,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 scrT0 = time
             }
         }
+
+    init {
+        // primera vez (o términos nuevos): antes de jugar hay que aceptar los términos y condiciones
+        if (prefs.termsAccepted < Terminos.VERSION) scr = Scr.TERMS
+    }
     private var mode = Mode.LEVEL
     private var ov = Ov.NONE
         set(v) {
@@ -577,7 +583,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
     /** true si el juego manejó el botón "atrás"; false = que la app se cierre. */
     fun onBack(): Boolean {
         when (scr) {
-            Scr.HOME -> return false
+            Scr.HOME, Scr.TERMS -> return false
             Scr.ADV_MENU -> goHome()
             Scr.ADV -> { if (advUi.active) advUi.back() else if (!advLeaving) advExit() }
             Scr.LEVELS -> if (edMode) { edMode = false; scr = Scr.EDIT_HOME; edRefreshPending() } else goHome()
@@ -800,6 +806,11 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             id == "tname" || id == "mp_name" -> api.prompt(I18n.t("Tu nombre"), prefs.name, I18n.t("Nombre")) { prefs.name = it }
             id == "topen" -> if (BuildConfig.DEV) prefs.allOpen = !prefs.allOpen
             id == "treset" -> { resetDlg = 1; resetDlgT = time }
+            // términos y condiciones
+            id == "tchk" -> termsChecked = !termsChecked
+            id == "tok" -> if (termsChecked) { prefs.termsAccepted = Terminos.VERSION; goHome() }
+            id == "tpriv" -> api.openUrl(Terminos.PRIVACY_URL)
+            id == "tquit" -> api.quit()
             id == "rdl_yes" -> if (resetDlg == 1) { resetDlg = 2; resetDlgT = time }
             id == "rdl_ok" -> if (resetDlg == 2) {
                 prefs.resetProgress()
@@ -924,7 +935,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (scr == Scr.PLAY) moveSlide(e)
                 if (dragSlider != null) setSlider(x)
                 val dtm = (e.eventTime - lastMoveT) / 1000f
-                if (scr == Scr.SKINS) {
+                if (scr == Scr.SKINS || scr == Scr.TERMS) {
                     if (!dragged && abs(y - downY) > 22f) {
                         dragged = true
                         pressedId = null
@@ -978,7 +989,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
                 if (dragSlider != null) {
                     dragSlider = null
                     audio.play(Sfx.CLICK)
-                } else if (scr == Scr.SKINS && dragged) {
+                } else if ((scr == Scr.SKINS || scr == Scr.TERMS) && dragged) {
                     // era un deslizamiento, no un toque: sigue con inercia (ver update)
                     if (abs(skinVel) < 120f) skinVel = 0f
                 } else if (scr == Scr.EDITOR && (dragged || (id == null && edDrag in 1..2) || (id == null && edDrag == 4))) {
@@ -1087,7 +1098,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             levelOff *= exp(-12f * dt)
             if (abs(levelOff) < 0.5f) levelOff = 0f
         }
-        val touchingSkins = touching && scr == Scr.SKINS && dragged
+        val touchingSkins = touching && (scr == Scr.SKINS || scr == Scr.TERMS) && dragged
         if (!touchingSkins) {
             if (skinScroll < 0f || skinScroll > skinMax) {
                 skinVel = 0f
@@ -1649,6 +1660,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Scr.EDITOR -> drawEditor(c)
             Scr.EDIT_HOME -> drawEditHome(c)
             Scr.ADV_MENU -> drawAdvMenu(c)
+            Scr.TERMS -> drawTerms(c)
             else -> {}
         }
         if (a < 1f) c.restore()
@@ -6285,6 +6297,89 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
             Ov.WIN -> popOverlay(c, oa) { drawWin(c, pal) }
             Ov.NONE -> {}
         }
+    }
+
+    // ---------------- TÉRMINOS Y CONDICIONES ----------------
+    private var termsChecked = false
+    // renglones ya partidos, por idioma (texto, tamaño, ¿título?)
+    private var termsLines: List<Triple<String, Float, Boolean>> = emptyList()
+    private var termsLang = -1
+
+    private fun termsLayout(maxW: Float): List<Triple<String, Float, Boolean>> {
+        if (termsLang == I18n.lang && termsLines.isNotEmpty()) return termsLines
+        val out = ArrayList<Triple<String, Float, Boolean>>()
+        for (l in Gl.wrap(I18n.t(Terminos.INTRO), 34f, Gl.regular, maxW)) out.add(Triple(l, 34f, false))
+        for ((h, b) in Terminos.SECTIONS) {
+            out.add(Triple("", 22f, false))
+            for (l in Gl.wrap(I18n.t(h), 38f, Gl.medium, maxW)) out.add(Triple(l, 38f, true))
+            for (l in Gl.wrap(I18n.t(b), 33f, Gl.regular, maxW)) out.add(Triple(l, 33f, false))
+        }
+        out.add(Triple("", 22f, false))
+        out.add(Triple(I18n.t(Terminos.UPDATED), 28f, false))
+        termsLines = out
+        termsLang = I18n.lang
+        return out
+    }
+
+    private fun drawTerms(c: Canvas) {
+        val pal = cur()
+        val top = topI
+        Gl.textFit(c, "TÉRMINOS Y CONDICIONES", 540f, top + 120f, 56f, 940f, Gl.light, Gl.white(245), 0.1f)
+        Gl.textFit(c, "Antes de jugar, lee y acepta", 540f, top + 180f, 34f, 900f, Gl.regular, Gl.white(185))
+        val l = 60f
+        val r = 1020f
+        val t = top + 230f
+        val b = vh - 440f
+        Gl.panel(c, l, t, r, b, 50f, 0.9f, pal[0])
+        val lines = termsLayout(r - l - 110f)
+        var total = 40f
+        for (ln in lines) total += ln.second * 1.45f
+        skinMax = max(0f, total + 40f - (b - t))
+        // texto con desplazamiento, recortado al panel
+        c.save()
+        c.clipRect(l + 6f, t + 6f, r - 6f, b - 6f)
+        var y = t + 60f - skinScroll
+        for ((txt, size, head) in lines) {
+            if (y > t - 60f && y < b + 60f && txt.isNotEmpty()) {
+                Gl.text(c, txt, l + 50f, y, size, if (head) Gl.medium else Gl.regular,
+                    if (head) Gl.white(250) else Gl.white(215), 0f, null, 0, Paint.Align.LEFT, false)
+            }
+            y += size * 1.45f
+        }
+        c.restore()
+        // barra de desplazamiento
+        if (skinMax > 0f) {
+            val trackH = b - t - 60f
+            val barH = max(60f, trackH * trackH / (trackH + skinMax))
+            val by0 = t + 30f + (trackH - barH) * (skinScroll / skinMax).coerceIn(0f, 1f)
+            val pp = Gl.p()
+            pp.color = Gl.white(110)
+            Gl.rect.set(r - 22f, by0, r - 14f, by0 + barH)
+            c.drawRoundRect(Gl.rect, 4f, 4f, pp)
+        }
+        val atEnd = skinMax <= 0f || skinScroll >= skinMax - 40f
+        if (!atEnd) Gl.text(c, "Desliza para leer todo", 540f, b + 46f, 28f, Gl.regular, Gl.white(150))
+        // casilla "He leído y acepto"
+        val cy = vh - 330f
+        val bx = 120f
+        Gl.panel(c, bx - 30f, cy - 30f, bx + 30f, cy + 30f, 14f, if (termsChecked) 1.3f else 0.8f, pal[2])
+        if (termsChecked) {
+            val pp = Gl.p()
+            pp.style = Paint.Style.STROKE
+            pp.strokeWidth = 8f
+            pp.strokeCap = Paint.Cap.ROUND
+            pp.strokeJoin = Paint.Join.ROUND
+            pp.color = Color.WHITE
+            val ph = Gl.path
+            ph.reset()
+            ph.moveTo(bx - 16f, cy + 1f); ph.lineTo(bx - 4f, cy + 14f); ph.lineTo(bx + 18f, cy - 14f)
+            c.drawPath(ph, pp)
+        }
+        Gl.textFit(c, "He leído y acepto los términos y condiciones", bx + 54f, cy + 12f, 34f, 860f, Gl.medium, Gl.white(235), 0f, Paint.Align.LEFT)
+        hits.add(Hit("tchk", 60f, cy - 50f, 1020f, cy + 50f))
+        button(c, "tok", "Aceptar y jugar", 540f, vh - 210f, 760f, 116f, pal[2], 46f, termsChecked)
+        button(c, "tpriv", "Privacidad", 330f, vh - 85f, 380f, 84f, 0, 34f)
+        button(c, "tquit", "Salir", 750f, vh - 85f, 380f, 84f, 0, 34f)
     }
 
     /** Panel de las ventanas (pausa, ganar, perder): el cristal con un fondo oscuro debajo, para que el texto se lea
