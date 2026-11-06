@@ -23,11 +23,11 @@ CARDS = [
      "200 obstacles", "Liquid glass, new ones in every world"),
     (["05_nivel112"], "120 niveles", "12 mundos llenos de desafíos",
      "120 levels", "12 worlds full of challenges"),
-    (["06_infinito"], "Modo infinito", "¿Hasta dónde llegas?",
-     "Endless mode", "How far can you go?"),
+    (["03_nivel33"], "Reflejos al límite", "Cada nivel es un desafío nuevo",
+     "Reflexes to the limit", "Every level is a new challenge"),
     (["07_apariencias"], "99 esferas y 41 estelas", "Personaliza tu estilo",
      "99 balls and 41 trails", "Make it your style"),
-    (["10_aventura", "11_enemigos", "12_taller"], "Aventura y Taller", "12 mundos, 12 jefes y tus propias salas",
+    (["10_aventura", "12_taller"], "Aventura y Taller", "12 mundos, 12 jefes y tus propias salas",
      "Adventure & Maker", "12 worlds, 12 bosses and your own rooms"),
     (["08_ganar"], "Consigue las 3 estrellas", "Sin anuncios · Pago único",
      "Earn all 3 stars", "No ads · One-time purchase"),
@@ -128,6 +128,8 @@ def main():
                 print("falta captura para la tarjeta", i + 1, lang)
                 continue
             shots = [Image.open(f).convert("RGB") for f in files]
+            # sin la franja de abajo (ahí a veces aparece la barra de navegación del Android virtual)
+            shots = [im.crop((0, 0, im.width, im.height - 110)) if im.height > im.width else im for im in shots]
             t, s = (tes, ses) if lang == "es" else (ten, sen)
             p = os.path.join(dest, "%d.png" % (i + 1))
             card(shots, t, s, i, fonts).save(p, optimize=True)
