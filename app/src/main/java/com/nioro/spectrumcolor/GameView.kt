@@ -184,6 +184,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         val p = cmd.split(":")
         if (p[0] == "intro") {
             val i = Intro()
+            i.prepare(vh)
             val target = (p.getOrNull(1)?.toIntOrNull() ?: 15) / 10f
             while (i.t < target) i.update(1f / 60f) // con sus chispas, como si se hubiera reproducido
             intro = i

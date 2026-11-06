@@ -62,6 +62,38 @@ class Intro {
     private var endY = 0f
     private var chimed = false
 
+    // medidas del logo y del arco (dependen del alto de la pantalla)
+    private var gVh = -1f
+    private var gCy = 0f; private var gR = 0f; private var gTs = 0f; private var gOx = 0f; private var gTx = 0f
+    private var gEcx = 0f; private var gEcy = 0f; private var gRx = 0f; private var gRy = 0f
+
+    /** Calcula las medidas para un alto de pantalla (lo llama draw; también se puede llamar antes de update). */
+    fun prepare(vh: Float) {
+        if (vh == gVh) return
+        gVh = vh
+        gCy = vh * 0.46f
+        gR = 128f
+        gTs = 216f
+        val pp = p()
+        pp.typeface = bold
+        pp.textSize = gTs
+        val tw = pp.measureText("nioro")
+        val gap = 50f
+        val gw = 2f * gR + gap + tw
+        val sx = 540f - gw / 2f
+        gOx = sx + gR
+        gTx = sx + 2f * gR + gap
+        gEcx = 540f
+        gEcy = gCy + 80f
+        gRx = gw * 0.62f
+        gRy = 265f
+        endX = arcX(1f); endY = arcY(1f)
+    }
+
+    private fun arcX(u: Float) = gEcx + gRx * cos(Math.toRadians(200.0 + 140.0 * u).toFloat())
+    private fun arcY(u: Float) = gEcy + gRy * sin(Math.toRadians(200.0 + 140.0 * u).toFloat())
+    private fun sweepU() = easeInOut((t - SWEEP_A) / (SWEEP_B - SWEEP_A))
+
     fun done(): Boolean = t >= LEN
 
     private fun clamp01(x: Float) = x.coerceIn(0f, 1f)
@@ -81,14 +113,15 @@ class Intro {
             s.x += s.vx * dt
             s.y += s.vy * dt
         }
+        if (gVh > 0f) { val u = sweepU(); headX = arcX(u); headY = arcY(u) }
         // chispas que suelta la cabeza del arco
-        if (t in SWEEP_A..SWEEP_B && headX != 0f) {
+        if (t in SWEEP_A..SWEEP_B && gVh > 0f) {
             repeat(3) {
                 val l = 0.45f + rnd.nextFloat() * 0.5f
                 sparks.add(Spark(headX, headY, (rnd.nextFloat() - 0.5f) * 220f, (rnd.nextFloat() - 0.3f) * 160f, l, l, 2.5f + rnd.nextFloat() * 4f))
             }
         }
-        if (!chimed && t >= SWEEP_B) {
+        if (!chimed && t >= SWEEP_B && gVh > 0f) {
             chimed = true
             for (k in 0 until 46) {
                 val an = rnd.nextFloat() * 6.283f
@@ -101,8 +134,9 @@ class Intro {
     }
 
     fun draw(c: Canvas, vh: Float) {
+        prepare(vh)
         val cx = 540f
-        val cy = vh * 0.46f
+        val cy = gCy
         // ---- fondo: azul noche con un halo al centro ----
         if (bgShader == null || bgKey != vh) {
             bgShader = RadialGradient(cx, cy, vh * 0.72f, intArrayOf(0xFF1C2A7C.toInt(), 0xFF0C1546.toInt(), 0xFF050817.toInt()),
@@ -122,29 +156,15 @@ class Intro {
         }
 
         // ---- medidas del logo (esfera a la izquierda, "nioro" a la derecha, centrado) ----
-        val r = 112f
-        val ts = 190f
-        pp = p()
-        pp.typeface = bold
-        pp.textSize = ts
-        val tw = pp.measureText("nioro")
-        val gap = 44f
-        val gw = 2f * r + gap + tw
-        val sx = cx - gw / 2f
-        val ox = sx + r
-        val tx = sx + 2f * r + gap
-        val ty = cy + 52f
-
-        // ---- arco de luz ----
-        val ecx = cx
-        val ecy = cy + 70f
-        val rx = gw * 0.62f
-        val ry = 235f
-        fun ax(u: Float) = ecx + rx * cos(Math.toRadians((200.0 + 140.0 * u)).toFloat())
-        fun ay(u: Float) = ecy + ry * sin(Math.toRadians((200.0 + 140.0 * u)).toFloat())
-        val u = easeInOut((t - SWEEP_A) / (SWEEP_B - SWEEP_A))
+        val r = gR
+        val ts = gTs
+        val ox = gOx
+        val tx = gTx
+        val ty = cy + ts * 0.275f
+        fun ax(u: Float) = arcX(u)
+        fun ay(u: Float) = arcY(u)
+        val u = sweepU()
         headX = ax(u); headY = ay(u)
-        endX = ax(1f); endY = ay(1f)
         val logoA = easeOut((t - 0.25f) / 0.45f)
         val pulse = max(0f, 1f - abs(t - 2.15f) / 0.45f)
 
@@ -204,18 +224,18 @@ class Intro {
         if (sa > 0f) {
             pp = p()
             pp.typeface = thin
-            pp.textSize = 58f
+            pp.textSize = 64f
             pp.letterSpacing = 0.04f
             pp.color = Gl.alpha(0xFFA3B4FF.toInt(), (255 * sa).toInt())
-            c.drawText("sparks of life", tx + 6f, cy + 150f + 14f * (1f - sa), pp)
+            c.drawText("sparks of life", tx + 6f, cy + ts * 0.79f + 14f * (1f - sa), pp)
         }
 
         // ---- la estela del arco ----
         val fade = 1f - easeOut((t - SWEEP_B) / 0.7f)
         if (t >= SWEEP_A && fade > 0f) {
             val u1 = u
-            val u0 = if (t < SWEEP_B) max(0f, u - 0.5f) else min(1f, u1 - 0.5f + 0.5f * easeOut((t - SWEEP_B) / 0.7f))
-            val n = 48
+            val u0 = if (t < SWEEP_B) max(0f, u - 0.65f) else min(1f, u1 - 0.65f + 0.65f * easeOut((t - SWEEP_B) / 0.7f))
+            val n = 56
             var px = ax(u0)
             var py = ay(u0)
             for (i in 1..n) {
@@ -228,17 +248,20 @@ class Intro {
                 pp = p()
                 pp.style = Paint.Style.STROKE
                 pp.strokeCap = Paint.Cap.ROUND
-                pp.strokeWidth = 6f + 30f * f
-                pp.color = Gl.alpha(0xFF5C7CFF.toInt(), (60 * a).toInt())
+                pp.strokeWidth = 10f + 46f * f
+                pp.color = Gl.alpha(0xFF5C7CFF.toInt(), (55 * a).toInt())
                 c.drawLine(px, py, qx, qy, pp)
-                pp.strokeWidth = 1.5f + 7f * f
-                pp.color = Gl.alpha(0xFFF4F7FF.toInt(), (235 * a).toInt())
+                pp.strokeWidth = 4f + 18f * f
+                pp.color = Gl.alpha(0xFF9DB3FF.toInt(), (110 * a).toInt())
+                c.drawLine(px, py, qx, qy, pp)
+                pp.strokeWidth = 2f + 8f * f
+                pp.color = Gl.alpha(0xFFF7F9FF.toInt(), (245 * a).toInt())
                 c.drawLine(px, py, qx, qy, pp)
                 px = qx; py = qy
             }
             if (t < SWEEP_B) {
-                Gl.glow(c, headX, headY, 150f, 0xFF6F8DFF.toInt(), 120)
-                Gl.glow(c, headX, headY, 60f, Color.WHITE, 230)
+                Gl.glow(c, headX, headY, 200f, 0xFF6F8DFF.toInt(), 130)
+                Gl.glow(c, headX, headY, 80f, Color.WHITE, 240)
             }
         }
         // destello al final del arco
