@@ -63,6 +63,9 @@ android {
         }
         create("play") {
             dimension = "modo"
+            // en Google Play el juego quedó registrado como nioro.color.flow (la versión de GitHub sigue siendo
+            // com.nioro.spectrumcolor, así que en un mismo teléfono pueden convivir las dos)
+            applicationId = "nioro.color.flow"
             buildConfigField("boolean", "DEV", "false")
             buildConfigField("boolean", "STORE", "true")
             signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("release")
