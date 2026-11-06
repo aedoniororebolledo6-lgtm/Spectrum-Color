@@ -1843,7 +1843,11 @@ class AdvUi(
         c.drawRect(vw - 27f, 24f, vw - 22f, 40f, pp)
     }
 
+    /** Filmación del anuncio: sin los botones táctiles (el bot no los necesita y taparían los títulos). */
+    var hideControls = false
+
     private fun drawControls(c: Canvas) {
+        if (hideControls) return
         for (b in buttons()) {
             if (b.id == "P") continue
             val held = ptrs.containsValue(b.id)

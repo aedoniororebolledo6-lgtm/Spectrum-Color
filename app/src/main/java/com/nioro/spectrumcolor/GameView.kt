@@ -470,6 +470,7 @@ class GameView(context: Context, private val api: HostApi) : View(context), Chor
         if (width == 0 || height == 0) return
         if (scr == Scr.ADV) {
             if (!advUi.active) { update(FILM_DT); return } // la Aventura todavía está abriendo
+            advUi.hideControls = true
             if (f.boss && !f.bossReady) {
                 // avanzar sin dibujar hasta que empiece la pelea con el jefe (máximo 10 minutos de juego)
                 for (k in 0 until 90) { advUi.autoStep(f.t++); update(FILM_DT) }
